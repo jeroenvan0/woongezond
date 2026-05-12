@@ -5,6 +5,8 @@ Dash/Plotly dashboard dat live data uit Supabase toont.
 ## Lokaal draaien
 
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
 python app.py
 ```
@@ -13,12 +15,14 @@ Open dan http://localhost:8050
 
 ## Omgevingsvariabelen
 
-Optioneel — standaard staan de waarden al in de code:
+Verplicht via `.env` in de projectmap:
 
 ```
 SUPABASE_URL=https://kqzknfjkihbzkwqjlrsk.supabase.co
 SUPABASE_KEY=sb_publishable_...
 ```
+
+De app laadt deze variabelen automatisch bij opstarten.
 
 ## Hosten op Railway (aanbevolen, gratis tier)
 

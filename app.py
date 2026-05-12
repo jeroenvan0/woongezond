@@ -1,14 +1,24 @@
 import os
 from datetime import datetime, timedelta
+from pathlib import Path
 import zoneinfo
 
 import dash
 from dash import dcc, html, Input, Output, callback
 import plotly.graph_objects as go
+from dotenv import load_dotenv
 from supabase import create_client
 
-SUPABASE_URL = os.getenv("SUPABASE_URL", "https://kqzknfjkihbzkwqjlrsk.supabase.co")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImtxemtuZmpraWhiemt3cWpscnNrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDg1MTM3OTgsImV4cCI6MjA2NDA4OTc5OH0.0ePUrY8YkcWePg-wihrs5-wkxUmSTrEkEedV15adRNQ")
+BASE_DIR = Path(__file__).resolve().parent
+load_dotenv(BASE_DIR / ".env")
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise RuntimeError(
+        "Missing SUPABASE_URL or SUPABASE_KEY. Add them to .env in the project root."
+    )
 
 TZ = zoneinfo.ZoneInfo("Europe/Amsterdam")
 
