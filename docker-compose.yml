@@ -1,0 +1,15 @@
+services:
+  dashboard:
+    build: .
+    container_name: woongezond-dashboard
+    env_file:
+      - .env
+    environment:
+      PORT: 8050
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8050
+      DASH_DEBUG: "0"
+      APP_TIMEZONE: Europe/Amsterdam
+    ports:
+      - "8050:8050"
+    restart: unless-stopped

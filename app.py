@@ -12,6 +12,20 @@ from supabase import create_client
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env")
 
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.getenv(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
@@ -20,7 +34,17 @@ if not SUPABASE_URL or not SUPABASE_KEY:
         "Missing SUPABASE_URL or SUPABASE_KEY. Add them to .env in the project root."
     )
 
-TZ = zoneinfo.ZoneInfo("Europe/Amsterdam")
+TIMEZONE_NAME = os.getenv("APP_TIMEZONE", "Europe/Amsterdam")
+try:
+    TZ = zoneinfo.ZoneInfo(TIMEZONE_NAME)
+except zoneinfo.ZoneInfoNotFoundError:
+    TZ = zoneinfo.ZoneInfo("UTC")
+
+APP_HOST = os.getenv("APP_HOST", "0.0.0.0")
+APP_PORT = _env_int("APP_PORT", _env_int("PORT", 8050))
+APP_DEBUG = _env_bool("DASH_DEBUG", False)
+MAX_POINTS = _env_int("MAX_POINTS", 50000)
+SUPABASE_PAGE_SIZE = _env_int("SUPABASE_PAGE_SIZE", 1000)
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -43,15 +67,33 @@ PERIOD_OPTIONS = [
 
 def fetch_data(minutes: int):
     since = (datetime.now(TZ) - timedelta(minutes=minutes)).isoformat()
-    resp = (
-        supabase.table("air_quality")
-        .select("created_at,co2,temperature,humidity")
-        .gte("created_at", since)
-        .order("created_at", desc=False)
-        .limit(5000)
-        .execute()
-    )
-    return resp.data or []
+    rows = []
+    offset = 0
+
+    while len(rows) < MAX_POINTS:
+        remaining = MAX_POINTS - len(rows)
+        page_size = min(SUPABASE_PAGE_SIZE, remaining)
+        page_end = offset + page_size - 1
+
+        resp = (
+            supabase.table("air_quality")
+            .select("created_at,co2,temperature,humidity")
+            .gte("created_at", since)
+            .order("created_at", desc=True)
+            .range(offset, page_end)
+            .execute()
+        )
+        chunk = resp.data or []
+        if not chunk:
+            break
+
+        rows.extend(chunk)
+        if len(chunk) < page_size:
+            break
+
+        offset += len(chunk)
+
+    return list(reversed(rows))
 
 def to_amsterdam(ts_str):
     return datetime.fromisoformat(ts_str.replace("Z", "+00:00")).astimezone(TZ)
@@ -213,4 +255,4 @@ def update(period_minutes, _):
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host=APP_HOST, port=APP_PORT, debug=APP_DEBUG)
