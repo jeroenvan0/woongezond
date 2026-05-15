@@ -209,7 +209,7 @@ def aggregateer_rows(rows, bucket_minutes: int):
 
 def fetch_data(minutes: int):
     if supabase is None:
-        return []
+        return {"rows": [], "raw_count": 0, "display_count": 0, "bucket_minutes": 1}
 
     since = (datetime.now(TZ) - timedelta(minutes=minutes)).isoformat()
     bucket_minutes = kies_bucket_minutes(minutes)
@@ -247,7 +247,26 @@ def fetch_data(minutes: int):
     if len(rows) > MAX_POINTS:
         rows = rows[-MAX_POINTS:]
 
-    return rows
+    return {
+        "rows": rows,
+        "raw_count": fetched_rows,
+        "display_count": len(rows),
+        "bucket_minutes": bucket_minutes,
+    }
+
+
+def unpack_store_data(data):
+    if not data:
+        return [], 0, 0
+    if isinstance(data, list):
+        # Backward compatibility with older store payloads.
+        return data, len(data), len(data)
+
+    rows = data.get("rows") or []
+    raw_count = int(data.get("raw_count", len(rows)))
+    display_count = int(data.get("display_count", len(rows)))
+    return rows, raw_count, display_count
+
 
 def to_ams(ts_str):
     return datetime.fromisoformat(ts_str.replace("Z", "+00:00")).astimezone(TZ)
@@ -678,7 +697,8 @@ def update_moving_avg_window(slider_value):
     Output("footer", "children"),
     Input("store", "data"),
 )
-def update_cards(rows):
+def update_cards(store_data):
+    rows, raw_count, display_count = unpack_store_data(store_data)
     if not rows:
         reason = "Geen data"
         if SUPABASE_INIT_ERROR:
@@ -718,7 +738,8 @@ def update_cards(rows):
         metric_card("Schimmelrisico",     str(latest_mr),   "/100", mr_status,   mr_col),
         metric_card("ACH (ventilatie)",   ach_str,          "luchtv./u", ach_status, ach_col,
                     sub=f"τ = {ach_data['tau_gem']} min" if ach_data else None),
-        metric_card("Metingen",           str(len(rows)),   "in periode"),
+        metric_card("Metingen",           str(raw_count),   "in periode",
+                    sub=f"{display_count} grafiekpunten"),
     ]
 
     ts = times[-1]
@@ -730,7 +751,8 @@ def update_cards(rows):
           Input("tabs", "value"),
           Input("store", "data"),
           Input("ma-store", "data"))
-def render_tab(tab, rows, ma_window):
+def render_tab(tab, store_data, ma_window):
+    rows, _, _ = unpack_store_data(store_data)
     if not rows:
         return html.P("Nog geen data in geselecteerde periode.", style={"color": MUTED})
 
