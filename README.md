@@ -38,7 +38,10 @@ components/     MetricCard · ChartCard · SensorChart · TimeSeriesChart · Dua
 
 Required: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
 `SUPABASE_SERVICE_ROLE_KEY`, `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENWEATHER_API_KEY`.
-Optional: `RESEND_API_KEY`, `ALERT_FROM_ADDR` (email alerts — no-op when unset).
+Optional: `RESEND_API_KEY`, `ALERT_FROM_ADDR` (email alerts — no-op when unset);
+`CRON_SECRET` (guards the weather-ingest route);
+`NEXT_PUBLIC_BASE_PATH` (serve the whole app under a prefix, e.g. `/admin` — leave
+unset to serve at the domain root; must match at build time and runtime).
 
 ## Develop / build / deploy
 
