@@ -1,102 +1,58 @@
-# Luchtkwaliteit Dashboard
+# Woongezond — Luchtkwaliteit (React / Next.js)
 
-Dash/Plotly dashboard dat live data uit Supabase toont.
+Production React port of the Dash/Flask air-quality dashboard. Next.js 16 (App
+Router) · React 19 · TypeScript · Tailwind 4 · Supabase (auth + data) · Recharts.
 
-## Lokaal draaien (macOS/Linux)
+Live: `https://woongezond-react.vostech.group` (systemd `woongezond-react`, port 3001).
+
+## Pages
+
+| Route | What |
+|-------|------|
+| `/dashboard` | Live KPIs (CO₂, temp, RV, schimmel, dauwpunt, gezondheid), weather + AQI bar, insight banner, moving-average smoothing, tabs (Metingen / Dauw & schimmel / Ventilatie / Diagnose), **ML-voorspelling** card, AI chat |
+| `/trends` | Daily health timeline (+7-day rolling, intervention markers), monthly score bars (+ est. outdoor temp), season×hour heatmap, **period comparison with seasonal correction**, intervention tracking (CRUD) |
+| `/schimmelrisico` | **VTT Mould Index + WUFI-Bio** models over the T/RH series, WoonScore hero, MI/SER charts, dual-axis T/RH chart, material class (k₂), model explanation |
+| `/scenarios` | What-if calculator (season, outdoor T/RH, occupants, ACH, heating, window habit), live results, ML card, AI recommendations, saved-scenario comparison |
+| `/login` | Supabase email/password auth |
+
+## Cross-cutting features
+
+- **Notifications** — `NotificationBell` in the header: threshold settings (CO₂ / RV),
+  unread badge, auto-check via `POST /api/notifications/check` (rate-limited, optional
+  email through `RESEND_API_KEY`).
+- **AI chat** — tool-calling assistant (`query_sensor_data`, `query_current_weather`),
+  live data + weather context, markdown rendering, conversation history, 👍/👎 feedback.
+- **ML** — self-learning Ridge-regression CO₂/RH forecaster (`lib/ml`, see its README).
+
+## Key code
+
+```
+app/api/        data · chat · recommendations · weather · ml/{model,retrain} · notifications/check
+lib/            calculations · trends · mouldModels · chatTools · ml/* · supabase/*
+components/     MetricCard · ChartCard · SensorChart · TimeSeriesChart · DualAxisChart
+                HealthTimelineChart · MonthlyTrendChart · HourHeatmap
+                NotificationBell · MLPredictionCard · ChatWidget · Navigation
+```
+
+## Environment (`.env.local`)
+
+Required: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
+`SUPABASE_SERVICE_ROLE_KEY`, `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENWEATHER_API_KEY`.
+Optional: `RESEND_API_KEY`, `ALERT_FROM_ADDR` (email alerts — no-op when unset);
+`CRON_SECRET` (guards the weather-ingest route);
+`NEXT_PUBLIC_BASE_PATH` (serve the whole app under a prefix, e.g. `/admin` — leave
+unset to serve at the domain root; must match at build time and runtime).
+
+## Develop / build / deploy
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-python app.py
+npm run dev                       # dev server
+npm run build && npm start        # production
+sudo systemctl restart woongezond-react   # reload the live service after a build
 ```
 
-Open dan http://localhost:8050
+## Supabase
 
-## Omgevingsvariabelen
-
-Verplicht via `.env` in de projectmap:
-
-```
-SUPABASE_URL=https://kqzknfjkihbzkwqjlrsk.supabase.co
-SUPABASE_KEY=sb_publishable_...
-```
-
-Optioneel (voor lokale run/Docker):
-
-```
-APP_HOST=0.0.0.0
-APP_PORT=8050
-DASH_DEBUG=0
-APP_TIMEZONE=Europe/Amsterdam
-MAX_POINTS=50000
-MAX_FETCH_ROWS=600000
-SUPABASE_PAGE_SIZE=1000
-```
-
-De app laadt deze variabelen automatisch bij opstarten via `.env`.
-
-Bij lange periodes (30 dagen/1 jaar) gebruikt de app automatisch trendmodus:
-
-- data wordt in batches opgehaald (paginering)
-- data wordt geaggregeerd naar een passende resolutie
-- diagnose toont langetermijntrends (CO₂, RH, schimmelrisico)
-
-## Alternatieve app starten
-
-Standaard start je `app.py`. Wil je de uitgebreide versie:
-
-```bash
-python app_v2.py
-```
-
-## Docker
-
-### Met Docker Compose (aanbevolen)
-
-```bash
-cp .env.example .env
-docker compose up --build
-```
-
-Open dan http://localhost:8050
-
-### Met Docker CLI
-
-```bash
-cp .env.example .env
-docker build -t woongezond-dashboard .
-docker run --rm -p 8050:8050 --env-file .env woongezond-dashboard
-```
-
-## Productie startcommando
-
-Via `Procfile`:
-
-```bash
-gunicorn app:server
-```
-
-## Hosten op Railway (aanbevolen, gratis tier)
-
-1. Maak account op https://railway.app
-2. "New project" → "Deploy from GitHub repo"
-3. Push deze map naar een GitHub repo
-4. Railway detecteert de Procfile automatisch
-5. Voeg eigen domein toe via Settings → Domains
-
-## Hosten op Render
-
-1. Maak account op https://render.com
-2. "New Web Service" → koppel je GitHub repo
-3. Build command: `pip install -r requirements.txt`
-4. Start command: `gunicorn app:server`
-5. Voeg eigen domein toe via Settings → Custom Domains
-
-## Eigen domeinnaam koppelen
-
-Bij beide platforms: voeg een CNAME record toe bij je DNS provider:
-```
-CNAME  dashboard  <jouw-app>.railway.app
-```
+Per-user RLS (`auth.uid() = user_id`) on `air_quality`, `interventions`, `thresholds`,
+`notifications`, `chat_sessions`/`chat_messages`, `ml_models`, `ml_feedback`. Each user
+sees only their own sensor data and model.
