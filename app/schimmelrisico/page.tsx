@@ -8,6 +8,8 @@ import ChartCard from '@/components/ChartCard'
 import TimeSeriesChart from '@/components/TimeSeriesChart'
 import DualAxisChart from '@/components/DualAxisChart'
 import ChatWidget from '@/components/ChatWidget'
+import SegmentedControl from '@/components/ui/SegmentedControl'
+import InfoHint from '@/components/ui/InfoHint'
 import {
   runModels,
   generateDemoData,
@@ -17,6 +19,8 @@ import {
 } from '@/lib/mouldModels'
 import { calcWallConditions, INSULATION_R, type InsulationClass } from '@/lib/calculations'
 import { useStickyState } from '@/lib/useStickyState'
+import { useChartColors } from '@/lib/useChartColors'
+import { ChevronDown, ChevronUp, FlaskConical } from 'lucide-react'
 
 const INSULATION_LABELS: Record<InsulationClass, string> = {
   poor: 'Slecht — vóór 1975, ongeïsoleerd',
@@ -88,10 +92,10 @@ interface Series {
   isDemo: boolean
 }
 
-function Hero({
-  ws, mi, ser, isDemo, insulation, rTotaal,
+function ScoreHero({
+  ws, mi, ser, insulation, rTotaal,
 }: {
-  ws: number; mi: number; ser: number; isDemo: boolean
+  ws: number; mi: number; ser: number
   insulation: InsulationClass; rTotaal: number
 }) {
   const { label, color, bg } = woonScoreLabel(ws)
@@ -100,16 +104,20 @@ function Hero({
       style={{
         background: 'var(--surface)',
         border: '1px solid var(--border)',
-        borderRadius: 16,
+        borderRadius: 'var(--r-lg)',
         padding: '24px 28px',
         boxShadow: 'var(--shadow-sm)',
         marginBottom: 14,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'baseline' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>WoonScore — risico</span>
+        <InfoHint label="WoonScore" text="WoonScore is een risicoscore: 0–100, hoger = méér schimmelrisico. Dit is de omgekeerde richting van de Gezondheidsscore op het dashboard. Berekend als 0,6·(MI/6·100) + 0,4·SER." />
+      </div>
+      <div style={{ display: 'flex', alignItems: 'baseline', marginTop: 4 }}>
         <span
           style={{
-            fontSize: 'clamp(44px,8vw,64px)',
+            fontSize: 'var(--fs-hero)',
             fontWeight: 800,
             color,
             lineHeight: 1,
@@ -119,48 +127,58 @@ function Hero({
         >
           {ws.toFixed(0)}
         </span>
-        <span style={{ fontSize: 18, fontWeight: 500, color: 'var(--muted)', marginLeft: 4 }}>/ 100</span>
+        <span style={{ fontSize: 18, fontWeight: 500, color: 'var(--muted)', marginLeft: 4 }}>/ 100 risico</span>
       </div>
       <div
         style={{
-          fontSize: 13,
+          fontSize: 'var(--fs-md)',
           fontWeight: 700,
           color,
           background: bg,
           padding: '4px 12px',
-          borderRadius: 99,
+          borderRadius: 'var(--r-pill)',
           display: 'inline-block',
           marginTop: 8,
         }}
       >
         {label}
       </div>
-      <p style={{ fontSize: 12, color: 'var(--muted)', margin: '6px 0 0' }}>
-        Gebaseerd op VTT Mould Index + WUFI-Bio
+      <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--muted)', margin: '6px 0 0' }}>
+        Gebaseerd op VTT Mould Index + WUFI-Bio · hoger = meer risico
       </p>
-      <div style={{ marginTop: 8, fontSize: 12, fontWeight: 600, color: 'var(--muted)' }}>
+      <div style={{ marginTop: 8, fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--muted)' }}>
         MI {mi.toFixed(2)} / 6 <span style={{ color: 'var(--subtle)' }}>·</span> SER {ser.toFixed(0)} / 100
       </div>
-      <div style={{ marginTop: 4, fontSize: 11.5, color: 'var(--subtle)' }}>
+      <div style={{ marginTop: 4, fontSize: 'var(--fs-xs)', color: 'var(--subtle)' }}>
         Muurisolatie: <span style={{ fontWeight: 600, color: 'var(--muted)' }}>{INSULATION_LABELS[insulation]}</span>
         {' '}(R = {rTotaal.toFixed(2)} m²K/W)
       </div>
-      {isDemo && (
-        <div
-          style={{
-            fontSize: 11,
-            color: '#D97706',
-            background: 'rgba(217,119,6,0.10)',
-            padding: '3px 10px',
-            borderRadius: 99,
-            display: 'inline-block',
-            marginTop: 10,
-            fontWeight: 500,
-          }}
-        >
-          Demo data — geen sensordata beschikbaar
-        </div>
-      )}
+    </div>
+  )
+}
+
+// A2/1.3: with fewer than two real readings, do NOT render a fabricated WoonScore in
+// hero type. Show an explicit example-view state that says what will appear and when.
+function DemoNotice() {
+  return (
+    <div
+      style={{
+        background: 'var(--warn-fill)',
+        border: '1px solid color-mix(in srgb, var(--warn) 28%, transparent)',
+        borderLeft: '3px solid var(--warn)',
+        borderRadius: 'var(--r-lg)',
+        padding: '18px 22px',
+        marginBottom: 14,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--fs-lg)', fontWeight: 700, color: 'var(--text)' }}>
+        <FlaskConical size={18} color="var(--warn)" /> Voorbeeldweergave
+      </div>
+      <p style={{ fontSize: 'var(--fs-md)', color: 'var(--muted)', lineHeight: 1.5, margin: '6px 0 0' }}>
+        Er zijn nog geen eigen metingen. De grafieken hieronder tonen <strong>voorbeelddata</strong> zodat je ziet
+        hoe deze pagina eruit gaat zien. Je persoonlijke WoonScore verschijnt zodra de sensor een paar dagen heeft
+        gemeten.
+      </p>
     </div>
   )
 }
@@ -243,13 +261,13 @@ function Explanation() {
       </p>
       {h('Drempelwaarden')}
       <div style={{ margin: '5px 0 12px', paddingLeft: 4 }}>
-        {thr('MI < 1', '#16A34A', 'laag risico')}
-        {thr('1 ≤ MI < 2', '#D97706', 'verhoogd risico — zichtbare schimmel mogelijk')}
-        {thr('MI ≥ 2', '#DC2626', 'hoog risico — significante aantasting')}
+        {thr('MI < 1', 'var(--ok)', 'laag risico')}
+        {thr('1 ≤ MI < 2', 'var(--warn)', 'verhoogd risico — zichtbare schimmel mogelijk')}
+        {thr('MI ≥ 2', 'var(--crit)', 'hoog risico — significante aantasting')}
         <div style={{ height: 6 }} />
-        {thr('SER < 30', '#16A34A', 'laag risico')}
-        {thr('30 ≤ SER < 60', '#D97706', 'verhoogd risico')}
-        {thr('SER ≥ 60', '#DC2626', 'hoog risico — actie gewenst')}
+        {thr('SER < 30', 'var(--ok)', 'laag risico')}
+        {thr('30 ≤ SER < 60', 'var(--warn)', 'verhoogd risico')}
+        {thr('SER ≥ 60', 'var(--crit)', 'hoog risico — actie gewenst')}
       </div>
       <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '14px 0 10px' }} />
       <p style={{ fontSize: 11.5, color: 'var(--subtle)', margin: '0 0 8px', lineHeight: 1.6 }}>
@@ -271,6 +289,7 @@ export default function SchimmelrisicoPage() {
   const [range, setRange] = useStickyState('wz-schimmel-range', '7d')
   const [material, setMaterial] = useStickyState('wz-schimmel-material', 'gypsum')
   const [showExplain, setShowExplain] = useState(false)
+  const chartC = useChartColors()
 
   useEffect(() => {
     ;(async () => {
@@ -341,17 +360,18 @@ export default function SchimmelrisicoPage() {
 
   return (
     <AppShell title="Schimmelrisico">
-      {computed ? (
-        <Hero
+      {!computed ? (
+        <div style={{ color: 'var(--muted)', fontSize: 'var(--fs-md)', padding: '24px 0' }}>Laden…</div>
+      ) : series!.isDemo ? (
+        <DemoNotice />
+      ) : (
+        <ScoreHero
           ws={computed.wsLast}
           mi={computed.miLast}
           ser={computed.serLast}
-          isDemo={series!.isDemo}
           insulation={series!.insulation}
           rTotaal={series!.rTotaal}
         />
-      ) : (
-        <div style={{ color: 'var(--muted)', fontSize: 13, padding: '24px 0' }}>Laden…</div>
       )}
 
       {/* Controls */}
@@ -372,7 +392,7 @@ export default function SchimmelrisicoPage() {
         <div style={{ flex: 1, minWidth: 200 }}>
           <div
             style={{
-              fontSize: 11,
+              fontSize: 'var(--fs-xs)',
               fontWeight: 600,
               color: 'var(--muted)',
               textTransform: 'uppercase',
@@ -382,31 +402,19 @@ export default function SchimmelrisicoPage() {
           >
             Tijdsperiode
           </div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-            {RANGE_OPTIONS.map((o) => (
-              <button
-                key={o.value}
-                onClick={() => setRange(o.value)}
-                style={{
-                  padding: '6px 12px',
-                  borderRadius: 8,
-                  border: '1px solid var(--border)',
-                  background: range === o.value ? '#F9731618' : 'var(--surface-2)',
-                  color: range === o.value ? '#F97316' : 'var(--muted)',
-                  fontSize: 12,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                {o.label}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            ariaLabel="Tijdsperiode"
+            options={RANGE_OPTIONS.map((o) => ({ label: o.label, value: o.value }))}
+            value={range}
+            onChange={setRange}
+          />
         </div>
-        <div>
-          <div
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <label
+            htmlFor="wz-materiaal"
             style={{
-              fontSize: 11,
+              display: 'block',
+              fontSize: 'var(--fs-xs)',
               fontWeight: 600,
               color: 'var(--muted)',
               textTransform: 'uppercase',
@@ -415,18 +423,20 @@ export default function SchimmelrisicoPage() {
             }}
           >
             Materiaalklasse (k₂)
-          </div>
+          </label>
           <select
+            id="wz-materiaal"
             value={material}
             onChange={(e) => setMaterial(e.target.value)}
             style={{
               padding: '8px 10px',
               border: '1px solid var(--border)',
-              borderRadius: 8,
+              borderRadius: 'var(--r-sm)',
               background: 'var(--surface-2)',
               color: 'var(--text)',
-              fontSize: 13,
-              minWidth: 220,
+              fontSize: 'var(--fs-md)',
+              width: '100%',
+              maxWidth: 280,
             }}
           >
             {Object.entries(MATERIAL_LABELS).map(([k, v]) => (
@@ -439,49 +449,49 @@ export default function SchimmelrisicoPage() {
       </div>
 
       {computed && (
-        <>
-          <ChartCard label="VTT Schimmelindex (MI)">
+        <div style={series!.isDemo ? { opacity: 0.85 } : undefined}>
+          <ChartCard label={`VTT Schimmelindex (MI)${series!.isDemo ? ' — voorbeelddata' : ''}`}>
             <TimeSeriesChart
               id="mi"
               data={computed.miPts}
-              color="#F97316"
+              color={chartC.mould}
               unit="MI"
               decimals={2}
               height={220}
               refLines={[
-                { value: 1, label: 'MI 1 — verhoogd', color: '#D97706' },
-                { value: 2, label: 'MI 2 — hoog', color: '#DC2626' },
+                { value: 1, label: 'MI 1 — verhoogd', color: chartC.warn },
+                { value: 2, label: 'MI 2 — hoog', color: chartC.crit },
               ]}
             />
           </ChartCard>
-          <ChartCard label="WUFI-Bio Wateractiviteit (SER)">
+          <ChartCard label={`WUFI-Bio Wateractiviteit (SER)${series!.isDemo ? ' — voorbeelddata' : ''}`}>
             <TimeSeriesChart
               id="ser"
               data={computed.serPts}
-              color="#DC2626"
+              color={chartC.crit}
               unit="SER"
               decimals={0}
               height={220}
               refLines={[
-                { value: 30, label: 'SER 30 — verhoogd', color: '#D97706' },
-                { value: 60, label: 'SER 60 — hoog', color: '#DC2626' },
+                { value: 30, label: 'SER 30 — verhoogd', color: chartC.warn },
+                { value: 60, label: 'SER 60 — hoog', color: chartC.crit },
               ]}
             />
           </ChartCard>
-          <ChartCard label="Binnenklimaat (gemeten) — modelinvoer is wandconditie">
+          <ChartCard label={`Binnenklimaat (gemeten) — modelinvoer is wandconditie${series!.isDemo ? ' — voorbeelddata' : ''}`}>
             <DualAxisChart
               data={computed.trhPts}
               aLabel="Temperatuur (binnen)"
               bLabel="Luchtvochtigheid (binnen)"
-              aColor="#EF4444"
-              bColor="#10B981"
+              aColor={chartC.temp}
+              bColor={chartC.rh}
               aUnit="°C"
               bUnit="%"
               height={220}
-              bRefLine={{ value: 70, label: 'RV 70% (binnen verhoogd)', color: '#D97706' }}
+              bRefLine={{ value: 70, label: 'RV 70% (binnen verhoogd)', color: chartC.warn }}
             />
           </ChartCard>
-        </>
+        </div>
       )}
 
       {/* Explanation */}
@@ -489,7 +499,7 @@ export default function SchimmelrisicoPage() {
         style={{
           background: 'var(--surface)',
           border: '1px solid var(--border)',
-          borderRadius: 14,
+          borderRadius: 'var(--r-lg)',
           padding: '16px 18px',
           marginTop: 14,
           boxShadow: 'var(--shadow-xs)',
@@ -497,18 +507,22 @@ export default function SchimmelrisicoPage() {
       >
         <button
           onClick={() => setShowExplain((s) => !s)}
+          aria-expanded={showExplain}
           style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
             background: 'none',
             border: 'none',
             cursor: 'pointer',
-            fontSize: 13,
+            fontSize: 'var(--fs-md)',
             fontWeight: 600,
             color: 'var(--muted)',
             padding: 0,
             fontFamily: 'inherit',
           }}
         >
-          {showExplain ? '▴' : '▾'}  Uitleg modellen
+          {showExplain ? <ChevronUp size={15} /> : <ChevronDown size={15} />} Uitleg modellen
         </button>
         {showExplain && <Explanation />}
       </div>

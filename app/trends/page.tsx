@@ -10,9 +10,14 @@ import ChatWidget from '@/components/ChatWidget'
 import HealthTimelineChart from '@/components/HealthTimelineChart'
 import MonthlyTrendChart from '@/components/MonthlyTrendChart'
 import HourHeatmap from '@/components/HourHeatmap'
+import SegmentedControl from '@/components/ui/SegmentedControl'
+import InfoHint from '@/components/ui/InfoHint'
+import Button from '@/components/ui/Button'
+import DataBanner, { DataError, describeError } from '@/components/DataBanner'
 import { SensorRow } from '@/lib/types'
 import { healthLabel } from '@/lib/calculations'
 import { useStickyState } from '@/lib/useStickyState'
+import { Plus, Trash2 } from 'lucide-react'
 import {
   computeHealthTimeline,
   rollingMean,
@@ -47,7 +52,7 @@ function Section({ children }: { children: React.ReactNode }) {
   return (
     <div
       style={{
-        fontSize: 11,
+        fontSize: 'var(--fs-xs)',
         fontWeight: 600,
         color: 'var(--muted)',
         textTransform: 'uppercase',
@@ -66,7 +71,7 @@ function Card({ children, style }: { children: React.ReactNode; style?: React.CS
       style={{
         background: 'var(--surface)',
         border: '1px solid var(--border)',
-        borderRadius: 14,
+        borderRadius: 'var(--r-lg)',
         padding: '16px 18px',
         boxShadow: 'var(--shadow-xs)',
         ...style,
@@ -85,6 +90,7 @@ export default function TrendsPage() {
   const supabase = createClient()
   const [rows, setRows] = useState<SensorRow[]>([])
   const [loading, setLoading] = useState(true)
+  const [dataError, setDataError] = useState<DataError>(null)
   const [rangeDays, setRangeDays] = useStickyState('wz-trends-range', 90)
   const [metric, setMetric] = useStickyState<HeatmapMetric>('wz-trends-metric', 'co2')
   const [userId, setUserId] = useState<string | null>(null)
@@ -121,10 +127,20 @@ export default function TrendsPage() {
       }
       setUserId(user.id)
       setLoading(true)
-      const r = await fetch(withBase(`/api/data?minutes=${rangeDays * 1440}`))
-      const d = await r.json()
-      setRows(d.rows ?? [])
-      setLoading(false)
+      try {
+        const r = await fetch(withBase(`/api/data?minutes=${rangeDays * 1440}`))
+        if (!r.ok) {
+          setDataError(describeError(r.status, false))
+        } else {
+          const d = await r.json()
+          setDataError(null)
+          setRows(d.rows ?? [])
+        }
+      } catch {
+        setDataError(describeError(undefined, true))
+      } finally {
+        setLoading(false)
+      }
       loadInterventions()
     })()
   }, [rangeDays, router, supabase, loadInterventions])
@@ -156,7 +172,7 @@ export default function TrendsPage() {
   async function addIntervention() {
     if (!ivLabel.trim()) return
     if (!ivDate) {
-      setIvMsg({ text: 'Kies een datum.', color: '#D97706' })
+      setIvMsg({ text: 'Kies een datum.', color: 'var(--warn)' })
       return
     }
     const { error } = await supabase.from('interventions').insert({
@@ -166,15 +182,18 @@ export default function TrendsPage() {
       intervention_date: ivDate,
     })
     if (error) {
-      setIvMsg({ text: 'Opslaan mislukt — ' + error.message, color: '#DC2626' })
+      setIvMsg({ text: 'Opslaan mislukt — ' + error.message, color: 'var(--crit)' })
       return
     }
-    setIvMsg({ text: 'Interventie opgeslagen.', color: '#16A34A' })
+    setIvMsg({ text: 'Interventie opgeslagen.', color: 'var(--ok)' })
     setIvLabel('')
     loadInterventions()
   }
 
-  async function deleteIntervention(id: string) {
+  async function deleteIntervention(id: string, label: string) {
+    // F2: interventions are treated as evidence on the timeline, so deleting one
+    // needs an explicit confirmation (there is no undo).
+    if (!window.confirm(`Interventie "${label}" verwijderen? Dit kan niet ongedaan worden gemaakt.`)) return
     await supabase.from('interventions').delete().eq('id', id)
     loadInterventions()
   }
@@ -192,58 +211,50 @@ export default function TrendsPage() {
 
   return (
     <AppShell title="Trends">
+      <DataBanner error={dataError} onRetry={() => setRangeDays((d) => d)} />
+
       {/* Range selector */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
-        {RANGE_OPTIONS.map((o) => (
-          <button
-            key={o.value}
-            onClick={() => setRangeDays(o.value)}
-            style={{
-              padding: '6px 14px',
-              borderRadius: 8,
-              border: '1px solid var(--border)',
-              background: rangeDays === o.value ? '#3B82F618' : 'var(--surface)',
-              color: rangeDays === o.value ? '#3B82F6' : 'var(--muted)',
-              fontSize: 12,
-              fontWeight: 600,
-              cursor: 'pointer',
-            }}
-          >
-            {o.label}
-          </button>
-        ))}
+      <div style={{ marginBottom: 14 }}>
+        <SegmentedControl
+          ariaLabel="Periode"
+          options={RANGE_OPTIONS.map((o) => ({ label: o.label, value: o.value }))}
+          value={rangeDays}
+          onChange={setRangeDays}
+        />
       </div>
 
       {/* KPI cards */}
       {latest != null && (
         <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
           <MetricCard title="Huidige score" value={`${latest}`} unit="/ 100" label={hl?.label} labelColor={hl?.color} accent={hl?.color} progress={latest} />
-          <MetricCard title="Gem. (30 dagen)" value={`${avg30}`} unit="/ 100" accent="#3B82F6" />
+          <MetricCard title="Gem. (30 dagen)" value={`${avg30}`} unit="/ 100" accent="var(--accent)" />
           <MetricCard
             title="Trend"
             value={`${delta >= 0 ? '+' : ''}${delta}`}
             unit="in periode"
             label={delta >= 0 ? 'stijgend' : 'dalend'}
-            labelColor={delta >= 0 ? '#16A34A' : '#DC2626'}
-            accent={delta >= 0 ? '#16A34A' : '#DC2626'}
+            labelColor={delta >= 0 ? 'var(--ok)' : 'var(--crit)'}
+            accent={delta >= 0 ? 'var(--ok)' : 'var(--crit)'}
           />
         </div>
       )}
 
-      {loading && <div style={{ color: 'var(--muted)', fontSize: 13, padding: '20px 0' }}>Laden…</div>}
+      {loading && <div style={{ color: 'var(--muted)', fontSize: 'var(--fs-md)', padding: '20px 0' }}>Laden…</div>}
 
       {/* Health timeline */}
       <ChartCard label="Huisgezondheid per dag">
         <HealthTimelineChart data={timelineData} interventions={ivMarkers} />
-        <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>
-          Groen ≥ 65 · Amber 40–64 · Rood &lt; 40 · Stippellijn = interventie · Blauwe lijn = 7-daags gemiddelde
+        <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--muted)', marginTop: 6, display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
+          Dagelijkse gezondheidsscore — hoger = beter.
+          <InfoHint label="gezondheidsscore" text="0–100, hoger = beter (dezelfde score als op het dashboard). Let op: de WoonScore op de Schimmel-pagina loopt juist andersom — daar betekent hoger méér risico." />
+          <span>Groen ≥ 65 · Amber 40–64 · Rood &lt; 40 · Stippellijn = interventie · lijn = 7-daags gemiddelde</span>
         </p>
       </ChartCard>
 
       {/* Monthly */}
       <ChartCard label="Gezondheidsscore per maand">
         <MonthlyTrendChart data={monthly} />
-        <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>
+        <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--muted)', marginTop: 6 }}>
           Stippellijn = geschatte gemiddelde buitentemperatuur Amsterdam · Groen ≥ 65 · Amber 40–64 · Rood &lt; 40
         </p>
       </ChartCard>
@@ -252,26 +263,12 @@ export default function TrendsPage() {
       <Card style={{ marginBottom: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, gap: 8, flexWrap: 'wrap' }}>
           <Section>Seizoen × uur patroon</Section>
-          <div style={{ display: 'flex', gap: 4 }}>
-            {METRIC_OPTIONS.map((o) => (
-              <button
-                key={o.value}
-                onClick={() => setMetric(o.value)}
-                style={{
-                  padding: '5px 10px',
-                  borderRadius: 7,
-                  border: '1px solid var(--border)',
-                  background: metric === o.value ? '#3B82F618' : 'var(--surface-2)',
-                  color: metric === o.value ? '#3B82F6' : 'var(--muted)',
-                  fontSize: 11,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                }}
-              >
-                {o.label}
-              </button>
-            ))}
-          </div>
+          <SegmentedControl
+            ariaLabel="Meetwaarde voor heatmap"
+            options={METRIC_OPTIONS.map((o) => ({ label: o.label, value: o.value }))}
+            value={metric}
+            onChange={setMetric}
+          />
         </div>
         <HourHeatmap metric={metric} result={heatmap} />
         <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 10 }}>
@@ -288,27 +285,14 @@ export default function TrendsPage() {
         Vergelijk twee periodes met seizoenscorrectie — zo zie je het echte effect van een interventie los van
         temperatuurverschillen.
       </p>
-      <Card style={{ borderRadius: 12 }}>
+      <Card>
         <ComparisonRow label="Periode A" start={aStart} end={aEnd} onStart={setAStart} onEnd={setAEnd} />
         <ComparisonRow label="Periode B" start={bStart} end={bEnd} onStart={setBStart} onEnd={setBEnd} />
-        <button
-          onClick={runComparison}
-          style={{
-            padding: '9px 16px',
-            fontSize: 13,
-            fontWeight: 600,
-            background: '#3B82F6',
-            color: '#fff',
-            border: 'none',
-            borderRadius: 8,
-            cursor: 'pointer',
-            marginTop: 4,
-          }}
-        >
+        <Button variant="primary" onClick={runComparison} style={{ marginTop: 4 }}>
           Vergelijk →
-        </button>
+        </Button>
         {cmp === 'none' && (
-          <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 14 }}>
+          <div style={{ fontSize: 'var(--fs-md)', color: 'var(--muted)', marginTop: 14 }}>
             Geen data in één of beide periodes. Kies een ruimere datumrange.
           </div>
         )}
@@ -319,35 +303,36 @@ export default function TrendsPage() {
 
       {/* Interventions */}
       <Section>Interventies</Section>
-      <Card style={{ borderRadius: 12, marginBottom: 10 }}>
-        <p style={{ fontSize: 12.5, color: 'var(--muted)', margin: '0 0 12px' }}>
+      <Card style={{ marginBottom: 10 }}>
+        <p style={{ fontSize: 'var(--fs-sm)', color: 'var(--muted)', margin: '0 0 12px' }}>
           Registreer wijzigingen in je woning om het voor/na-effect op de tijdlijn te zien. Vergelijking toont
           2-weekse gemiddelden voor en na de datum.
         </p>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
           <input
             type="date"
+            aria-label="Datum interventie"
             value={ivDate}
             onChange={(e) => setIvDate(e.target.value)}
-            style={{ padding: '9px 11px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, background: 'var(--surface-2)', color: 'var(--text)', width: 150 }}
+            style={{ padding: '9px 11px', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', fontSize: 'var(--fs-md)', background: 'var(--surface-2)', color: 'var(--text)', width: 150 }}
           />
           <input
             type="text"
             value={ivLabel}
             maxLength={200}
+            aria-label="Omschrijving interventie"
             onChange={(e) => setIvLabel(e.target.value)}
             placeholder="Omschrijving (bijv. WTW-filter gereinigd)"
             onKeyDown={(e) => e.key === 'Enter' && addIntervention()}
-            style={{ padding: '9px 11px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, flex: 1, minWidth: 180, background: 'var(--surface-2)', color: 'var(--text)' }}
+            style={{ padding: '9px 11px', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', fontSize: 'var(--fs-md)', flex: 1, minWidth: 180, background: 'var(--surface-2)', color: 'var(--text)' }}
           />
-          <button
-            onClick={addIntervention}
-            style={{ padding: '9px 14px', fontSize: 13, fontWeight: 600, background: '#3B82F6', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', whiteSpace: 'nowrap' }}
-          >
-            + Toevoegen
-          </button>
+          <Button variant="primary" onClick={addIntervention} icon={<Plus size={15} />}>
+            Toevoegen
+          </Button>
         </div>
-        {ivMsg && <div style={{ fontSize: 12, color: ivMsg.color }}>{ivMsg.text}</div>}
+        <div aria-live="polite" style={{ fontSize: 'var(--fs-sm)', minHeight: 16 }}>
+          {ivMsg && <span style={{ color: ivMsg.color }}>{ivMsg.text}</span>}
+        </div>
       </Card>
 
       <InterventionList interventions={interventions} rows={rows} onDelete={deleteIntervention} />
@@ -363,12 +348,12 @@ function ComparisonRow({ label, start, end, onStart, onEnd }: any) {
       type="date"
       value={val}
       onChange={(e) => on(e.target.value)}
-      style={{ padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12, background: 'var(--surface-2)', color: 'var(--text)', width: 140 }}
+      style={{ padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', fontSize: 'var(--fs-sm)', background: 'var(--surface-2)', color: 'var(--text)', width: 140 }}
     />
   )
   return (
     <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
-      <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', minWidth: 70 }}>{label}</span>
+      <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--muted)', minWidth: 70 }}>{label}</span>
       {inp(start, onStart)}
       <span style={{ fontSize: 12, color: 'var(--muted)' }}>t/m</span>
       {inp(end, onEnd)}
@@ -378,13 +363,13 @@ function ComparisonRow({ label, start, end, onStart, onEnd }: any) {
 
 function ComparisonResult({ result, labelA, labelB }: { result: CompareResult; labelA: string; labelB: string }) {
   const { a, b } = result
-  const fairColor = result.fairness === 'fair' ? '#16A34A' : result.fairness === 'caution' ? '#D97706' : '#DC2626'
+  const fairColor = result.fairness === 'fair' ? 'var(--ok)' : result.fairness === 'caution' ? 'var(--warn)' : 'var(--crit)'
 
   const deltaCell = (va: number | null, vb: number | null, unit = '', lowerBetter = false, d = 1) => {
     if (va == null || vb == null) return <td style={{ textAlign: 'right', padding: '7px 12px' }}>—</td>
     const delta = vb - va
     const improved = lowerBetter ? delta < 0 : delta > 0
-    const col = improved ? '#16A34A' : Math.abs(delta) > 0.5 ? '#DC2626' : 'var(--muted)'
+    const col = improved ? 'var(--ok)' : Math.abs(delta) > 0.5 ? 'var(--crit)' : 'var(--muted)'
     return (
       <td style={{ textAlign: 'right', padding: '7px 12px' }}>
         <span style={{ fontWeight: 600, color: 'var(--text)' }}>
@@ -428,7 +413,7 @@ function ComparisonResult({ result, labelA, labelB }: { result: CompareResult; l
 
   return (
     <div style={{ marginTop: 14 }}>
-      <div style={{ padding: '10px 14px', fontSize: 12.5, marginBottom: 12, borderRadius: 10, background: `${fairColor}12`, border: `1px solid ${fairColor}33`, color: 'var(--text)' }}>
+      <div style={{ padding: '10px 14px', fontSize: 'var(--fs-sm)', marginBottom: 12, borderRadius: 'var(--r-md)', background: `color-mix(in srgb, ${fairColor} 10%, transparent)`, border: `1px solid color-mix(in srgb, ${fairColor} 30%, transparent)`, color: 'var(--text)' }}>
         {result.fairnessMsg}
       </div>
       <div style={{ overflowX: 'auto' }}>
@@ -501,16 +486,16 @@ function InterventionList({
 }: {
   interventions: Intervention[]
   rows: SensorRow[]
-  onDelete: (id: string) => void
+  onDelete: (id: string, label: string) => void
 }) {
   if (!interventions.length)
-    return <div style={{ fontSize: 13, color: 'var(--muted)', padding: '4px 0' }}>Nog geen interventies geregistreerd.</div>
+    return <div style={{ fontSize: 'var(--fs-md)', color: 'var(--muted)', padding: '4px 0' }}>Nog geen interventies geregistreerd.</div>
 
   const deltaSpan = (before: number | null, after: number | null, unit: string, lowerBetter = false) => {
     if (before == null || after == null) return null
     const delta = after - before
     const improved = lowerBetter ? delta < 0 : delta > 0
-    const col = improved ? '#16A34A' : Math.abs(delta) > 0.5 ? '#DC2626' : 'var(--muted)'
+    const col = improved ? 'var(--ok)' : Math.abs(delta) > 0.5 ? 'var(--crit)' : 'var(--muted)'
     return (
       <span style={{ color: col, fontWeight: 600 }}>
         {delta > 0 ? '+' : ''}
@@ -539,14 +524,14 @@ function InterventionList({
             }}
           >
             <div style={{ display: 'flex', gap: 10, flex: 1 }}>
-              <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 500, minWidth: 76, flexShrink: 0, paddingTop: 2 }}>
+              <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--muted)', fontWeight: 500, minWidth: 76, flexShrink: 0, paddingTop: 2 }}>
                 {iv.intervention_date}
               </span>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{iv.label}</span>
-                {iv.notes && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{iv.notes}</div>}
+                <span style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text)' }}>{iv.label}</span>
+                {iv.notes && <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--muted)', marginTop: 2 }}>{iv.notes}</div>}
                 {ba && (
-                  <div style={{ fontSize: 11, marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
+                  <div style={{ fontSize: 'var(--fs-xs)', marginTop: 4, display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
                     <span style={{ color: 'var(--subtle)' }}>2w voor→na:</span>
                     <span style={{ color: 'var(--muted)' }}>CO₂</span> {deltaSpan(ba.co2Before, ba.co2After, ' ppm', true)}
                     <span style={{ color: 'var(--muted)', marginLeft: 6 }}>RV</span> {deltaSpan(ba.rhBefore, ba.rhAfter, '%', true)}
@@ -556,11 +541,12 @@ function InterventionList({
               </div>
             </div>
             <button
-              onClick={() => onDelete(iv.id)}
+              onClick={() => onDelete(iv.id, iv.label)}
               title="Verwijder"
-              style={{ background: 'transparent', border: 'none', color: 'var(--muted)', cursor: 'pointer', fontSize: 13, padding: '4px 8px', borderRadius: 6, flexShrink: 0 }}
+              aria-label={`Interventie "${iv.label}" verwijderen`}
+              style={{ display: 'inline-flex', background: 'transparent', border: 'none', color: 'var(--muted)', cursor: 'pointer', padding: '4px 8px', borderRadius: 'var(--r-sm)', flexShrink: 0 }}
             >
-              ✕
+              <Trash2 size={15} />
             </button>
           </div>
         )
