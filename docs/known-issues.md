@@ -244,25 +244,32 @@ every page load. Small change, worth doing when someone next touches the layout.
 
 ---
 
-## KI-3 — Live sensor silent since 2026-08-03, nothing noticed
+## KI-3 — Sensor outages going unnoticed
 
 **Severity: high for the pilot** — not a code bug, but proof of the gap Milestone 3 exists
 to close.
 
-`air_quality` observations as of 2026-08-05:
+`air_quality` observations on 2026-08-05:
 
 | Device | Rows | Last reading |
 |---|---|---|
-| `3f1380c9…` Jeroen Sensor (slaapkamer_jeroen) | 105,462 | **2026-08-03 11:12:14Z** |
-| `084c71f1…` Jannouk Sensor (slaapkamer_jannouk) | 10,019 | **2026-05-25 18:44:56Z** |
-| `a1000000…` Feather S3 (Slaapkamer) | 0 | never |
+| `3f1380c9…` Jeroen Sensor (slaapkamer_jeroen) | 105,462 | 2026-08-03 11:12Z → **resumed 19:02Z** |
+| `084c71f1…` Jannouk Sensor (slaapkamer_jannouk) | 10,019 | **2026-05-25 18:44Z** (~72 days) |
+| `a1000000…` Feather S3 (Slaapkamer) | 0 | **never** |
 
 The active sensor was writing 1,424 rows/day (≈ every 60 s) with no degradation, then
 stopped **mid-day, abruptly** — the shape of a power cut, Wi-Fi drop or unplug, not a
-failing sensor. The database holds nothing further to diagnose it; this is device-side.
+failing sensor. It came back on its own during the afternoon of 2026-08-05, after roughly
+56 hours down. The database holds nothing further to diagnose the cause; that is
+device-side.
 
-The second device has been dead for 2½ months and the third has never reported. **Nobody
-noticed any of it.** With 10 households this is the difference between a pilot and an
-outage. This is exactly what M3's `/api/health` (last ingest per device) and
-server-side alerting are for — and it argues for device-liveness alerting landing in M3
-rather than being deferred, per the M2 design doc's §7 note.
+The point stands regardless of the recovery, and is arguably sharpened by it: **the
+outage began, ran for two and a half days, and ended, and no part of the system reported
+any of it.** It was noticed only because someone went looking. A second device has been
+dead for over two months and a third has never reported at all. With 10 households that
+is the difference between a pilot and an outage.
+
+This is what M3's `/api/health` (last ingest per device) and the `device_offline` alert
+in the sweep are for — and it is why device-liveness alerting landed in M3 rather than
+being deferred as the M2 design doc's §7 tentatively suggested. The recovery was visible
+in `/api/health` within a minute of the sensor reconnecting.

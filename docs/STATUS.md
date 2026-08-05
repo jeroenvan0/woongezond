@@ -39,15 +39,16 @@ implemented without the firmware. Design is written and waiting:
 |---|---|
 | App | Running on the VPS, systemd `woongezond-react`, port 3001 |
 | Weather ingest | **Healthy** — hourly timer, last observation 5 min old when checked |
-| Sensor `3f1380c9…` "Jeroen Sensor" | **Silent since 2026-08-03 11:12Z** |
-| Sensor `084c71f1…` "Jannouk Sensor" | **Silent since 2026-05-25** |
+| Sensor `3f1380c9…` "Jeroen Sensor" | **Back online 2026-08-05 ~19:02Z**, after ~56 h silent |
+| Sensor `084c71f1…` "Jannouk Sensor" | **Silent since 2026-05-25** (~72 days) |
 | Sensor `a1000000…` "Feather S3" | **Never reported** |
-| `air_quality` | 115,481 rows |
+| `air_quality` | 115,481 rows at 15:00Z |
 
-The active sensor stopped abruptly mid-day after months of steady 1,424 rows/day — the
-shape of a power cut or Wi-Fi drop, not a failing sensor. The database has nothing more
-to say about it; it needs looking at physically. See
-[known-issues.md §KI-3](known-issues.md#ki-3--live-sensor-silent-since-2026-08-03-nothing-noticed).
+The active sensor had stopped abruptly mid-day on 2026-08-03 after months of steady
+1,424 rows/day — the shape of a power cut or Wi-Fi drop, not a failing sensor — and
+resumed during this session. It was down ~56 hours and nothing would have reported that;
+it was found only by looking. Two of three devices are still dark. See
+[known-issues.md §KI-3](known-issues.md#ki-3--sensor-outages-going-unnoticed).
 
 ## Landed today (2026-08-05)
 

@@ -182,7 +182,7 @@ unattended pilot.
 > **This milestone has already proved its own case.** As of 2026-08-05 the active sensor has
 > been silent since 2026-08-03 11:12Z, a second device since 2026-05-25, and a third has never
 > reported at all — none of it noticed by anything. Evidence in
-> [docs/known-issues.md §KI-3](docs/known-issues.md#ki-3--live-sensor-silent-since-2026-08-03-nothing-noticed).
+> [docs/known-issues.md §KI-3](docs/known-issues.md#ki-3--sensor-outages-going-unnoticed).
 > Device-liveness alerting therefore belongs *here*, not deferred as the M2 design doc's §7
 > tentatively suggested.
 
