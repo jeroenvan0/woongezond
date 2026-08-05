@@ -1,13 +1,14 @@
-// Woongezond brand mark — a house with a heart (a healthy home), in the
-// brand blue→green gradient. Pure inline SVG so it scales crisply anywhere.
+// Woongezond brand mark — a house with a heart (a healthy home), in the brand
+// green→teal gradient (D-4; was blue→green). Pure inline SVG so it scales crisply
+// anywhere. The stops read the brand tokens via style so they follow the theme.
 export default function Logo({ size = 28 }: { size?: number }) {
   const id = 'wz-logo-grad'
   return (
     <svg width={size} height={size} viewBox="0 0 32 32" fill="none" role="img" aria-label="Woongezond" style={{ flexShrink: 0, display: 'block' }}>
       <defs>
         <linearGradient id={id} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#3B82F6" />
-          <stop offset="1" stopColor="#10B981" />
+          <stop offset="0" style={{ stopColor: 'var(--brand-500)' }} />
+          <stop offset="1" style={{ stopColor: 'var(--brand-700)' }} />
         </linearGradient>
       </defs>
       <rect width="32" height="32" rx="9" fill={`url(#${id})`} />

@@ -51,11 +51,15 @@ export function healthScore(nightCo2: number, indoorRh: number, moldRisk: number
   return Math.round(0.4 * co2s + 0.3 * rhs + 0.3 * molds)
 }
 
+// Status colours are theme tokens (var(--ok/--warn/--crit), --accent for "cold"),
+// not literals — so the same label desaturates correctly in dark mode and every
+// status stays at its AA-measured contrast. The {label,color} shape is unchanged,
+// so callers apply `color` directly as before.
 export function healthLabel(score: number): { label: string; color: string } {
-  if (score >= 85) return { label: 'Uitstekend', color: '#16A34A' }
-  if (score >= 65) return { label: 'Goed', color: '#16A34A' }
-  if (score >= 40) return { label: 'Matig', color: '#D97706' }
-  return { label: 'Slecht', color: '#DC2626' }
+  if (score >= 85) return { label: 'Uitstekend', color: 'var(--ok)' }
+  if (score >= 65) return { label: 'Goed', color: 'var(--ok)' }
+  if (score >= 40) return { label: 'Matig', color: 'var(--warn)' }
+  return { label: 'Slecht', color: 'var(--crit)' }
 }
 
 // ── Scenario calculations (ported 1:1 from scenarios.py::scenario_outputs) ───
@@ -136,30 +140,30 @@ export function pctTimeCo2Above1000(co2Night: number): number {
 
 // Status thresholds
 export function co2Status(val: number): { label: string; color: string } {
-  if (val < 800) return { label: 'Goed', color: '#16A34A' }
-  if (val < 1000) return { label: 'Verhoogd', color: '#D97706' }
-  if (val < 1500) return { label: 'Hoog', color: '#EA580C' }
-  return { label: 'Kritiek', color: '#DC2626' }
+  if (val < 800) return { label: 'Goed', color: 'var(--ok)' }
+  if (val < 1000) return { label: 'Verhoogd', color: 'var(--warn)' }
+  if (val < 1500) return { label: 'Hoog', color: 'var(--warn)' }
+  return { label: 'Kritiek', color: 'var(--crit)' }
 }
 
 export function rhStatus(val: number): { label: string; color: string } {
-  if (val < 40) return { label: 'Te droog', color: '#D97706' }
-  if (val <= 60) return { label: 'Ideaal', color: '#16A34A' }
-  if (val <= 70) return { label: 'Verhoogd', color: '#D97706' }
-  return { label: 'Te hoog', color: '#DC2626' }
+  if (val < 40) return { label: 'Te droog', color: 'var(--warn)' }
+  if (val <= 60) return { label: 'Ideaal', color: 'var(--ok)' }
+  if (val <= 70) return { label: 'Verhoogd', color: 'var(--warn)' }
+  return { label: 'Te hoog', color: 'var(--crit)' }
 }
 
 export function tempStatus(val: number): { label: string; color: string } {
-  if (val < 16) return { label: 'Te koud', color: '#3B82F6' }
-  if (val <= 22) return { label: 'Comfortabel', color: '#16A34A' }
-  if (val <= 26) return { label: 'Warm', color: '#D97706' }
-  return { label: 'Te warm', color: '#DC2626' }
+  if (val < 16) return { label: 'Te koud', color: 'var(--accent)' }
+  if (val <= 22) return { label: 'Comfortabel', color: 'var(--ok)' }
+  if (val <= 26) return { label: 'Warm', color: 'var(--warn)' }
+  return { label: 'Te warm', color: 'var(--crit)' }
 }
 
 export function mouldStatus(val: number): { label: string; color: string } {
-  if (val < 30) return { label: 'Laag', color: '#16A34A' }
-  if (val < 60) return { label: 'Matig', color: '#D97706' }
-  return { label: 'Hoog', color: '#DC2626' }
+  if (val < 30) return { label: 'Laag', color: 'var(--ok)' }
+  if (val < 60) return { label: 'Matig', color: 'var(--warn)' }
+  return { label: 'Hoog', color: 'var(--crit)' }
 }
 
 // ── Wall-surface conditions (Fix 1) ──────────────────────────────────────────

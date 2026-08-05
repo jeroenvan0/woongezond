@@ -12,6 +12,7 @@ import {
   ReferenceArea,
   ReferenceLine,
 } from 'recharts'
+import { useChartColors, alpha, ChartColors } from '@/lib/useChartColors'
 
 export interface TimelineDatum {
   t: number
@@ -24,11 +25,11 @@ export interface InterventionMarker {
   label: string
 }
 
-function barColor(s: number) {
-  return s >= 65 ? 'rgba(22,163,74,0.72)' : s >= 40 ? 'rgba(217,119,6,0.72)' : 'rgba(220,38,38,0.72)'
+function barColor(s: number, c: ChartColors) {
+  return alpha(s >= 65 ? c.ok : s >= 40 ? c.warn : c.crit, 0.72)
 }
 
-function Tip({ active, payload }: any) {
+function Tip({ active, payload, rollingColor }: any) {
   if (!active || !payload?.length) return null
   const p = payload[0]?.payload
   if (!p) return null
@@ -39,7 +40,7 @@ function Tip({ active, payload }: any) {
         {d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short', year: 'numeric' })}
       </div>
       <div style={{ fontWeight: 700, color: 'var(--text)' }}>{p.score} / 100</div>
-      <div style={{ fontSize: 11, color: '#3B82F6' }}>7-daags gem: {p.rolling.toFixed(0)}</div>
+      <div style={{ fontSize: 11, color: rollingColor }}>7-daags gem: {p.rolling.toFixed(0)}</div>
     </div>
   )
 }
@@ -53,6 +54,7 @@ export default function HealthTimelineChart({
   interventions: InterventionMarker[]
   height?: number
 }) {
+  const c = useChartColors()
   if (data.length < 2)
     return (
       <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', fontSize: 13 }}>
@@ -64,10 +66,10 @@ export default function HealthTimelineChart({
   return (
     <ResponsiveContainer width="100%" height={height}>
       <ComposedChart data={data} margin={{ top: 22, right: 16, left: 0, bottom: 0 }}>
-        <ReferenceArea y1={0} y2={40} fill="rgba(220,38,38,0.05)" fillOpacity={1} />
-        <ReferenceArea y1={40} y2={65} fill="rgba(217,119,6,0.05)" fillOpacity={1} />
-        <ReferenceArea y1={65} y2={100} fill="rgba(22,163,74,0.05)" fillOpacity={1} />
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(128,128,128,0.1)" vertical={false} />
+        <ReferenceArea y1={0} y2={40} fill={alpha(c.crit, 0.05)} fillOpacity={1} />
+        <ReferenceArea y1={40} y2={65} fill={alpha(c.warn, 0.05)} fillOpacity={1} />
+        <ReferenceArea y1={65} y2={100} fill={alpha(c.ok, 0.05)} fillOpacity={1} />
+        <CartesianGrid strokeDasharray="3 3" stroke={c.grid} vertical={false} />
         <XAxis
           dataKey="t"
           type="number"
@@ -85,35 +87,35 @@ export default function HealthTimelineChart({
           tickCount={6}
         />
         <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: 'var(--muted)' }} tickLine={false} axisLine={false} width={28} />
-        <Tooltip content={<Tip />} />
-        <ReferenceLine y={65} stroke="#16A34A" strokeDasharray="3 3" strokeWidth={0.8} />
-        <ReferenceLine y={40} stroke="#DC2626" strokeDasharray="3 3" strokeWidth={0.8} />
+        <Tooltip content={<Tip rollingColor={c.accent} />} />
+        <ReferenceLine y={65} stroke={c.ok} strokeDasharray="3 3" strokeWidth={0.8} />
+        <ReferenceLine y={40} stroke={c.crit} strokeDasharray="3 3" strokeWidth={0.8} />
         {interventions.map((iv) => (
           <ReferenceLine
             key={iv.t}
             x={iv.t}
-            stroke="#D97706"
+            stroke={c.warn}
             strokeDasharray="3 3"
             strokeWidth={1.3}
             label={{
               value: iv.label.length > 18 ? iv.label.slice(0, 18) + '…' : iv.label,
               position: 'top',
               fontSize: 8.5,
-              fill: '#D97706',
+              fill: c.warn,
               angle: 0,
             }}
           />
         ))}
         <Bar dataKey="score" name="Dagscore" radius={[2, 2, 0, 0]} maxBarSize={20} isAnimationActive={false}>
           {data.map((d, i) => (
-            <Cell key={i} fill={barColor(d.score)} />
+            <Cell key={i} fill={barColor(d.score, c)} />
           ))}
         </Bar>
         <Line
           type="monotone"
           dataKey="rolling"
           name="7-daags gem."
-          stroke="#3B82F6"
+          stroke={c.accent}
           strokeWidth={2}
           dot={false}
           isAnimationActive={false}

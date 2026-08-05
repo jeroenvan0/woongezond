@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { Bell, Settings, ChevronUp } from 'lucide-react'
 import { withBase } from '@/lib/basePath'
 import { createClient } from '@/lib/supabase/client'
 
@@ -18,8 +19,8 @@ const DEFAULTS = {
 }
 
 const METRICS: { key: 'co2' | 'humidity'; label: string; unit: string; color: string }[] = [
-  { key: 'co2', label: 'CO₂', unit: 'ppm', color: '#3B82F6' },
-  { key: 'humidity', label: 'Luchtvochtigheid', unit: '%', color: '#10B981' },
+  { key: 'co2', label: 'CO₂', unit: 'ppm', color: 'var(--c-co2)' },
+  { key: 'humidity', label: 'Luchtvochtigheid', unit: '%', color: 'var(--c-rh)' },
 ]
 
 function timeAgo(iso: string): string {
@@ -172,7 +173,7 @@ export default function NotificationBell({ placement = 'top' }: { placement?: Pl
   }
 
   const sevColor = (n: Notif) =>
-    n.metadata?.severity === 'critical' ? '#DC2626' : n.metadata?.severity === 'warning' ? '#D97706' : '#3B82F6'
+    n.metadata?.severity === 'critical' ? 'var(--crit)' : n.metadata?.severity === 'warning' ? 'var(--warn)' : 'var(--accent)'
 
   return (
     <div ref={ref} style={{ position: 'relative' }}>
@@ -180,32 +181,37 @@ export default function NotificationBell({ placement = 'top' }: { placement?: Pl
         ref={btnRef}
         onClick={() => setOpen((o) => !o)}
         title="Meldingen"
+        aria-label={unread > 0 ? `Meldingen, ${unread} ongelezen` : 'Meldingen'}
         aria-expanded={open}
         style={{
-          padding: '6px 10px',
-          fontSize: 15,
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: 34,
+          height: 34,
+          color: 'var(--muted)',
           border: '1px solid var(--border)',
-          borderRadius: 8,
+          borderRadius: 'var(--r-sm)',
           background: 'var(--surface)',
           cursor: 'pointer',
           position: 'relative',
           lineHeight: 1,
         }}
       >
-        🔔
+        <Bell size={17} />
         {unread > 0 && (
           <span
             style={{
               position: 'absolute',
               top: -5,
               right: -5,
-              background: '#DC2626',
+              background: 'var(--crit)',
               color: '#fff',
               fontSize: 10,
               fontWeight: 700,
               minWidth: 16,
               height: 16,
-              borderRadius: 99,
+              borderRadius: 'var(--r-pill)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
@@ -243,18 +249,18 @@ export default function NotificationBell({ placement = 'top' }: { placement?: Pl
             overscrollBehavior: 'contain',
             background: 'var(--surface)',
             border: '1px solid var(--border)',
-            borderRadius: 14,
+            borderRadius: 'var(--r-lg)',
             boxShadow: 'var(--shadow-lg)',
             zIndex: 1000,
             padding: 12,
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <span style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>Meldingen</span>
+            <span style={{ fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text)' }}>Meldingen</span>
             {unread > 0 && (
               <button
                 onClick={markAll}
-                style={{ background: 'none', border: 'none', color: '#3B82F6', fontSize: 12, cursor: 'pointer', fontWeight: 600 }}
+                style={{ background: 'none', border: 'none', color: 'var(--brand)', fontSize: 'var(--fs-sm)', cursor: 'pointer', fontWeight: 600 }}
               >
                 Alles gelezen
               </button>
@@ -262,31 +268,37 @@ export default function NotificationBell({ placement = 'top' }: { placement?: Pl
           </div>
 
           {notifs.length === 0 ? (
-            <div style={{ fontSize: 12.5, color: 'var(--muted)', padding: '16px 4px', textAlign: 'center' }}>
-              Geen meldingen. Alles ziet er goed uit. ✓
+            <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--muted)', padding: '16px 4px', textAlign: 'center' }}>
+              Geen meldingen. Alles ziet er goed uit.
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {notifs.map((n) => (
-                <div
+                <button
                   key={n.id}
+                  type="button"
                   onClick={() => !n.read && markRead(n.id)}
+                  disabled={n.read}
+                  aria-label={`${n.message}${n.read ? '' : ' (ongelezen, markeer als gelezen)'}`}
                   style={{
                     display: 'flex',
+                    textAlign: 'left',
+                    width: '100%',
                     gap: 9,
                     padding: '9px 10px',
-                    borderRadius: 9,
-                    background: n.read ? 'transparent' : `${sevColor(n)}0f`,
-                    border: `1px solid ${n.read ? 'var(--border-soft)' : sevColor(n) + '33'}`,
+                    borderRadius: 'var(--r-sm)',
+                    background: n.read ? 'transparent' : `color-mix(in srgb, ${sevColor(n)} 8%, transparent)`,
+                    border: `1px solid ${n.read ? 'var(--border-soft)' : `color-mix(in srgb, ${sevColor(n)} 25%, transparent)`}`,
                     cursor: n.read ? 'default' : 'pointer',
+                    font: 'inherit',
                   }}
                 >
                   <span style={{ width: 7, height: 7, borderRadius: '50%', background: sevColor(n), marginTop: 5, flexShrink: 0 }} />
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12.5, color: 'var(--text)', lineHeight: 1.4 }}>{n.message}</div>
-                    <div style={{ fontSize: 10.5, color: 'var(--subtle)', marginTop: 2 }}>{timeAgo(n.created_at)}</div>
+                    <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text)', lineHeight: 1.4 }}>{n.message}</div>
+                    <div style={{ fontSize: 'var(--fs-2xs)', color: 'var(--subtle)', marginTop: 2 }}>{timeAgo(n.created_at)}</div>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           )}
@@ -295,20 +307,21 @@ export default function NotificationBell({ placement = 'top' }: { placement?: Pl
           <div style={{ borderTop: '1px solid var(--border)', marginTop: 10, paddingTop: 8 }}>
             <button
               onClick={() => setShowSettings((s) => !s)}
-              style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 12, fontWeight: 600, cursor: 'pointer', padding: 0 }}
+              aria-expanded={showSettings}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', color: 'var(--muted)', fontSize: 'var(--fs-sm)', fontWeight: 600, cursor: 'pointer', padding: 0 }}
             >
-              {showSettings ? '▴' : '⚙'}  Drempelwaarden
+              {showSettings ? <ChevronUp size={14} /> : <Settings size={14} />} Drempelwaarden
             </button>
             {showSettings && (
               <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {METRICS.map((m) => (
                   <div key={m.key}>
-                    <div style={{ fontSize: 11, fontWeight: 600, color: m.color, marginBottom: 5 }}>
+                    <div style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: m.color, marginBottom: 5 }}>
                       {m.label} ({m.unit})
                     </div>
                     <div style={{ display: 'flex', gap: 8 }}>
                       {(['warning', 'critical'] as const).map((lvl) => (
-                        <label key={lvl} style={{ flex: 1, fontSize: 10.5, color: 'var(--muted)' }}>
+                        <label key={lvl} style={{ flex: 1, fontSize: 'var(--fs-2xs)', color: 'var(--muted)' }}>
                           {lvl === 'warning' ? 'Attentie' : 'Kritiek'}
                           <input
                             type="number"
@@ -324,10 +337,10 @@ export default function NotificationBell({ placement = 'top' }: { placement?: Pl
                               marginTop: 3,
                               padding: '5px 7px',
                               border: '1px solid var(--border)',
-                              borderRadius: 6,
+                              borderRadius: 'var(--r-sm)',
                               background: 'var(--surface-2)',
                               color: 'var(--text)',
-                              fontSize: 12,
+                              fontSize: 'var(--fs-sm)',
                             }}
                           />
                         </label>
@@ -338,11 +351,11 @@ export default function NotificationBell({ placement = 'top' }: { placement?: Pl
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <button
                     onClick={saveThresholds}
-                    style={{ padding: '7px 14px', background: '#3B82F6', color: '#fff', border: 'none', borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                    style={{ padding: '7px 14px', background: 'var(--brand)', color: '#fff', border: 'none', borderRadius: 'var(--r-sm)', fontSize: 'var(--fs-sm)', fontWeight: 600, cursor: 'pointer' }}
                   >
                     Opslaan
                   </button>
-                  {saveMsg && <span style={{ fontSize: 11.5, color: '#16A34A', fontWeight: 600 }}>{saveMsg}</span>}
+                  <span aria-live="polite" style={{ fontSize: 'var(--fs-xs)', color: 'var(--ok)', fontWeight: 600 }}>{saveMsg}</span>
                 </div>
               </div>
             )}

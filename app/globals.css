@@ -186,6 +186,14 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 .wz-chat{bottom:96px}
 @media (min-width:768px){.wz-chat{bottom:24px}}
 
+/* Chat panel (E1): never wider than the phone, and clipped to the available height
+   so nothing hangs off the screen at 360×640 (the KI-2 viewport). Anchored to the
+   right edge, so the width formula alone keeps its left edge on screen. */
+.wz-chat-panel{width:min(360px,calc(100vw - 32px));display:flex}
+.wz-chat{display:flex;flex-direction:column;align-items:flex-end}
+.wz-chat-panel{height:min(520px,calc(100vh - 150px))}
+@media (max-width:640px){.wz-chat{right:16px;bottom:84px}}
+
 /* Two-column page layout that stacks on phones */
 .wz-two-col{display:grid;grid-template-columns:1fr;gap:16px}
 @media (min-width:760px){.wz-two-col{grid-template-columns:minmax(280px,1fr) minmax(300px,1.2fr)}}

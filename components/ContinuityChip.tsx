@@ -26,7 +26,7 @@ export default function ContinuityChip() {
       title={`Laatste 30 dagen: ${cov.days} meetdagen · langste reeks ${cov.longestStreak} dagen · ${cov.coveragePct}% dekking`}
       style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: 'var(--muted)' }}
     >
-      <Activity size={12} color="#16A34A" />
+      <Activity size={12} color="var(--ok)" />
       {label}
     </span>
   )

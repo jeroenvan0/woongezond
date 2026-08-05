@@ -13,9 +13,10 @@ import {
   LabelList,
 } from 'recharts'
 import { MonthlyStat } from '@/lib/trends'
+import { useChartColors, alpha, ChartColors } from '@/lib/useChartColors'
 
-function barColor(s: number) {
-  return s >= 65 ? 'rgba(22,163,74,0.78)' : s >= 40 ? 'rgba(217,119,6,0.78)' : 'rgba(220,38,38,0.78)'
+function barColor(s: number, c: ChartColors) {
+  return alpha(s >= 65 ? c.ok : s >= 40 ? c.warn : c.crit, 0.78)
 }
 
 function Tip({ active, payload }: any) {
@@ -39,6 +40,7 @@ function Tip({ active, payload }: any) {
 }
 
 export default function MonthlyTrendChart({ data, height = 260 }: { data: MonthlyStat[]; height?: number }) {
+  const c = useChartColors()
   if (!data.length)
     return (
       <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', fontSize: 13 }}>
@@ -49,10 +51,10 @@ export default function MonthlyTrendChart({ data, height = 260 }: { data: Monthl
   return (
     <ResponsiveContainer width="100%" height={height}>
       <ComposedChart data={data} margin={{ top: 24, right: 38, left: 0, bottom: 0 }}>
-        <ReferenceArea yAxisId="score" y1={0} y2={40} fill="rgba(220,38,38,0.05)" fillOpacity={1} />
-        <ReferenceArea yAxisId="score" y1={40} y2={65} fill="rgba(217,119,6,0.05)" fillOpacity={1} />
-        <ReferenceArea yAxisId="score" y1={65} y2={100} fill="rgba(22,163,74,0.05)" fillOpacity={1} />
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(128,128,128,0.1)" vertical={false} />
+        <ReferenceArea yAxisId="score" y1={0} y2={40} fill={alpha(c.crit, 0.05)} fillOpacity={1} />
+        <ReferenceArea yAxisId="score" y1={40} y2={65} fill={alpha(c.warn, 0.05)} fillOpacity={1} />
+        <ReferenceArea yAxisId="score" y1={65} y2={100} fill={alpha(c.ok, 0.05)} fillOpacity={1} />
+        <CartesianGrid strokeDasharray="3 3" stroke={c.grid} vertical={false} />
         <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'var(--muted)' }} tickLine={false} axisLine={false} />
         <YAxis yAxisId="score" domain={[0, 100]} tick={{ fontSize: 10, fill: 'var(--muted)' }} tickLine={false} axisLine={false} width={28} />
         <YAxis
@@ -67,19 +69,19 @@ export default function MonthlyTrendChart({ data, height = 260 }: { data: Monthl
         <Tooltip content={<Tip />} />
         <Bar yAxisId="score" dataKey="healthScore" name="Maandscore" radius={[3, 3, 0, 0]} maxBarSize={56} isAnimationActive={false}>
           {data.map((m, i) => (
-            <Cell key={i} fill={barColor(m.healthScore)} />
+            <Cell key={i} fill={barColor(m.healthScore, c)} />
           ))}
-          <LabelList dataKey="healthScore" position="top" style={{ fontSize: 10, fill: 'var(--muted)' }} />
+          <LabelList dataKey="healthScore" position="top" style={{ fontSize: 10, fill: c.muted }} />
         </Bar>
         <Line
           yAxisId="temp"
           type="monotone"
           dataKey="estOutTemp"
           name="Gem. buitentemp"
-          stroke="rgba(148,163,184,0.85)"
+          stroke={alpha(c.muted, 0.85)}
           strokeWidth={1.5}
           strokeDasharray="4 3"
-          dot={{ r: 3, fill: 'rgba(148,163,184,0.9)' }}
+          dot={{ r: 3, fill: alpha(c.muted, 0.9) }}
           isAnimationActive={false}
         />
       </ComposedChart>

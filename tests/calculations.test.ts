@@ -220,7 +220,8 @@ describe('status bands', () => {
     for (const rh of [10, 45, 62, 72, 95]) {
       const s = rhStatus(rh)
       expect(s.label).toBeTruthy()
-      expect(s.color).toMatch(/^#[0-9A-Fa-f]{6}$/)
+      // Colours are theme tokens now (var(--ok/--warn/--crit)), not literals.
+      expect(s.color).toMatch(/^var\(--[a-z]+\)$/)
     }
   })
 })

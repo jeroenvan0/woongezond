@@ -2,6 +2,7 @@
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { ProcessedRow } from '@/lib/types'
 import { buildTimeAxis, makeTimeTick, tooltipLabel, insertGaps } from '@/components/chartAxis'
+import { useChartColors } from '@/lib/useChartColors'
 
 interface Props {
   data: ProcessedRow[]
@@ -28,6 +29,7 @@ function CustomTooltip({ active, payload, unit, color }: any) {
 }
 
 export default function SensorChart({ data, dataKey, color, fillColor, unit, height = 200, refLines }: Props) {
+  const c = useChartColors()
   if (!data.length) return <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', fontSize: 13 }}>Geen data</div>
 
   const chartData = data.map(r => ({
@@ -46,7 +48,7 @@ export default function SensorChart({ data, dataKey, color, fillColor, unit, hei
             <stop offset="95%" stopColor={color} stopOpacity={0.01} />
           </linearGradient>
         </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.05)" vertical={false} />
+        <CartesianGrid strokeDasharray="3 3" stroke={c.grid} vertical={false} />
         <XAxis
           dataKey="t"
           type="number"
