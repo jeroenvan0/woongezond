@@ -51,6 +51,21 @@ npm run build && npm start        # production
 sudo systemctl restart woongezond-react   # reload the live service after a build
 ```
 
+**Do not keep a working copy inside an iCloud-synced folder** (`~/Documents` or
+`~/Desktop` when "Desktop & Documents Folders" is on). iCloud evicts file contents
+and leaves dataless placeholders; Next.js reads its own runtime with `readFileSync`
+during boot, and those synchronous reads block in `read(2)` waiting for a
+materialisation that never arrives. The symptom is `next dev` hanging forever with
+**zero output** and no listening port — not an error, just silence. `git status` and
+`rsync` over the same tree stall the same way. Check with:
+
+```bash
+find . -flags +dataless | wc -l   # should be 0
+```
+
+Clone to a non-synced path (`~/Developer/...`, `~/code/...`) instead. From there the
+dev server is ready in well under a second.
+
 ## Supabase
 
 Per-user RLS (`auth.uid() = user_id`) on `air_quality`, `interventions`, `thresholds`,
