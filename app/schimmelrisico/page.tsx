@@ -11,6 +11,7 @@ import ChatWidget from '@/components/ChatWidget'
 import SegmentedControl from '@/components/ui/SegmentedControl'
 import InfoHint from '@/components/ui/InfoHint'
 import ChartTable from '@/components/ui/ChartTable'
+import DataBanner, { DataError, describeError } from '@/components/DataBanner'
 import {
   runModels,
   generateDemoData,
@@ -290,6 +291,7 @@ export default function SchimmelrisicoPage() {
   const [range, setRange] = useStickyState('wz-schimmel-range', '7d')
   const [material, setMaterial] = useStickyState('wz-schimmel-material', 'gypsum')
   const [showExplain, setShowExplain] = useState(false)
+  const [dataError, setDataError] = useState<DataError>(null)
   const chartC = useChartColors()
 
   useEffect(() => {
@@ -317,6 +319,14 @@ export default function SchimmelrisicoPage() {
           fetch(withBase('/api/data?minutes=' + 28 * 1440)),
           fetch(withBase('/api/weather/history?minutes=' + 28 * 1440)),
         ])
+        if (!r.ok) {
+          // A real fetch failure is surfaced (A5); the page still falls back to the
+          // example view so it is never blank.
+          setDataError(describeError(r.status, false))
+          setSeries(makeDemo())
+          return
+        }
+        setDataError(null)
         const d = await r.json()
         const rows = (d.rows ?? []).filter((x: any) => x.temperature != null && x.humidity != null)
         if (rows.length < 2) {
@@ -335,6 +345,7 @@ export default function SchimmelrisicoPage() {
           setSeries({ ts, temps, rhs, wallTemps, wallRhs, insulation, rTotaal, isDemo: false })
         }
       } catch {
+        setDataError(describeError(undefined, true))
         setSeries(makeDemo())
       }
     })()
@@ -361,6 +372,7 @@ export default function SchimmelrisicoPage() {
 
   return (
     <AppShell title="Schimmelrisico">
+      <DataBanner error={dataError} onRetry={() => location.reload()} />
       {!computed ? (
         <div style={{ color: 'var(--muted)', fontSize: 'var(--fs-md)', padding: '24px 0' }}>Laden…</div>
       ) : series!.isDemo ? (

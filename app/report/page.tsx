@@ -9,6 +9,8 @@ import { measurementCoverage, detectGaps } from '@/lib/coverage'
 import { ReportLineChart, ReportDualChart } from '@/components/ReportChart'
 import AppShell from '@/components/AppShell'
 import Button from '@/components/ui/Button'
+import DataBanner, { DataError, describeError } from '@/components/DataBanner'
+import { getSeries } from '@/lib/useSeries'
 import { Download, Printer } from 'lucide-react'
 
 // The report is a *printed document*, so its palette is fixed light values — a court
@@ -45,6 +47,7 @@ export default function ReportPage() {
   const [pollution, setPollution] = useState<any>(null)
   const [period, setPeriod] = useState(43200)
   const [loading, setLoading] = useState(true)
+  const [dataError, setDataError] = useState<DataError>(null)
   const [generatedAt, setGeneratedAt] = useState<Date | null>(null)
 
   const load = useCallback(async () => {
@@ -57,8 +60,13 @@ export default function ReportPage() {
       return
     }
     setEmail(user.email ?? '')
+    // Data via the shared cache (A5-visible errors); weather is best-effort.
     const [dRes, wRes] = await Promise.all([
-      fetch(withBase(`/api/data?minutes=${period}`)).then((r) => r.json()).catch(() => ({ rows: [] })),
+      getSeries(period).then((d) => { setDataError(null); return d }).catch((e) => {
+        const status = (e as { status?: number })?.status
+        setDataError(describeError(status, status == null))
+        return { rows: [], bucketMinutes: 1 }
+      }),
       fetch(withBase('/api/weather')).then((r) => r.json()).catch(() => ({ weather: null, pollution: null })),
     ])
     setRows(dRes.rows ?? [])
@@ -156,6 +164,10 @@ export default function ReportPage() {
         @media (max-width: 420px) { .report-stats { grid-template-columns: 1fr; } }
         @media (max-width: 560px) { .report-kv { flex-direction: column; gap: 1px !important; } .report-kv > span:first-child { min-width: 0 !important; } }
       `}</style>
+
+      <div className="no-print" style={{ maxWidth: 800, margin: '0 auto' }}>
+        <DataBanner error={dataError} onRetry={load} />
+      </div>
 
       <div
         className="report-sheet"
