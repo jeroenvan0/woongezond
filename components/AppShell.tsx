@@ -4,6 +4,8 @@ import { usePathname, useRouter } from 'next/navigation'
 import { useState, useEffect, ReactNode } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import NotificationBell from '@/components/NotificationBell'
+import DeviceHealthChip from '@/components/DeviceHealthChip'
+import DeviceSwitcher from '@/components/DeviceSwitcher'
 import Logo from '@/components/Logo'
 import {
   LayoutDashboard,
@@ -13,10 +15,18 @@ import {
   FileText,
   Moon,
   Sun,
+  Monitor,
   LogOut,
   PanelLeftClose,
   PanelLeftOpen,
 } from 'lucide-react'
+
+type ThemePref = 'system' | 'light' | 'dark'
+
+function applyTheme(pref: ThemePref) {
+  const dark = pref === 'dark' || (pref === 'system' && window.matchMedia('(prefers-color-scheme:dark)').matches)
+  document.documentElement.classList.toggle('dark', dark)
+}
 
 const NAV = [
   { href: '/dashboard', label: 'Dashboard', Icon: LayoutDashboard },
@@ -36,21 +46,35 @@ export default function AppShell({ title, actions, children }: Props) {
   const pathname = usePathname()
   const router = useRouter()
   const supabase = createClient()
-  const [dark, setDark] = useState(false)
+  const [theme, setTheme] = useState<ThemePref>('system')
   const [collapsed, setCollapsed] = useState(false)
   const [email, setEmail] = useState('')
 
   useEffect(() => {
-    setDark(document.documentElement.classList.contains('dark'))
+    const stored = localStorage.getItem('theme')
+    setTheme(stored === 'light' || stored === 'dark' ? stored : 'system')
     setCollapsed(localStorage.getItem('wz-sidebar-collapsed') === '1')
     supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? ''))
   }, [supabase])
 
-  function toggleTheme() {
-    const next = !dark
-    setDark(next)
-    document.documentElement.classList.toggle('dark', next)
-    localStorage.setItem('theme', next ? 'dark' : 'light')
+  // While on "system", follow OS changes live (D8 — the toggle is no longer a
+  // one-way door out of system).
+  useEffect(() => {
+    if (theme !== 'system') return
+    const mq = window.matchMedia('(prefers-color-scheme:dark)')
+    const onChange = () => applyTheme('system')
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [theme])
+
+  // Cycle systeem → licht → donker → systeem (3.6). "systeem" clears the override
+  // so it is always reachable again.
+  function cycleTheme() {
+    const next: ThemePref = theme === 'system' ? 'light' : theme === 'light' ? 'dark' : 'system'
+    setTheme(next)
+    if (next === 'system') localStorage.removeItem('theme')
+    else localStorage.setItem('theme', next)
+    applyTheme(next)
   }
 
   function toggleCollapse() {
@@ -78,14 +102,16 @@ export default function AppShell({ title, actions, children }: Props) {
     </div>
   )
 
+  const themeLabel = theme === 'system' ? 'Thema: systeem' : theme === 'light' ? 'Thema: licht' : 'Thema: donker'
   const themeBtn = (
-    <button onClick={toggleTheme} className="wz-iconbtn" title="Thema wisselen" aria-label="Thema wisselen">
-      {dark ? <Sun /> : <Moon />}
+    <button onClick={cycleTheme} className="wz-iconbtn" title={`${themeLabel} — klik om te wisselen`} aria-label={themeLabel}>
+      {theme === 'system' ? <Monitor /> : theme === 'light' ? <Sun /> : <Moon />}
     </button>
   )
 
   return (
     <div className={`wz-shell${collapsed ? ' wz-collapsed' : ''}`}>
+      <a href="#wz-content" className="wz-skip">Naar de inhoud</a>
       {/* ── Desktop sidebar ── */}
       <aside className="wz-sidebar">
         <div className="wz-sidehead" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, padding: '2px 4px 18px' }}>
@@ -95,9 +121,9 @@ export default function AppShell({ title, actions, children }: Props) {
           </button>
         </div>
 
-        <nav style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+        <nav aria-label="Hoofdnavigatie" style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
           {NAV.map(({ href, label, Icon }) => (
-            <Link key={href} href={href} className={`wz-navlink${isActive(href) ? ' active' : ''}`} title={collapsed ? label : undefined}>
+            <Link key={href} href={href} aria-current={isActive(href) ? 'page' : undefined} className={`wz-navlink${isActive(href) ? ' active' : ''}`} title={collapsed ? label : undefined}>
               <Icon />
               <span className="wz-navlabel">{label}</span>
             </Link>
@@ -105,6 +131,7 @@ export default function AppShell({ title, actions, children }: Props) {
         </nav>
 
         <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+          <DeviceHealthChip />
           <div className="wz-footrow" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <NotificationBell placement="side" />
             {themeBtn}
@@ -134,12 +161,15 @@ export default function AppShell({ title, actions, children }: Props) {
       </header>
 
       {/* ── Page content ── */}
-      <main className="wz-main">
+      <main id="wz-content" className="wz-main">
         <div className="wz-content">
           {(title || actions) && (
             <div className="wz-pagehead">
               {title ? <h1 className="wz-pagetitle">{title}</h1> : <span />}
-              {actions && <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>{actions}</div>}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                <DeviceSwitcher />
+                {actions}
+              </div>
             </div>
           )}
           {children}
@@ -147,7 +177,7 @@ export default function AppShell({ title, actions, children }: Props) {
       </main>
 
       {/* ── Mobile bottom tab bar ── */}
-      <nav className="wz-bottombar">
+      <nav aria-label="Hoofdnavigatie" className="wz-bottombar">
         {NAV.map(({ href, label, Icon }) => (
           <Link key={href} href={href} className={isActive(href) ? 'active' : ''}>
             <span className="wz-bicon">

@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { withBase } from '@/lib/basePath'
 import { createClient } from '@/lib/supabase/client'
@@ -11,12 +12,20 @@ import ChatWidget from '@/components/ChatWidget'
 import MLPredictionCard from '@/components/MLPredictionCard'
 import NightOutlookCard from '@/components/NightOutlookCard'
 import ContinuityChip from '@/components/ContinuityChip'
+import DataBanner, { DataError, describeError } from '@/components/DataBanner'
+import SegmentedControl from '@/components/ui/SegmentedControl'
+import SectionHeading from '@/components/ui/SectionHeading'
+import Stat from '@/components/ui/Stat'
+import InfoHint from '@/components/ui/InfoHint'
 import { ProcessedRow, SensorRow } from '@/lib/types'
 import { dewpoint, mouldRisk, co2Status, rhStatus, tempStatus, mouldStatus, movingAverage, healthScore, healthLabel, absHumidityGkg } from '@/lib/calculations'
 import { windowMinutes, maxWindowPoints, formatWindow } from '@/lib/smoothing'
 import { toSeries, buildDiagnosis } from '@/lib/reportAnalytics'
 import { useStickyState } from '@/lib/useStickyState'
-import { Wind, Thermometer, Droplets, Bug, Droplet, Activity } from 'lucide-react'
+import { freshness } from '@/lib/freshness'
+import { useChartColors, alpha } from '@/lib/useChartColors'
+import { useSelectedDevice } from '@/lib/useSelectedDevice'
+import { Wind, Thermometer, Droplets, Bug, Droplet, Activity, MapPin } from 'lucide-react'
 
 const PERIOD_OPTIONS = [
   { label: '30 min', value: 30 },
@@ -65,16 +74,17 @@ function applyMA(rows: ProcessedRow[], points: number): ProcessedRow[] {
 
 
 const AQI_LABELS: Record<number, { label: string; color: string }> = {
-  1: { label: 'Goed', color: '#16A34A' },
-  2: { label: 'Redelijk', color: '#65A30D' },
-  3: { label: 'Matig', color: '#D97706' },
-  4: { label: 'Slecht', color: '#EA580C' },
-  5: { label: 'Zeer slecht', color: '#DC2626' },
+  1: { label: 'Goed', color: 'var(--ok)' },
+  2: { label: 'Redelijk', color: 'var(--ok)' },
+  3: { label: 'Matig', color: 'var(--warn)' },
+  4: { label: 'Slecht', color: 'var(--warn)' },
+  5: { label: 'Zeer slecht', color: 'var(--crit)' },
 }
 
 export default function DashboardPage() {
   const router = useRouter()
   const supabase = createClient()
+  const selectedDevice = useSelectedDevice()
   const [rawRows, setRawRows] = useState<SensorRow[]>([])
   const [loading, setLoading] = useState(true)
   const [period, setPeriod] = useStickyState('wz-dash-period', 1440)
@@ -84,8 +94,13 @@ export default function DashboardPage() {
   const [maPoints, setMaPoints] = useState(0)
   const [bucketMinutes, setBucketMinutes] = useState(1)
   const [latest, setLatest] = useState<ProcessedRow | null>(null)
+  const [latestTs, setLatestTs] = useState<Date | null>(null)
   const [weather, setWeather] = useState<any>(null)
   const [poll, setPoll] = useState<any>(null)
+  const [dataError, setDataError] = useState<DataError>(null)
+  // Tick so the "x min geleden" line and staleness re-evaluate without a refetch.
+  const [nowTick, setNowTick] = useState(() => Date.now())
+  const chartC = useChartColors()
 
   const fetchData = useCallback(async () => {
     const {
@@ -98,16 +113,19 @@ export default function DashboardPage() {
     try {
       const r = await fetch(withBase(`/api/data?minutes=${period}`))
       if (!r.ok) {
-        console.error('[dashboard] /api/data failed', r.status)
+        // A failed or rate-limited fetch is now visible (A5) instead of a silent
+        // console.error that left old data looking current.
+        setDataError(describeError(r.status, false))
         return
       }
       const d = await r.json()
+      setDataError(null)
       setRawRows(d.rows ?? [])
       // The server tells us how wide one sample is; without it the smoothing slider
       // cannot report a truthful window.
       setBucketMinutes(d.bucketMinutes > 0 ? d.bucketMinutes : 1)
     } catch (e) {
-      console.error('[dashboard] /api/data error', e)
+      setDataError(describeError(undefined, true))
     } finally {
       // Always clear, even on failure. Otherwise the KPI cards render "—" forever
       // while the charts still show the previous data — the state the dashboard was
@@ -136,14 +154,24 @@ export default function DashboardPage() {
   useEffect(() => {
     let cancelled = false
     const loadLatest = async () => {
-      const { data } = await supabase
+      // Scope the headline reading to the chosen device (6.1). This is the direct,
+      // device-filterable query; the chart series still come from /api/data, whose
+      // RPC has no device parameter yet.
+      let q = supabase
         .from('air_quality')
         .select('created_at,co2,temperature,humidity')
         .order('created_at', { ascending: false })
         .limit(1)
+      if (selectedDevice) q = q.eq('device_id', selectedDevice)
+      const { data } = await q
       if (cancelled) return
-      const p = processRows((data ?? []) as SensorRow[])
+      const rows = (data ?? []) as SensorRow[]
+      const p = processRows(rows)
       setLatest(p[0] ?? null)
+      // Keep the raw timestamp — the KPI freshness contract needs the reading's age,
+      // which processRows discards, and a reading can arrive that fails the co2/temp/
+      // humidity filter yet still tells us the sensor is alive.
+      setLatestTs(rows[0]?.created_at ? new Date(rows[0].created_at) : null)
     }
     loadLatest()
     const id = setInterval(loadLatest, 60000)
@@ -151,7 +179,7 @@ export default function DashboardPage() {
       cancelled = true
       clearInterval(id)
     }
-  }, [supabase])
+  }, [supabase, selectedDevice])
 
   useEffect(() => {
     fetch(withBase('/api/weather'))
@@ -161,6 +189,13 @@ export default function DashboardPage() {
         setPoll(d.pollution)
       })
       .catch(() => {})
+  }, [])
+
+  // Re-evaluate freshness every 30s so a card can go stale on its own, even if no
+  // new data arrives — the outage case is precisely when fetches stop returning.
+  useEffect(() => {
+    const id = setInterval(() => setNowTick(Date.now()), 30000)
+    return () => clearInterval(id)
   }, [])
 
   const rows = useMemo(() => processRows(rawRows), [rawRows])
@@ -176,6 +211,12 @@ export default function DashboardPage() {
 
   const maxPoints = maxWindowPoints(rows.length)
 
+  // Freshness of the reported value (A1). Prefer the raw sensor timestamp; fall back
+  // to the last processed row's timestamp. Once offline, no card may show a status.
+  const fresh = freshness(latestTs ?? last?.ts ?? null, nowTick)
+  const stale = fresh.offline
+  const withStatus = (s: { label: string; color: string } | null) => (stale ? null : s)
+
   const co2s = last ? co2Status(last.co2) : null
   const rhs = last ? rhStatus(last.rh) : null
   const temps = last ? tempStatus(last.temp) : null
@@ -184,7 +225,7 @@ export default function DashboardPage() {
   const hl = hs != null ? healthLabel(hs) : null
 
   const card = (title: string, value: string, unit: string, status: any, accent: string, icon: React.ReactNode, progress?: number) => (
-    <MetricCard title={title} value={loading ? '—' : value} unit={unit} label={status?.label} labelColor={status?.color} accent={accent} icon={icon} progress={progress} />
+    <MetricCard title={title} value={loading ? '—' : value} unit={unit} label={withStatus(status)?.label} labelColor={withStatus(status)?.color} accent={accent} icon={icon} progress={progress} stale={stale && !loading} />
   )
 
   const periodSelect = (
@@ -212,15 +253,46 @@ export default function DashboardPage() {
 
   return (
     <AppShell title="Dashboard" actions={periodSelect}>
-      {/* KPI cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 10, marginBottom: 14 }}>
-        {card('CO₂', last?.co2.toFixed(0) ?? '—', 'ppm', co2s, '#3B82F6', <Wind size={14} />, last ? Math.min(100, last.co2 / 20) : 0)}
-        {card('Temperatuur', last?.temp.toFixed(1) ?? '—', '°C', temps, '#EF4444', <Thermometer size={14} />)}
-        {card('Vochtigheid', last?.rh.toFixed(1) ?? '—', '% RV', rhs, '#10B981', <Droplets size={14} />, last?.rh)}
-        {card('Schimmel', last?.mr.toFixed(0) ?? '—', '/ 100', moulds, '#F97316', <Bug size={14} />, last?.mr)}
-        {card('Dauwpunt', last?.dp.toFixed(1) ?? '—', '°C', null, '#8B5CF6', <Droplet size={14} />)}
-        {hs != null && <MetricCard title="Gezondheid" value={`${hs}`} unit="/ 100" label={hl?.label} labelColor={hl?.color} accent={hl?.color} progress={hs} icon={<Activity size={14} />} />}
-      </div>
+      <DataBanner error={dataError} onRetry={fetchData} />
+
+      {/* KPI cards — aria-live so a screen reader hears the values update (D4) */}
+      <section aria-label="Huidige metingen" aria-live="polite">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 10, marginBottom: 8 }}>
+          {card('CO₂', last?.co2.toFixed(0) ?? '—', 'ppm', co2s, 'var(--c-co2)', <Wind size={14} />, last ? Math.min(100, last.co2 / 20) : 0)}
+          {card('Temperatuur', last?.temp.toFixed(1) ?? '—', '°C', temps, 'var(--c-temp)', <Thermometer size={14} />)}
+          {card('Vochtigheid', last?.rh.toFixed(1) ?? '—', '% RV', rhs, 'var(--c-rh)', <Droplets size={14} />, last?.rh)}
+          {card('Schimmel', last?.mr.toFixed(0) ?? '—', '/ 100', moulds, 'var(--c-mould)', <Bug size={14} />, last?.mr)}
+          {card('Dauwpunt', last?.dp.toFixed(1) ?? '—', '°C', null, 'var(--c-dew)', <Droplet size={14} />)}
+          {hs != null && (
+            <MetricCard
+              title="Gezondheid"
+              value={`${hs}`}
+              unit="/ 100"
+              label={stale ? undefined : hl?.label}
+              labelColor={hl?.color}
+              accent={hl?.color}
+              progress={hs}
+              icon={<Activity size={14} />}
+              stale={stale && !loading}
+            />
+          )}
+        </div>
+
+        {/* Freshness contract (A1): the age of the reported values, always visible. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, fontSize: 'var(--fs-xs)', flexWrap: 'wrap' }}>
+          {stale ? (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--warn)', fontWeight: 600 }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--warn-dot)' }} />
+              {fresh.offlineMessage}
+            </span>
+          ) : (
+            <span style={{ color: 'var(--subtle)' }}>
+              gemeten {fresh.clock} · {fresh.ago}
+            </span>
+          )}
+          <InfoHint label="gezondheidsscore" text="Gezondheid: 0–100, hoger = beter. Combineert CO₂ (40%), luchtvochtigheid (30%) en schimmelrisico (30%) tot één cijfer voor deze meting." />
+        </div>
+      </section>
 
       {/* Weather */}
       {weather && (
@@ -228,7 +300,7 @@ export default function DashboardPage() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <img src={`https://openweathermap.org/img/wn/${weather.iconCode}@2x.png`} style={{ width: 40, height: 40 }} alt="" />
             <div>
-              <div className="wx-ttl" style={{ fontWeight: 700, fontSize: 13 }}>📍 {weather.cityName || 'Buiten'}</div>
+              <div className="wx-ttl" style={{ fontWeight: 700, fontSize: 'var(--fs-md)', display: 'flex', alignItems: 'center', gap: 4 }}><MapPin size={13} /> {weather.cityName || 'Buiten'}</div>
               <div className="wx-desc" style={{ fontSize: 11 }}>{weather.description}</div>
             </div>
           </div>
@@ -246,7 +318,7 @@ export default function DashboardPage() {
             </div>
           ))}
           {poll && poll.aqi && (
-            <div style={{ padding: '4px 12px', borderRadius: 99, background: AQI_LABELS[poll.aqi]?.color + '24', color: AQI_LABELS[poll.aqi]?.color, fontWeight: 700, fontSize: 12 }}>
+            <div style={{ padding: '4px 12px', borderRadius: 'var(--r-pill)', background: `color-mix(in srgb, ${AQI_LABELS[poll.aqi]?.color} 14%, transparent)`, color: AQI_LABELS[poll.aqi]?.color, fontWeight: 700, fontSize: 'var(--fs-sm)' }}>
               AQI {poll.aqi} — {AQI_LABELS[poll.aqi]?.label ?? '—'}
             </div>
           )}
@@ -259,32 +331,32 @@ export default function DashboardPage() {
         const outdoorAbs = absHumidityGkg(+weather.temp, +weather.humidity)
         const diff = indoorAbs - outdoorAbs // >0 means outside is drier
         const co2High = last.co2 > 1000
-        let color = '#3B82F6',
+        let color = 'var(--accent)',
           title = 'Neutraal ventilatiemoment',
           body = 'Binnen- en buitenvocht liggen dicht bij elkaar; luchten verandert de luchtvochtigheid nu weinig.'
         if (co2High && diff > 0) {
-          color = '#16A34A'
+          color = 'var(--ok)'
           title = 'Ventileer nu — ideaal moment'
           body = `CO₂ is verhoogd (${last.co2.toFixed(0)} ppm) én de buitenlucht is droger (${outdoorAbs.toFixed(1)} vs ${indoorAbs.toFixed(1)} g/kg). Luchten ververst de lucht én verlaagt de vochtigheid.`
         } else if (co2High) {
-          color = '#D97706'
+          color = 'var(--warn)'
           title = 'Lucht kort voor de CO₂'
           body = `CO₂ is verhoogd (${last.co2.toFixed(0)} ppm). Buiten is iets vochtiger, dus lucht gericht en kort — genoeg om de CO₂ te verversen.`
         } else if (diff > 0.7) {
-          color = '#16A34A'
+          color = 'var(--ok)'
           title = 'Goed moment om te luchten'
           body = `Buitenlucht is droger dan binnen (${outdoorAbs.toFixed(1)} vs ${indoorAbs.toFixed(1)} g/kg) — een raam open verlaagt nu de luchtvochtigheid.`
         } else if (diff < -0.7) {
-          color = '#D97706'
+          color = 'var(--warn)'
           title = 'Liever nu niet luchten voor vocht'
           body = `Buiten is vochtiger dan binnen (${outdoorAbs.toFixed(1)} vs ${indoorAbs.toFixed(1)} g/kg). Voor CO₂ luchten mag, maar het voert nu geen vocht af.`
         }
         return (
-          <div style={{ display: 'flex', gap: 11, alignItems: 'flex-start', background: 'var(--surface)', border: `1px solid ${color}33`, borderLeft: `3px solid ${color}`, borderRadius: 12, padding: '12px 15px', marginBottom: 14, boxShadow: 'var(--shadow-xs)' }}>
+          <div style={{ display: 'flex', gap: 11, alignItems: 'flex-start', background: 'var(--surface)', border: `1px solid color-mix(in srgb, ${color} 30%, transparent)`, borderLeft: `3px solid ${color}`, borderRadius: 'var(--r-md)', padding: '12px 15px', marginBottom: 14, boxShadow: 'var(--shadow-xs)' }}>
             <Wind size={17} color={color} style={{ flexShrink: 0, marginTop: 1 }} />
             <div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{title}</div>
-              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2, lineHeight: 1.45 }}>{body}</div>
+              <div style={{ fontSize: 'var(--fs-md)', fontWeight: 700, color: 'var(--text)' }}>{title}</div>
+              <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--muted)', marginTop: 2, lineHeight: 1.45 }}>{body}</div>
             </div>
           </div>
         )
@@ -294,24 +366,27 @@ export default function DashboardPage() {
       <NightOutlookCard />
       <MLPredictionCard />
 
-      {/* Chart tabs */}
-      <div style={{ display: 'flex', gap: 4, background: 'var(--surface-tint)', borderRadius: 10, padding: 4, marginBottom: 14 }}>
-        {TABS.map((t) => (
-          <button key={t.key} onClick={() => setTab(t.key)} style={{ flex: 1, padding: '7px 10px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: tab === t.key ? 600 : 500, background: tab === t.key ? 'var(--surface)' : 'transparent', color: tab === t.key ? 'var(--text)' : 'var(--muted)', boxShadow: tab === t.key ? 'var(--shadow-xs)' : 'none', transition: 'all 0.15s', whiteSpace: 'nowrap' }}>
-            {t.label}
-          </button>
-        ))}
+      {/* Chart tabs — now a real ARIA tablist (D3) */}
+      <div style={{ marginBottom: 14 }}>
+        <SegmentedControl
+          ariaLabel="Grafiekweergave"
+          fill
+          options={TABS.map((t) => ({ label: t.label, value: t.key }))}
+          value={tab}
+          onChange={setTab}
+        />
       </div>
 
-      {/* Smoothing slider. The slider value is a number of data points; the label
-          converts it to real time using the server's bucket size, so it stays honest
-          across every period. Capped at a quarter of the visible series — smoothing
-          over more than that flattens the trend you came to look at. */}
-      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '10px 16px', marginBottom: 14, boxShadow: 'var(--shadow-xs)', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>
-          Smoothing
-        </span>
+      {/* Afvlakking (was "Smoothing", H1). The slider value is a number of data
+          points; the label converts it to real time using the server's bucket size,
+          so it stays honest across every period. Capped at a quarter of the visible
+          series — smoothing over more than that flattens the trend you came to look at. */}
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--r-lg)', padding: '10px 16px', marginBottom: 14, boxShadow: 'var(--shadow-xs)', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <label htmlFor="wz-afvlakking" style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>
+          Afvlakking
+        </label>
         <input
+          id="wz-afvlakking"
           type="range"
           min={0}
           max={maxPoints}
@@ -319,16 +394,16 @@ export default function DashboardPage() {
           value={Math.min(maPoints, maxPoints)}
           disabled={maxPoints < 2}
           onChange={(e) => setMaPoints(+e.target.value)}
-          style={{ flex: 1, minWidth: 120, accentColor: '#3B82F6', opacity: maxPoints < 2 ? 0.4 : 1 }}
+          style={{ flex: 1, minWidth: 120, accentColor: 'var(--brand)', opacity: maxPoints < 2 ? 0.4 : 1 }}
         />
-        <span style={{ fontSize: 12, color: 'var(--muted)', minWidth: 118, textAlign: 'right', whiteSpace: 'nowrap' }}>
+        <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--muted)', minWidth: 118, textAlign: 'right', whiteSpace: 'nowrap' }}>
           {maxPoints < 2
             ? 'Te weinig data'
             : maPoints < 2
               ? 'Uit'
               : `${formatWindow(windowMinutes(maPoints, bucketMinutes))} · ${maPoints} punten`}
         </span>
-        <span style={{ fontSize: 10.5, color: 'var(--subtle)', flexBasis: '100%', textAlign: 'right' }}>
+        <span style={{ fontSize: 'var(--fs-2xs)', color: 'var(--subtle)', flexBasis: '100%', textAlign: 'right' }}>
           Alleen de grafieken — de waarden bovenaan blijven ongewijzigde metingen.
           {rows.length > 0 && ` 1 punt = ${formatWindow(bucketMinutes)}.`}
         </span>
@@ -337,23 +412,23 @@ export default function DashboardPage() {
       {tab === 'metingen' && (
         <div style={{ display: 'grid', gap: 12 }}>
           <ChartCard label="CO₂ (ppm)">
-            <SensorChart data={displayed} dataKey="co2" color="#3B82F6" fillColor="rgba(59,130,246,0.1)" unit="ppm" refLines={[{ value: 1000, label: '1000 ppm', color: '#D97706' }, { value: 1500, label: '1500 ppm', color: '#DC2626' }]} />
+            <SensorChart data={displayed} dataKey="co2" color={chartC.co2} fillColor={alpha(chartC.co2, 0.1)} unit="ppm" refLines={[{ value: 1000, label: '1000 ppm', color: chartC.warn }, { value: 1500, label: '1500 ppm', color: chartC.crit }]} />
           </ChartCard>
           <ChartCard label="Temperatuur (°C)">
-            <SensorChart data={displayed} dataKey="temp" color="#EF4444" fillColor="rgba(239,68,68,0.09)" unit="°C" />
+            <SensorChart data={displayed} dataKey="temp" color={chartC.temp} fillColor={alpha(chartC.temp, 0.09)} unit="°C" />
           </ChartCard>
           <ChartCard label="Relatieve vochtigheid (%)">
-            <SensorChart data={displayed} dataKey="rh" color="#10B981" fillColor="rgba(16,185,129,0.10)" unit="%" refLines={[{ value: 60, label: '60%', color: '#D97706' }, { value: 70, label: '70%', color: '#DC2626' }]} />
+            <SensorChart data={displayed} dataKey="rh" color={chartC.rh} fillColor={alpha(chartC.rh, 0.1)} unit="%" refLines={[{ value: 60, label: '60%', color: chartC.warn }, { value: 70, label: '70%', color: chartC.crit }]} />
           </ChartCard>
         </div>
       )}
       {tab === 'schimmel' && (
         <div style={{ display: 'grid', gap: 12 }}>
           <ChartCard label="Schimmelrisico (0–100)">
-            <SensorChart data={displayed} dataKey="mr" color="#F97316" fillColor="rgba(249,115,22,0.12)" unit="" height={220} refLines={[{ value: 60, label: 'Verhoogd', color: '#EA580C' }]} />
+            <SensorChart data={displayed} dataKey="mr" color={chartC.mould} fillColor={alpha(chartC.mould, 0.12)} unit="" height={220} refLines={[{ value: 60, label: 'Verhoogd', color: chartC.warn }]} />
           </ChartCard>
           <ChartCard label="Dauwpunt (°C)">
-            <SensorChart data={displayed} dataKey="dp" color="#8B5CF6" fillColor="rgba(139,92,246,0.10)" unit="°C" />
+            <SensorChart data={displayed} dataKey="dp" color={chartC.dew} fillColor={alpha(chartC.dew, 0.1)} unit="°C" />
           </ChartCard>
         </div>
       )}
@@ -362,9 +437,9 @@ export default function DashboardPage() {
           insight banner and ad-hoc Diagnose tab; reuses the report engine). */}
       <DiagnoseCard diag={diag} loading={loading} />
 
-      <div style={{ fontSize: 11, color: 'var(--subtle)', marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+      <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--subtle)', marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
         <ContinuityChip />
-        <span>{rows.length} meetpunten · bijgewerkt elke 60s</span>
+        <span>{rows.length} meetpunten · {stale ? fresh.offlineMessage.toLowerCase() : `laatste meting ${fresh.ago}`}</span>
       </div>
 
       <ChatWidget />
@@ -373,70 +448,59 @@ export default function DashboardPage() {
 }
 
 function DiagnoseCard({ diag, loading }: { diag: ReturnType<typeof buildDiagnosis> | null; loading: boolean }) {
-  const wrap: React.CSSProperties = { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '16px 18px', boxShadow: 'var(--shadow-xs)', marginTop: 14 }
-  const head = (
-    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-      <span style={{ width: 3, height: 14, background: '#3B82F6', borderRadius: 2 }} /> Diagnose &amp; advies
-    </div>
-  )
+  const wrap: React.CSSProperties = { background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--r-lg)', padding: '16px 18px', boxShadow: 'var(--shadow-xs)', marginTop: 14 }
+  const head = <SectionHeading>Diagnose &amp; advies</SectionHeading>
   if (loading && !diag)
     return (
       <div style={wrap}>
         {head}
-        <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>Analyseren…</div>
+        <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--muted)' }}>Analyseren…</div>
       </div>
     )
   if (!diag)
     return (
       <div style={wrap}>
         {head}
-        <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>Te weinig data voor diagnose. Kies een langere periode.</div>
+        <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--muted)' }}>Te weinig data voor diagnose. Kies een langere periode.</div>
       </div>
     )
-
-  const stat = (label: string, value: string, color?: string) => (
-    <div style={{ background: 'var(--surface-2)', border: '1px solid var(--border-soft)', borderRadius: 10, padding: '8px 11px' }}>
-      <div style={{ fontSize: 10, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</div>
-      <div style={{ fontSize: 14, fontWeight: 700, color: color ?? 'var(--text)', marginTop: 2 }}>{value}</div>
-    </div>
-  )
 
   return (
     <div style={wrap}>
       {head}
       {/* Conclusion banner */}
-      <div style={{ display: 'flex', borderRadius: 10, overflow: 'hidden', background: 'var(--surface-2)', marginBottom: 14 }}>
+      <div style={{ display: 'flex', borderRadius: 'var(--r-md)', overflow: 'hidden', background: 'var(--surface-2)', marginBottom: 14 }}>
         <div style={{ width: 4, background: diag.conclusieKleur }} />
         <div style={{ padding: '9px 13px' }}>
-          <div style={{ fontSize: 11.5, fontWeight: 700, color: diag.conclusieKleur, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{diag.sevLabel}</div>
-          <div style={{ fontSize: 13, color: 'var(--text)', marginTop: 2 }}>{diag.conclusieTxt}</div>
+          <div style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, color: diag.conclusieKleur, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{diag.sevLabel}</div>
+          <div style={{ fontSize: 'var(--fs-md)', color: 'var(--text)', marginTop: 2 }}>{diag.conclusieTxt}</div>
         </div>
       </div>
 
       {/* Derived metrics */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 8, marginBottom: 14 }}>
-        {diag.ach && stat('Ventilatie (ACH)', `${diag.ach.achGem} /h`, diag.ach.voldoet ? '#16A34A' : '#DC2626')}
-        {diag.nacht && stat('Nacht / dag CO₂', `${diag.nacht.gemNacht} / ${diag.nacht.gemDag}`, diag.nacht.probleem ? '#DC2626' : '#16A34A')}
-        {stat('Schimmel > 60', `${diag.pctMr60.toFixed(0)}% v/d tijd`, diag.pctMr60 > 20 ? '#DC2626' : diag.pctMr60 > 5 ? '#D97706' : '#16A34A')}
-        {diag.cv && stat('Vocht-profiel', diag.cv.interpretatie.split(' — ')[0], diag.cv.kleur)}
+        {diag.ach && <Stat label="Ventilatie (ACH)" value={`${diag.ach.achGem} /h`} color={diag.ach.voldoet ? 'var(--ok)' : 'var(--crit)'} />}
+        {diag.nacht && <Stat label="Nacht / dag CO₂" value={`${diag.nacht.gemNacht} / ${diag.nacht.gemDag}`} color={diag.nacht.probleem ? 'var(--crit)' : 'var(--ok)'} />}
+        <Stat label="Schimmel > 60" value={`${diag.pctMr60.toFixed(0)}% v/d tijd`} color={diag.pctMr60 > 20 ? 'var(--crit)' : diag.pctMr60 > 5 ? 'var(--warn)' : 'var(--ok)'} />
+        {diag.cv && <Stat label="Vocht-profiel" value={diag.cv.interpretatie.split(' — ')[0]} color={diag.cv.kleur} />}
       </div>
 
       {/* Findings */}
       {diag.findings.length ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
           {diag.findings.map((f, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 9, padding: '8px 11px', background: `${f.color}0d`, border: `1px solid ${f.color}28`, borderRadius: 9 }}>
+            <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 9, padding: '8px 11px', background: `color-mix(in srgb, ${f.color} 6%, transparent)`, border: `1px solid color-mix(in srgb, ${f.color} 24%, transparent)`, borderRadius: 'var(--r-sm)' }}>
               <span style={{ width: 7, height: 7, borderRadius: '50%', background: f.color, flexShrink: 0, marginTop: 5 }} />
-              <span style={{ fontSize: 12.5, color: 'var(--text)', lineHeight: 1.4 }}>{f.text}</span>
+              <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text)', lineHeight: 1.4 }}>{f.text}</span>
             </div>
           ))}
         </div>
       ) : (
-        <div style={{ fontSize: 12.5, color: '#16A34A' }}>Geen afwijkingen gevonden in deze periode. ✓</div>
+        <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--ok)' }}>Geen afwijkingen gevonden in deze periode.</div>
       )}
 
-      <div style={{ fontSize: 11, color: 'var(--subtle)', marginTop: 12 }}>
-        Volledige onderbouwing met grafieken staat in het <a href={withBase('/report')} style={{ color: '#3B82F6', fontWeight: 600 }}>Rapport →</a>
+      <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--subtle)', marginTop: 12 }}>
+        Volledige onderbouwing met grafieken staat in het <Link href="/report" style={{ color: 'var(--brand)', fontWeight: 600 }}>Rapport →</Link>
       </div>
     </div>
   )

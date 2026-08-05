@@ -12,9 +12,11 @@ interface Props {
   accent?: string
   progress?: number
   icon?: ReactNode
+  /** Reading is too old to be trusted as current — desaturate it (A1). */
+  stale?: boolean
 }
 
-export default function MetricCard({ title, value, unit, label, labelColor, sub, subColor, accent = 'var(--accent)', progress, icon }: Props) {
+export default function MetricCard({ title, value, unit, label, labelColor, sub, subColor, accent = 'var(--accent)', progress, icon, stale }: Props) {
   // color-mix keeps the tint working whether `accent` is a token or a literal —
   // the old `${accent}1a` hex-concat breaks the moment accent is a var().
   const tint = `color-mix(in srgb, ${accent} 12%, transparent)`
@@ -29,6 +31,10 @@ export default function MetricCard({ title, value, unit, label, labelColor, sub,
         display: 'flex',
         flexDirection: 'column',
         minHeight: 104,
+        // A stale reading is desaturated so it reads as "not current" at a glance,
+        // while the number stays legible for reference.
+        filter: stale ? 'saturate(0.25)' : undefined,
+        opacity: stale ? 0.7 : 1,
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 9 }}>
