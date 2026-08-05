@@ -1,0 +1,48 @@
+-- Milestone 1: stop get_device_locations() leaking device names and locations
+-- to unauthenticated callers.
+--
+-- FOUND DURING MILESTONE 1 VERIFICATION, not from the original audit list.
+-- Confirmed live by calling the RPC with nothing but the public anon key — the
+-- same key shipped in every browser bundle:
+--
+--   POST /rest/v1/rpc/get_device_locations   (no login, no session)
+--   -> [{"name":"Feather S3","lat":52.37,"lon":4.89,"city":"Amsterdam"},
+--       {"name":"Jannouk Sensor",...}, {"name":"Jeroen Sensor",...}]
+--
+-- The function was SECURITY DEFINER with no internal filter, so it bypassed the
+-- devices RLS policies entirely and returned every device in the system. Device
+-- names are residents' first names, which makes this personal data: with ten
+-- pilot households it would publish the name and approximate location of every
+-- participant to anyone who opened the site and read the network tab.
+--
+-- The coordinates currently stored are city-centre (52.37, 4.89 = Amsterdam),
+-- not per-dwelling, so today's exposure is names + city rather than street
+-- addresses. That is a property of the current data, not a guarantee of the
+-- function — it returns whatever precision devices.lat/lon happens to hold.
+--
+-- FIX: switch to SECURITY INVOKER so the caller's own RLS applies. An
+-- authenticated user then sees only their own devices (devices_select_own);
+-- anon sees nothing, because devices has no anon policy. EXECUTE is also
+-- revoked from anon for defence in depth.
+--
+-- Dropping it outright was considered — nothing in the React app calls it
+-- (verified by grep across app/, lib/, components/, scripts/, ops/) and it
+-- dates from the pre-React Flask app. Kept because SECURITY INVOKER already
+-- removes the vulnerability, and keeping it is reversible in a way that DROP
+-- is not, in case the legacy Flask deployment still depends on it.
+--
+-- NOT changed here: fill_air_quality_user_id(), which the linter flags for the
+-- same two rules. It returns `trigger`, so PostgREST has no callable signature
+-- for it and cannot invoke it — verified: the RPC call returns PGRST202
+-- "Could not find the function". It is therefore unreachable rather than
+-- exposed, and revoking EXECUTE on it risks disturbing the BEFORE INSERT
+-- trigger that attributes every incoming sensor reading to a user.
+--
+-- Flagged by Supabase database linter 0028 / 0029.
+-- Rollback:
+--   ALTER FUNCTION public.get_device_locations() SECURITY DEFINER;
+--   GRANT EXECUTE ON FUNCTION public.get_device_locations() TO anon;
+
+ALTER FUNCTION public.get_device_locations() SECURITY INVOKER;
+
+REVOKE EXECUTE ON FUNCTION public.get_device_locations() FROM anon;
