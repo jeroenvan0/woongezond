@@ -10,6 +10,7 @@ import DualAxisChart from '@/components/DualAxisChart'
 import ChatWidget from '@/components/ChatWidget'
 import SegmentedControl from '@/components/ui/SegmentedControl'
 import InfoHint from '@/components/ui/InfoHint'
+import ChartTable from '@/components/ui/ChartTable'
 import {
   runModels,
   generateDemoData,
@@ -463,6 +464,7 @@ export default function SchimmelrisicoPage() {
                 { value: 2, label: 'MI 2 — hoog', color: chartC.crit },
               ]}
             />
+            <ChartTable caption="VTT Schimmelindex per meetpunt" columns={[{ key: 't', label: 'Tijd' }, { key: 'v', label: 'MI' }]} rows={computed.miPts.map((p) => ({ t: new Date(p.t).toLocaleString('nl-NL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }), v: p.v.toFixed(2) }))} />
           </ChartCard>
           <ChartCard label={`WUFI-Bio Wateractiviteit (SER)${series!.isDemo ? ' — voorbeelddata' : ''}`}>
             <TimeSeriesChart
@@ -477,6 +479,7 @@ export default function SchimmelrisicoPage() {
                 { value: 60, label: 'SER 60 — hoog', color: chartC.crit },
               ]}
             />
+            <ChartTable caption="WUFI-Bio wateractiviteit per meetpunt" columns={[{ key: 't', label: 'Tijd' }, { key: 'v', label: 'SER' }]} rows={computed.serPts.map((p) => ({ t: new Date(p.t).toLocaleString('nl-NL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }), v: p.v.toFixed(0) }))} />
           </ChartCard>
           <ChartCard label={`Binnenklimaat (gemeten) — modelinvoer is wandconditie${series!.isDemo ? ' — voorbeelddata' : ''}`}>
             <DualAxisChart
@@ -490,6 +493,7 @@ export default function SchimmelrisicoPage() {
               height={220}
               bRefLine={{ value: 70, label: 'RV 70% (binnen verhoogd)', color: chartC.warn }}
             />
+            <ChartTable caption="Binnenklimaat per meetpunt" columns={[{ key: 't', label: 'Tijd' }, { key: 'a', label: 'Temp (°C)' }, { key: 'b', label: 'RV (%)' }]} rows={computed.trhPts.map((p) => ({ t: new Date(p.t).toLocaleString('nl-NL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }), a: p.a.toFixed(1), b: p.b.toFixed(1) }))} />
           </ChartCard>
         </div>
       )}

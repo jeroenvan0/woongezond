@@ -17,6 +17,7 @@ import SegmentedControl from '@/components/ui/SegmentedControl'
 import SectionHeading from '@/components/ui/SectionHeading'
 import Stat from '@/components/ui/Stat'
 import InfoHint from '@/components/ui/InfoHint'
+import ChartTable from '@/components/ui/ChartTable'
 import { ProcessedRow, SensorRow } from '@/lib/types'
 import { dewpoint, mouldRisk, co2Status, rhStatus, tempStatus, mouldStatus, movingAverage, healthScore, healthLabel, absHumidityGkg } from '@/lib/calculations'
 import { windowMinutes, maxWindowPoints, formatWindow } from '@/lib/smoothing'
@@ -73,6 +74,8 @@ function applyMA(rows: ProcessedRow[], points: number): ProcessedRow[] {
   return rows.map((r, i) => ({ ...r, co2: co2[i], temp: temp[i], rh: rh[i], mr: mr[i] }))
 }
 
+
+const fmtTs = (d: Date) => d.toLocaleString('nl-NL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
 
 const AQI_LABELS: Record<number, { label: string; color: string }> = {
   1: { label: 'Goed', color: 'var(--ok)' },
@@ -374,13 +377,16 @@ export default function DashboardPage() {
       {tab === 'metingen' && (
         <div style={{ display: 'grid', gap: 12 }}>
           <ChartCard label="CO₂ (ppm)">
-            <SensorChart data={displayed} dataKey="co2" color={chartC.co2} fillColor={alpha(chartC.co2, 0.1)} unit="ppm" refLines={[{ value: 1000, label: '1000 ppm', color: chartC.warn }, { value: 1500, label: '1500 ppm', color: chartC.crit }]} />
+            <SensorChart data={displayed} dataKey="co2" syncId="wz-dash" color={chartC.co2} fillColor={alpha(chartC.co2, 0.1)} unit="ppm" refLines={[{ value: 1000, label: '1000 ppm', color: chartC.warn }, { value: 1500, label: '1500 ppm', color: chartC.crit }]} />
+            <ChartTable caption="CO₂ (ppm) per meetpunt" columns={[{ key: 't', label: 'Tijd' }, { key: 'v', label: 'CO₂ (ppm)' }]} rows={displayed.map((r) => ({ t: fmtTs(r.ts), v: r.co2.toFixed(0) }))} />
           </ChartCard>
           <ChartCard label="Temperatuur (°C)">
-            <SensorChart data={displayed} dataKey="temp" color={chartC.temp} fillColor={alpha(chartC.temp, 0.09)} unit="°C" />
+            <SensorChart data={displayed} dataKey="temp" syncId="wz-dash" color={chartC.temp} fillColor={alpha(chartC.temp, 0.09)} unit="°C" />
+            <ChartTable caption="Temperatuur (°C) per meetpunt" columns={[{ key: 't', label: 'Tijd' }, { key: 'v', label: 'Temp (°C)' }]} rows={displayed.map((r) => ({ t: fmtTs(r.ts), v: r.temp.toFixed(1) }))} />
           </ChartCard>
           <ChartCard label="Relatieve vochtigheid (%)">
-            <SensorChart data={displayed} dataKey="rh" color={chartC.rh} fillColor={alpha(chartC.rh, 0.1)} unit="%" refLines={[{ value: 60, label: '60%', color: chartC.warn }, { value: 70, label: '70%', color: chartC.crit }]} />
+            <SensorChart data={displayed} dataKey="rh" syncId="wz-dash" color={chartC.rh} fillColor={alpha(chartC.rh, 0.1)} unit="%" refLines={[{ value: 60, label: '60%', color: chartC.warn }, { value: 70, label: '70%', color: chartC.crit }]} />
+            <ChartTable caption="Relatieve vochtigheid (%) per meetpunt" columns={[{ key: 't', label: 'Tijd' }, { key: 'v', label: 'RV (%)' }]} rows={displayed.map((r) => ({ t: fmtTs(r.ts), v: r.rh.toFixed(1) }))} />
           </ChartCard>
         </div>
       )}
@@ -388,9 +394,11 @@ export default function DashboardPage() {
         <div style={{ display: 'grid', gap: 12 }}>
           <ChartCard label="Schimmelrisico (0–100)">
             <SensorChart data={displayed} dataKey="mr" color={chartC.mould} fillColor={alpha(chartC.mould, 0.12)} unit="" height={220} refLines={[{ value: 60, label: 'Verhoogd', color: chartC.warn }]} />
+            <ChartTable caption="Schimmelrisico per meetpunt" columns={[{ key: 't', label: 'Tijd' }, { key: 'v', label: 'Risico / 100' }]} rows={displayed.map((r) => ({ t: fmtTs(r.ts), v: r.mr.toFixed(0) }))} />
           </ChartCard>
           <ChartCard label="Dauwpunt (°C)">
             <SensorChart data={displayed} dataKey="dp" color={chartC.dew} fillColor={alpha(chartC.dew, 0.1)} unit="°C" />
+            <ChartTable caption="Dauwpunt (°C) per meetpunt" columns={[{ key: 't', label: 'Tijd' }, { key: 'v', label: 'Dauwpunt (°C)' }]} rows={displayed.map((r) => ({ t: fmtTs(r.ts), v: r.dp.toFixed(1) }))} />
           </ChartCard>
         </div>
       )}

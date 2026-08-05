@@ -12,6 +12,7 @@ import HourHeatmap from '@/components/HourHeatmap'
 import SegmentedControl from '@/components/ui/SegmentedControl'
 import InfoHint from '@/components/ui/InfoHint'
 import Button from '@/components/ui/Button'
+import ChartTable from '@/components/ui/ChartTable'
 import DataBanner from '@/components/DataBanner'
 import { SensorRow } from '@/lib/types'
 import { healthLabel } from '@/lib/calculations'
@@ -232,6 +233,11 @@ export default function TrendsPage() {
           <InfoHint label="gezondheidsscore" text="0–100, hoger = beter (dezelfde score als op het dashboard). Let op: de WoonScore op de Schimmel-pagina loopt juist andersom — daar betekent hoger méér risico." />
           <span>Groen ≥ 65 · Amber 40–64 · Rood &lt; 40 · Stippellijn = interventie · lijn = 7-daags gemiddelde</span>
         </p>
+        <ChartTable
+          caption="Huisgezondheid per dag"
+          columns={[{ key: 'd', label: 'Datum' }, { key: 's', label: 'Score' }, { key: 'r', label: '7-daags gem.' }]}
+          rows={timelineData.map((p) => ({ d: new Date(p.t).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' }), s: `${p.score}`, r: p.rolling.toFixed(0) }))}
+        />
       </ChartCard>
 
       {/* Monthly */}
@@ -240,6 +246,11 @@ export default function TrendsPage() {
         <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--muted)', marginTop: 6 }}>
           Stippellijn = geschatte gemiddelde buitentemperatuur Amsterdam · Groen ≥ 65 · Amber 40–64 · Rood &lt; 40
         </p>
+        <ChartTable
+          caption="Gezondheidsscore per maand"
+          columns={[{ key: 'm', label: 'Maand' }, { key: 's', label: 'Score' }, { key: 'c', label: 'CO₂ gem.' }, { key: 'rh', label: 'RV gem.' }]}
+          rows={monthly.map((m) => ({ m: m.label, s: `${m.healthScore}`, c: `${m.co2Avg} ppm`, rh: `${m.rhAvg}%` }))}
+        />
       </ChartCard>
 
       {/* Heatmap */}
