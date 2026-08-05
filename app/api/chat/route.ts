@@ -5,6 +5,7 @@ import { CHAT_SYSTEM_PROMPT, CHAT_TOOLS, buildDataSummary, formatSensorQuery } f
 import { toSeries, buildDiagnosis, Diagnosis } from '@/lib/reportAnalytics'
 import { analyzeNights, NightsAnalysis } from '@/lib/nightForecast'
 import { beforeAfter } from '@/lib/trends'
+import { enforce, LIMITS } from '@/lib/rateLimit'
 
 const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY!
 const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL ?? 'google/gemini-2.5-flash'
@@ -106,6 +107,10 @@ export async function POST(req: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Niet ingelogd' }, { status: 401 })
+
+  // Costs money per call, and up to MAX_TOOL_ROUNDS model round-trips per request.
+  const limited = enforce('chat', user.id, LIMITS.chat)
+  if (limited) return limited
 
   if (!OPENROUTER_KEY) return NextResponse.json({ reply: '⚠ Voeg OPENROUTER_API_KEY toe om de AI-chat te activeren.' })
 

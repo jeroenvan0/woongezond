@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
+import { enforce, LIMITS } from '@/lib/rateLimit'
 
 const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY!
 const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL ?? 'google/gemini-2.5-flash'
@@ -31,6 +32,11 @@ export async function POST(req: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Niet ingelogd' }, { status: 401 })
+
+  // Costs money per call (OpenRouter). Rate limit after auth, per user.
+  const limited = enforce('recommendations', user.id, LIMITS.recommendations)
+  if (limited) return limited
+
   if (!OPENROUTER_KEY) return NextResponse.json({ recommendations: [] })
 
   try {

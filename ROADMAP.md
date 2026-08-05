@@ -1,13 +1,20 @@
 # Woongezond — Roadmap to Production (10-device pilot)
 
-Status snapshot: 2026-08-04. Based on a full code audit + live inspection of the Supabase
+Status snapshot: 2026-08-05. Based on a full code audit + live inspection of the Supabase
 project (`vciwibiiisobhotzxcyn`, schema/RLS/advisors pulled directly from the database).
+
+**Resuming work? Start at [docs/STATUS.md](docs/STATUS.md)** — what's done, what's in
+flight, what's blocked and on whom.
 
 See also:
 - [CALCULATIONS.md](CALCULATIONS.md) — every formula/threshold behind the mould-risk,
   health-score and report-diagnosis calculations, explicitly marked v1/unvalidated pending
   the pilot.
 - [DECISIONS.md](DECISIONS.md) — running log of non-obvious choices and what was rejected.
+- [docs/known-issues.md](docs/known-issues.md) — diagnosed-but-unfixed defects, with root
+  causes, so the analysis isn't redone.
+- [docs/firmware-provisioning.md](docs/firmware-provisioning.md) — how per-device firmware
+  gets flashed and how a resident sets up Wi-Fi unaided.
 - [WISHLIST.md](WISHLIST.md) — unscheduled ideas, incl. the woningcorporatie portfolio portal.
 
 ## Where things actually stand today
@@ -152,6 +159,14 @@ devices") avoids doing this twice.
       mark it active/inactive — replacing today's manual SQL. For the 10-device pilot this can
       stay admin-only (you enroll each device before flashing it) — the QR-code, self-service
       version is a distinct follow-on (see below), not required to hit "pilot ready."
+- [ ] Write `scripts/provision-device.mjs` — the bench flow that mints a credential, writes
+      it to the device's NVS partition, flashes, verifies and prints the sticker. Design in
+      [docs/firmware-provisioning.md](docs/firmware-provisioning.md). Depends on the admin
+      enrollment endpoint above. **Key decision recorded there: one firmware image for all
+      devices, per-device identity supplied as NVS data — never a per-device recompile.**
+- [ ] Resident-side Wi-Fi onboarding: SoftAP captive portal, so the household enters its own
+      Wi-Fi password (which cannot be known at flash time) without a cable or an app. Same
+      doc.
 - [ ] *(Future, post-pilot)* QR-code self-install: extend the admin enrollment flow into a
       public claim-code flow — generate an unclaimed device credential + QR code in advance,
       have the device flash with it, and let the resident "claim" it into their account by
@@ -164,33 +179,89 @@ devices") avoids doing this twice.
 Goal: threshold alerts fire even when nobody has the dashboard open — the whole point of an
 unattended pilot.
 
-- [ ] Port `/api/notifications/check` to a systemd timer (mirroring
+> **This milestone has already proved its own case.** As of 2026-08-05 the active sensor has
+> been silent since 2026-08-03 11:12Z, a second device since 2026-05-25, and a third has never
+> reported at all — none of it noticed by anything. Evidence in
+> [docs/known-issues.md §KI-3](docs/known-issues.md#ki-3--live-sensor-silent-since-2026-08-03-nothing-noticed).
+> Device-liveness alerting therefore belongs *here*, not deferred as the M2 design doc's §7
+> tentatively suggested.
+
+**Code complete 2026-08-05, not yet deployed.** The units in `ops/systemd/` still need
+copying to the VPS and enabling — see [ops/README.md](ops/README.md). Nothing below has
+run in production yet.
+
+- [x] Port `/api/notifications/check` to a systemd timer (mirroring
       `ops/systemd/woongezond-weather.timer` exactly) instead of relying on
       `NotificationBell.tsx`'s 120s client poll.
-- [ ] Make the Resend email send retry-once-on-failure and log failures server-side
+      → `ops/systemd/woongezond-notifications.{service,timer}`, every 15 min. The route now
+      has two entry points over one implementation: `x-cron-secret` sweeps every user,
+      a session sweeps only that user. `?dry=1` reports what would fire without writing.
+- [x] Make the Resend email send retry-once-on-failure and log failures server-side
       (`console.error` at minimum) instead of the current silent `catch {}`.
-- [ ] Add a `/api/health` endpoint (DB reachable, last ingest timestamp per device) for the
+      → `lib/email.ts`. Logs at error level with "resident was NOT notified" when both
+      attempts fail.
+- [x] Add a `/api/health` endpoint (DB reachable, last ingest timestamp per device) for the
       process supervisor / an uptime check to hit — there is none today.
-- [ ] Add minimal server-side logging across API routes (today: nothing reaches stdout for most
+      → `app/api/health/route.ts`. Public response is counts only; the per-device breakdown
+      needs `x-cron-secret`, so it cannot re-leak resident names the way
+      `get_device_locations()` did (DECISIONS D1).
+- [x] Add minimal server-side logging across API routes (today: nothing reaches stdout for most
       caught errors) so `journalctl -u woongezond-react` is actually useful for debugging a
       10-device fleet.
-- [ ] Make `/api/notifications/check` and the ML retrain job device-scoped rather than
-      user-scoped: today both only ever look at "the latest reading" / "all readings" for a
-      user with no `device_id` filter, so on a multi-device account one loud device can mask a
-      quiet problem on another, and a Ridge model would train on a confused blend of two rooms.
-      Detailed in [CALCULATIONS.md](CALCULATIONS.md) §8–9.
+      → `lib/logger.ts`, one JSON object per line, greppable with `jq`.
+- [x] **Device-liveness alerting** (added to this milestone, see the note above) — a
+      `device_offline` alert after 60 min of silence, rate-limited to one per 12 h.
+      Thresholds are deliberately *not* evaluated against a stale reading: a two-day-old
+      CO₂ value is not a fact about the room now.
+- [x] Make `/api/notifications/check` … device-scoped rather than user-scoped: today both
+      only ever look at "the latest reading" / "all readings" for a user with no `device_id`
+      filter, so on a multi-device account one loud device can mask a quiet problem on
+      another. Detailed in [CALCULATIONS.md](CALCULATIONS.md) §8–9.
+      → The sweep iterates devices, and `thresholds` rows scoped to a `device_id` now
+      override the user-level default.
+- [ ] **ML retrain is still user-scoped** — the other half of the item above. `fetchReadings`
+      in `app/api/ml/retrain/route.ts` has no `device_id` filter, so a two-device account
+      trains one Ridge model on a blend of two rooms. Left for the multi-device UI work in
+      M4, which has to decide which device a model belongs to.
+- [ ] Deploy: copy both timers to the VPS, `systemctl enable --now`, and dry-run the sweep
+      first ([ops/README.md](ops/README.md)).
+- [ ] Fix the duplicate-notification race — needs a destructive dedupe of existing rows, so
+      it needs your go-ahead: [docs/known-issues.md §KI-4](docs/known-issues.md#ki-4--every-notification-is-written-twice-pre-existing-race).
 
 ## Milestone 4 — Hardening + pilot UX polish
 
 Goal: the app is safe to hand to 10 real households and looks/feels finished.
 
-- [ ] Add security headers in `next.config.ts` (CSP, X-Frame-Options, Referrer-Policy,
+- [x] Add security headers in `next.config.ts` (CSP, X-Frame-Options, Referrer-Policy,
       Permissions-Policy at minimum).
-- [ ] Add basic rate limiting on `/api/chat`, `/api/recommendations`, `/api/ml/retrain` (cost
+      → Static headers in `next.config.ts`; **CSP moved to `proxy.ts`** with a per-request
+      nonce + `strict-dynamic`, because `script-src 'unsafe-inline'` would have been
+      decoration on an app that renders AI-generated markdown. Note Next 16 renamed
+      `middleware.ts` → `proxy.ts`. Cost, accepted: all pages are now dynamically rendered.
+      Verified in headless Chrome — 0 CSP violations, hydration intact, in dev *and* in a
+      production build (where `'unsafe-eval'` is dropped).
+- [x] Add basic rate limiting on `/api/chat`, `/api/recommendations`, `/api/ml/retrain` (cost
       exposure on OpenRouter + a 200k-row scan today) and `/api/notifications/check`.
-- [ ] Unit tests for the pure calculation layer: `lib/calculations.ts`, `lib/mouldModels.ts`,
+      → `lib/rateLimit.ts`, keyed per user, applied after auth. In-process memory: correct
+      for one `next start` process, and explicitly not durable — revisit at M5 if the app is
+      ever containerized or scaled out.
+- [x] Unit tests for the pure calculation layer: `lib/calculations.ts`, `lib/mouldModels.ts`,
       `lib/trends.ts` — these are pure functions, trivially testable, and the highest-value place
       to start given zero test tooling exists today. Add `vitest` + a `test` script.
+      → 72 tests in `tests/`, `npm test`. They assert physical invariants (dew point ≤ air
+      temperature, VTT index bounded 0–6, RH↔absolute-humidity round-trip) rather than
+      restating the formulas, so they would catch a wrong formula rather than ratify it.
+- [ ] **Fix the smoothing slider — it reports misleading numbers today.** The slider is
+      labelled in minutes but applies a window in *samples*, and `/api/data`'s bucket size
+      varies by period, so on the 1-year view "60 min" smooths over 15 days. Worse, the KPI
+      cards and health score read from the smoothed series, so dragging a cosmetic slider
+      changes the headline "current" readings. Root cause + proposed fix:
+      [docs/known-issues.md §KI-1](docs/known-issues.md#ki-1--the-smoothing-slider-lies-about-its-unit-misleading-data).
+      High priority — this app's output is framed as evidentiary.
+- [ ] **Fix the notification centre opening off-screen.** It hangs off the bottom-left
+      sidebar but is positioned as if it were a top-right header menu: 263 px clipped off
+      the left edge, 61 px below the fold, only 57 px of a 320 px panel visible. Measured,
+      not estimated: [docs/known-issues.md §KI-2](docs/known-issues.md#ki-2--notification-centre-opens-off-screen).
 - [ ] Multi-device UI: dashboard/trends need a device switcher now that one account can have
       several devices (today's UI implicitly assumes one).
 - [ ] Decide + implement password reset / account creation flow for onboarding 10 new pilot
