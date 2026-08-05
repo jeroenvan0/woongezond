@@ -13,11 +13,13 @@ import MLPredictionCard from '@/components/MLPredictionCard'
 import NightOutlookCard from '@/components/NightOutlookCard'
 import ContinuityChip from '@/components/ContinuityChip'
 import DataBanner from '@/components/DataBanner'
+import FirstRunNotice from '@/components/FirstRunNotice'
 import SegmentedControl from '@/components/ui/SegmentedControl'
 import SectionHeading from '@/components/ui/SectionHeading'
 import Stat from '@/components/ui/Stat'
 import InfoHint from '@/components/ui/InfoHint'
 import ChartTable from '@/components/ui/ChartTable'
+import { MetricCardSkeleton } from '@/components/ui/Skeleton'
 import { ProcessedRow, SensorRow } from '@/lib/types'
 import { dewpoint, mouldRisk, co2Status, rhStatus, tempStatus, mouldStatus, movingAverage, healthScore, healthLabel, absHumidityGkg } from '@/lib/calculations'
 import { windowMinutes, maxWindowPoints, formatWindow } from '@/lib/smoothing'
@@ -189,6 +191,9 @@ export default function DashboardPage() {
   // to the last processed row's timestamp. Once offline, no card may show a status.
   const fresh = freshness(latestTs ?? last?.ts ?? null, nowTick)
   const stale = fresh.offline
+  // Day-one: no reading and no series at all. Show the positive first-run card
+  // instead of the KPI/chart empty states (H3).
+  const firstRun = !loading && !last && rawRows.length === 0
   const withStatus = (s: { label: string; color: string } | null) => (stale ? null : s)
 
   const co2s = last ? co2Status(last.co2) : null
@@ -220,8 +225,17 @@ export default function DashboardPage() {
     <AppShell title="Dashboard" actions={periodSelect}>
       <DataBanner error={dataError} onRetry={refetch} />
 
+      {firstRun && <FirstRunNotice />}
+
+      {!firstRun && (
+      <>
       {/* KPI cards — aria-live so a screen reader hears the values update (D4) */}
       <section aria-label="Huidige metingen" aria-live="polite">
+        {loading && !last ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 10, marginBottom: 14 }}>
+            {Array.from({ length: 6 }).map((_, i) => <MetricCardSkeleton key={i} />)}
+          </div>
+        ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 10, marginBottom: 8 }}>
           {card('CO₂', last?.co2.toFixed(0) ?? '—', 'ppm', co2s, 'var(--c-co2)', <Wind size={14} />, last ? Math.min(100, last.co2 / 20) : 0)}
           {card('Temperatuur', last?.temp.toFixed(1) ?? '—', '°C', temps, 'var(--c-temp)', <Thermometer size={14} />)}
@@ -242,6 +256,7 @@ export default function DashboardPage() {
             />
           )}
         </div>
+        )}
 
         {/* Freshness contract (A1): the age of the reported values, always visible. */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, fontSize: 'var(--fs-xs)', flexWrap: 'wrap' }}>
@@ -411,6 +426,8 @@ export default function DashboardPage() {
         <ContinuityChip />
         <span>{rows.length} meetpunten · {stale ? fresh.offlineMessage.toLowerCase() : `laatste meting ${fresh.ago}`}</span>
       </div>
+      </>
+      )}
 
       <ChatWidget />
     </AppShell>
