@@ -198,6 +198,16 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 .wz-two-col{display:grid;grid-template-columns:1fr;gap:16px}
 @media (min-width:760px){.wz-two-col{grid-template-columns:minmax(280px,1fr) minmax(300px,1.2fr)}}
 
+/* Print (4.2): the report now lives inside AppShell, so when printing we strip the
+   shell chrome and let the paper sheet fill the page — the printed output stays the
+   plain white document it was before it moved into the shell. */
+@media print {
+  .wz-sidebar, .wz-topbar, .wz-bottombar, .wz-chat, .wz-skip { display: none !important; }
+  .wz-main { margin: 0 !important; padding: 0 !important; }
+  .wz-shell { background: #fff !important; }
+  .wz-content { max-width: none !important; }
+}
+
 /* Weather strip — theme-aware, on the analytical accent (indigo) */
 .wz-weather{background:linear-gradient(135deg,var(--accent-fill) 0%,var(--brand-fill) 100%);border:1px solid var(--border)}
 .dark .wz-weather{background:linear-gradient(135deg,var(--accent-fill) 0%,var(--brand-fill) 100%);border:1px solid var(--border)}

@@ -3,6 +3,8 @@ import { useState, useMemo } from 'react'
 import { withBase } from '@/lib/basePath'
 import AppShell from '@/components/AppShell'
 import MetricCard from '@/components/MetricCard'
+import SegmentedControl from '@/components/ui/SegmentedControl'
+import Button from '@/components/ui/Button'
 import {
   scenarioOutputs,
   pctTimeCo2Above1000,
@@ -15,6 +17,8 @@ import {
 } from '@/lib/calculations'
 import MLPredictionCard from '@/components/MLPredictionCard'
 import ChatWidget from '@/components/ChatWidget'
+import { useStickyState } from '@/lib/useStickyState'
+import { Sparkles, Trash2 } from 'lucide-react'
 
 const SEASON_DEFAULTS: Record<string, { outdoorTemp: number; outdoorRh: number }> = {
   winter: { outdoorTemp: 3, outdoorRh: 85 },
@@ -30,13 +34,14 @@ const HABIT_LABELS: Record<WindowHabit, string> = {
 }
 
 function Slider({ label, value, min, max, step, unit, onChange }: any) {
+  const id = `sc-${label.replace(/[^a-z0-9]/gi, '').toLowerCase()}`
   return (
     <div style={{ marginBottom: 14 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</span>
-        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{value}{unit}</span>
+        <label htmlFor={id} style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</label>
+        <span style={{ fontSize: 'var(--fs-md)', fontWeight: 700, color: 'var(--text)' }}>{value}{unit}</span>
       </div>
-      <input type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(+e.target.value)} style={{ width: '100%', accentColor: '#3B82F6' }} />
+      <input id={id} type="range" min={min} max={max} step={step} value={value} onChange={(e) => onChange(+e.target.value)} style={{ width: '100%', accentColor: 'var(--brand)' }} />
     </div>
   )
 }
@@ -63,7 +68,9 @@ export default function ScenariosPage() {
   const [windowHabit, setWindowHabit] = useState<WindowHabit>('occasional')
   const [recs, setRecs] = useState<any[]>([])
   const [recsLoading, setRecsLoading] = useState(false)
-  const [saved, setSaved] = useState<SavedScenario[]>([])
+  // F4: saved scenarios persist across reloads like every other filter, instead of
+  // living in transient React state that a refresh silently wiped.
+  const [saved, setSaved] = useStickyState<SavedScenario[]>('wz-saved-scenarios', [])
   const [saveName, setSaveName] = useState('')
 
   const result = useMemo(
@@ -100,32 +107,41 @@ export default function ScenariosPage() {
   }
 
   function saveScenario() {
-    if (saved.length >= 5) setSaved((s) => s.slice(1))
-    setSaved((s) => [
-      ...s,
-      { id: `${s.length}-${saveName || 'scenario'}`, name: saveName || `Scenario ${s.length + 1}`, ach, occupants, outdoorTemp, indoorRh: result.indoorRh, co2Night: result.co2Night, mould: result.mouldRisk, hs },
-    ])
+    setSaved((s) => {
+      const entry: SavedScenario = {
+        id: `${Date.now()}`,
+        name: saveName || `Scenario ${s.length + 1}`,
+        ach, occupants, outdoorTemp,
+        indoorRh: result.indoorRh, co2Night: result.co2Night, mould: result.mouldRisk, hs,
+      }
+      // Cap at 5, dropping the oldest — but the cap is no longer silent (F4).
+      return [...s, entry].slice(-5)
+    })
     setSaveName('')
   }
 
-  const sevColor = (s: string) => (s === 'critical' ? '#DC2626' : s === 'warning' ? '#D97706' : '#3B82F6')
+  function deleteScenario(id: string) {
+    setSaved((s) => s.filter((x) => x.id !== id))
+  }
+
+  const sevColor = (s: string) => (s === 'critical' ? 'var(--crit)' : s === 'warning' ? 'var(--warn)' : 'var(--accent)')
 
   return (
     <AppShell title="Scenario's">
       <div className="wz-two-col">
         {/* LEFT — inputs */}
-        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '20px 18px', boxShadow: 'var(--shadow-xs)', height: 'fit-content' }}>
-          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', marginBottom: 18 }}>Wat-als parameters</div>
+        <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--r-lg)', padding: '20px 18px', boxShadow: 'var(--shadow-xs)', height: 'fit-content' }}>
+          <div style={{ fontSize: 'var(--fs-lg)', fontWeight: 700, color: 'var(--text)', marginBottom: 18 }}>Wat-als parameters</div>
 
           <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>Seizoen</div>
-            <div style={{ display: 'flex', gap: 6 }}>
-              {Object.keys(SEASON_DEFAULTS).map((s) => (
-                <button key={s} onClick={() => applySeason(s)} style={{ flex: 1, padding: '6px 4px', borderRadius: 8, border: '1px solid var(--border)', background: season === s ? '#3B82F618' : 'var(--surface-2)', color: season === s ? '#3B82F6' : 'var(--muted)', fontSize: 11, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize' }}>
-                  {s}
-                </button>
-              ))}
-            </div>
+            <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 8 }}>Seizoen</div>
+            <SegmentedControl
+              ariaLabel="Seizoen"
+              fill
+              options={Object.keys(SEASON_DEFAULTS).map((s) => ({ label: s.charAt(0).toUpperCase() + s.slice(1), value: s }))}
+              value={season}
+              onChange={applySeason}
+            />
           </div>
 
           <Slider label="Buitentemperatuur" value={outdoorTemp} min={-10} max={35} step={0.5} unit="°C" onChange={setOutdoorTemp} />
@@ -133,67 +149,65 @@ export default function ScenariosPage() {
           <Slider label="Bewoners (nacht)" value={occupants} min={1} max={6} step={1} unit="" onChange={setOccupants} />
           <Slider label="Ventilatie ACH" value={ach} min={0.3} max={3} step={0.05} unit=" /h" onChange={setAch} />
 
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text)', cursor: 'pointer', marginBottom: 14 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 'var(--fs-md)', color: 'var(--text)', cursor: 'pointer', marginBottom: 14 }}>
             <input type="checkbox" checked={heating} onChange={(e) => setHeating(e.target.checked)} /> Verwarming aan
           </label>
 
           <div style={{ marginBottom: 16 }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>Raam ventilatie gewoonte</div>
-            <select value={windowHabit} onChange={(e) => setWindowHabit(e.target.value as WindowHabit)} style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface-2)', color: 'var(--text)', fontSize: 13 }}>
+            <label htmlFor="sc-habit" style={{ display: 'block', fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 6 }}>Raam ventilatie gewoonte</label>
+            <select id="sc-habit" value={windowHabit} onChange={(e) => setWindowHabit(e.target.value as WindowHabit)} style={{ width: '100%', padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--surface-2)', color: 'var(--text)', fontSize: 'var(--fs-md)' }}>
               {(Object.keys(HABIT_LABELS) as WindowHabit[]).map((h) => (
                 <option key={h} value={h}>
                   {HABIT_LABELS[h]}
                 </option>
               ))}
             </select>
-            <div style={{ fontSize: 11, color: 'var(--subtle)', marginTop: 6 }}>
+            <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--subtle)', marginTop: 6 }}>
               Effectieve ventilatie: <b style={{ color: 'var(--muted)' }}>{result.effAch.toFixed(2)} /h</b> (raam-gewoonte telt mee)
             </div>
           </div>
 
           <div style={{ display: 'flex', gap: 8 }}>
-            <input value={saveName} onChange={(e) => setSaveName(e.target.value)} placeholder="Naam scenario…" style={{ flex: 1, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface-2)', color: 'var(--text)', fontSize: 13, outline: 'none' }} />
-            <button onClick={saveScenario} disabled={saved.length >= 5} style={{ padding: '8px 14px', background: '#3B82F6', color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: saved.length >= 5 ? 0.5 : 1 }}>
-              Opslaan
-            </button>
+            <input value={saveName} onChange={(e) => setSaveName(e.target.value)} placeholder="Naam scenario…" aria-label="Naam scenario" style={{ flex: 1, padding: '8px 10px', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--surface-2)', color: 'var(--text)', fontSize: 'var(--fs-md)', outline: 'none' }} />
+            <Button variant="primary" onClick={saveScenario}>Opslaan</Button>
           </div>
         </div>
 
         {/* RIGHT — results */}
         <div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', marginBottom: 14 }}>Resultaten</div>
+          <div style={{ fontSize: 'var(--fs-lg)', fontWeight: 700, color: 'var(--text)', marginBottom: 14 }}>Resultaten</div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
-            <MetricCard title="CO₂ nacht" value={result.co2Night.toFixed(0)} unit="ppm" label={co2Status(result.co2Night).label} labelColor={co2Status(result.co2Night).color} accent="#3B82F6" />
-            <MetricCard title="CO₂ dag" value={result.co2Day.toFixed(0)} unit="ppm" label={co2Status(result.co2Day).label} labelColor={co2Status(result.co2Day).color} accent="#3B82F6" />
-            <MetricCard title="Binnen RV" value={result.indoorRh.toFixed(0)} unit="%" label={rhStatus(result.indoorRh).label} labelColor={rhStatus(result.indoorRh).color} accent="#10B981" />
-            <MetricCard title="Schimmel" value={result.mouldRisk.toFixed(0)} unit="/ 100" label={mouldStatus(result.mouldRisk).label} labelColor={mouldStatus(result.mouldRisk).color} accent="#F97316" progress={result.mouldRisk} />
-            <MetricCard title="Wandtemp" value={result.wallTemp.toFixed(1)} unit="°C" accent="#8B5CF6" />
-            <MetricCard title="Dauwpunt" value={result.dewpoint.toFixed(1)} unit="°C" accent="#8B5CF6" />
-            <MetricCard title="% > 1000 ppm" value={pctCo2.toFixed(0)} unit="%" accent="#3B82F6" progress={pctCo2} />
+            <MetricCard title="CO₂ nacht" value={result.co2Night.toFixed(0)} unit="ppm" label={co2Status(result.co2Night).label} labelColor={co2Status(result.co2Night).color} accent="var(--c-co2)" />
+            <MetricCard title="CO₂ dag" value={result.co2Day.toFixed(0)} unit="ppm" label={co2Status(result.co2Day).label} labelColor={co2Status(result.co2Day).color} accent="var(--c-co2)" />
+            <MetricCard title="Binnen RV" value={result.indoorRh.toFixed(0)} unit="%" label={rhStatus(result.indoorRh).label} labelColor={rhStatus(result.indoorRh).color} accent="var(--c-rh)" />
+            <MetricCard title="Schimmel" value={result.mouldRisk.toFixed(0)} unit="/ 100" label={mouldStatus(result.mouldRisk).label} labelColor={mouldStatus(result.mouldRisk).color} accent="var(--c-mould)" progress={result.mouldRisk} />
+            <MetricCard title="Wandtemp" value={result.wallTemp.toFixed(1)} unit="°C" accent="var(--c-dew)" />
+            <MetricCard title="Dauwpunt" value={result.dewpoint.toFixed(1)} unit="°C" accent="var(--c-dew)" />
+            <MetricCard title="% > 1000 ppm" value={pctCo2.toFixed(0)} unit="%" accent="var(--accent)" progress={pctCo2} />
             <MetricCard title="Gezondheid" value={`${hs}`} unit="/ 100" label={hl.label} labelColor={hl.color} accent={hl.color} progress={hs} />
           </div>
 
-          <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 14, padding: '8px 12px', background: 'var(--surface-tint)', borderRadius: 8 }}>
+          <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--muted)', marginBottom: 14, padding: '8px 12px', background: 'var(--surface-tint)', borderRadius: 'var(--r-sm)' }}>
             Binnentemperatuur aanname: <b>{result.indoorTemp.toFixed(1)}°C</b> (verwarming {heating ? 'aan' : 'uit'})
           </div>
 
           <MLPredictionCard />
 
-          <button onClick={getRecommendations} disabled={recsLoading} style={{ width: '100%', padding: '11px', background: 'linear-gradient(135deg,#3B82F6 0%,#2563EB 100%)', color: '#fff', border: 'none', borderRadius: 10, fontSize: 14, fontWeight: 600, cursor: 'pointer', marginBottom: 14, opacity: recsLoading ? 0.7 : 1 }}>
-            {recsLoading ? '⏳ Aanbevelingen laden…' : '✨ Aanbevelingen genereren'}
-          </button>
+          <Button variant="primary" onClick={getRecommendations} disabled={recsLoading} icon={<Sparkles size={15} />} style={{ width: '100%', marginBottom: 14 }}>
+            {recsLoading ? 'Aanbevelingen laden…' : 'Aanbevelingen genereren'}
+          </Button>
 
           {recs.length > 0 && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {recs.map((r, i) => (
-                <div key={i} style={{ padding: '12px 14px', border: `1px solid ${sevColor(r.severity)}28`, borderRadius: 12, background: `${sevColor(r.severity)}08` }}>
+                <div key={i} style={{ padding: '12px 14px', border: `1px solid color-mix(in srgb, ${sevColor(r.severity)} 24%, transparent)`, borderRadius: 'var(--r-md)', background: `color-mix(in srgb, ${sevColor(r.severity)} 7%, transparent)` }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                     <span style={{ width: 8, height: 8, borderRadius: '50%', background: sevColor(r.severity), flexShrink: 0 }} />
-                    <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)' }}>{r.title}</span>
-                    <span style={{ fontSize: 10, fontWeight: 700, color: sevColor(r.severity), background: `${sevColor(r.severity)}18`, padding: '2px 8px', borderRadius: 99, marginLeft: 'auto', textTransform: 'uppercase' }}>{r.severity}</span>
+                    <span style={{ fontWeight: 600, fontSize: 'var(--fs-md)', color: 'var(--text)' }}>{r.title}</span>
+                    <span style={{ fontSize: 'var(--fs-2xs)', fontWeight: 700, color: sevColor(r.severity), background: `color-mix(in srgb, ${sevColor(r.severity)} 15%, transparent)`, padding: '2px 8px', borderRadius: 'var(--r-pill)', marginLeft: 'auto', textTransform: 'uppercase' }}>{r.severity}</span>
                   </div>
-                  <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.5 }}>{r.body}</div>
+                  <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--muted)', lineHeight: 1.5 }}>{r.body}</div>
                 </div>
               ))}
             </div>
@@ -202,14 +216,14 @@ export default function ScenariosPage() {
       </div>
 
       {saved.length > 0 && (
-        <div style={{ marginTop: 24, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '16px 18px', boxShadow: 'var(--shadow-xs)' }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', marginBottom: 14 }}>Vergelijking opgeslagen scenario&apos;s</div>
+        <div style={{ marginTop: 24, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--r-lg)', padding: '16px 18px', boxShadow: 'var(--shadow-xs)' }}>
+          <div style={{ fontSize: 'var(--fs-lg)', fontWeight: 700, color: 'var(--text)', marginBottom: 14 }}>Vergelijking opgeslagen scenario&apos;s</div>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--fs-sm)' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  {['Naam', 'ACH', 'Bewoners', 'Buitentemp', 'CO₂ nacht', 'Binnen RV', 'Schimmel', 'Score'].map((h) => (
-                    <th key={h} style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{h}</th>
+                  {['Naam', 'ACH', 'Bewoners', 'Buitentemp', 'CO₂ nacht', 'Binnen RV', 'Schimmel', 'Score', ''].map((h, i) => (
+                    <th key={i} style={{ padding: '6px 10px', textAlign: 'left', fontWeight: 600, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -224,6 +238,11 @@ export default function ScenariosPage() {
                     <td style={{ padding: '8px 10px', color: 'var(--muted)' }}>{s.indoorRh.toFixed(0)}%</td>
                     <td style={{ padding: '8px 10px', fontWeight: 600, color: mouldStatus(s.mould).color }}>{s.mould.toFixed(0)}</td>
                     <td style={{ padding: '8px 10px', fontWeight: 700, color: healthLabel(s.hs).color }}>{s.hs} — {healthLabel(s.hs).label}</td>
+                    <td style={{ padding: '8px 10px' }}>
+                      <button onClick={() => deleteScenario(s.id)} title="Verwijder scenario" aria-label={`Scenario "${s.name}" verwijderen`} style={{ display: 'inline-flex', background: 'transparent', border: 'none', color: 'var(--muted)', cursor: 'pointer', padding: 4 }}>
+                        <Trash2 size={14} />
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
