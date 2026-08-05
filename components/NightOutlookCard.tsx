@@ -1,31 +1,20 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useMemo } from 'react'
 import { Moon } from 'lucide-react'
-import { withBase } from '@/lib/basePath'
 import { nightForecast, NightOutlook } from '@/lib/nightForecast'
+import { useSeries } from '@/lib/useSeries'
 
 const COLORS = { ok: 'var(--ok)', warning: 'var(--warn)', critical: 'var(--crit)' } as const
 
 export default function NightOutlookCard() {
-  const [outlook, setOutlook] = useState<NightOutlook | null>(null)
-  const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    ;(async () => {
-      try {
-        const r = await fetch(withBase('/api/data?minutes=20160')) // 14 days → enough nights
-        const d = await r.json()
-        const readings = (d.rows ?? [])
-          .filter((x: any) => x.co2 != null && x.created_at)
-          .map((x: any) => ({ timestamp: new Date(x.created_at).getTime(), co2: +x.co2 }))
-        setOutlook(nightForecast(readings, Date.now()))
-      } catch {
-        setOutlook(null)
-      } finally {
-        setLoading(false)
-      }
-    })()
-  }, [])
+  const { rows, loading } = useSeries(20160) // 14 days → enough nights, shared cache
+  const outlook: NightOutlook | null = useMemo(() => {
+    const readings = (rows ?? [])
+      .filter((x: any) => x.co2 != null && x.created_at)
+      .map((x: any) => ({ timestamp: new Date(x.created_at).getTime(), co2: +x.co2 }))
+    if (!readings.length) return null
+    return nightForecast(readings, Date.now())
+  }, [rows])
 
   const wrap: React.CSSProperties = {
     background: 'var(--accent-fill)',

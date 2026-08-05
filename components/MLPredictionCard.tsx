@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Brain, RotateCw } from 'lucide-react'
 import { withBase } from '@/lib/basePath'
+import { getSeries } from '@/lib/useSeries'
 import { buildFeatureVector, predict, ModelWeights, SensorReading, Prediction } from '@/lib/ml'
 import { co2Status, rhStatus, mouldStatus } from '@/lib/calculations'
 
@@ -20,8 +21,7 @@ export default function MLPredictionCard() {
   const [trainMsg, setTrainMsg] = useState('')
 
   const buildPrediction = useCallback(async (m: ModelWeights) => {
-    const r = await fetch(withBase('/api/data?minutes=4320')) // last 3 days
-    const d = await r.json()
+    const d = await getSeries(4320) // last 3 days, shared cache/dedupe
     const readings: SensorReading[] = (d.rows ?? [])
       .filter((x: any) => x.co2 != null && x.temperature != null && x.humidity != null)
       .map((x: any) => ({

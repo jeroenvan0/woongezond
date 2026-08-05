@@ -1,7 +1,6 @@
 'use client'
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { withBase } from '@/lib/basePath'
 import { createClient } from '@/lib/supabase/client'
 import AppShell from '@/components/AppShell'
 import MetricCard from '@/components/MetricCard'
@@ -13,10 +12,11 @@ import HourHeatmap from '@/components/HourHeatmap'
 import SegmentedControl from '@/components/ui/SegmentedControl'
 import InfoHint from '@/components/ui/InfoHint'
 import Button from '@/components/ui/Button'
-import DataBanner, { DataError, describeError } from '@/components/DataBanner'
+import DataBanner from '@/components/DataBanner'
 import { SensorRow } from '@/lib/types'
 import { healthLabel } from '@/lib/calculations'
 import { useStickyState } from '@/lib/useStickyState'
+import { useSeries } from '@/lib/useSeries'
 import { Plus, Trash2 } from 'lucide-react'
 import {
   computeHealthTimeline,
@@ -88,10 +88,8 @@ const daysAgoStr = (n: number) => new Date(Date.now() - n * 86400000).toISOStrin
 export default function TrendsPage() {
   const router = useRouter()
   const supabase = createClient()
-  const [rows, setRows] = useState<SensorRow[]>([])
-  const [loading, setLoading] = useState(true)
-  const [dataError, setDataError] = useState<DataError>(null)
   const [rangeDays, setRangeDays] = useStickyState('wz-trends-range', 90)
+  const { rows, loading, error: dataError, refetch } = useSeries(rangeDays * 1440)
   const [metric, setMetric] = useStickyState<HeatmapMetric>('wz-trends-metric', 'co2')
   const [userId, setUserId] = useState<string | null>(null)
 
@@ -126,24 +124,9 @@ export default function TrendsPage() {
         return
       }
       setUserId(user.id)
-      setLoading(true)
-      try {
-        const r = await fetch(withBase(`/api/data?minutes=${rangeDays * 1440}`))
-        if (!r.ok) {
-          setDataError(describeError(r.status, false))
-        } else {
-          const d = await r.json()
-          setDataError(null)
-          setRows(d.rows ?? [])
-        }
-      } catch {
-        setDataError(describeError(undefined, true))
-      } finally {
-        setLoading(false)
-      }
       loadInterventions()
     })()
-  }, [rangeDays, router, supabase, loadInterventions])
+  }, [router, supabase, loadInterventions])
 
   const timeline = useMemo(() => computeHealthTimeline(rows), [rows])
   const timelineData = useMemo(() => {
@@ -211,7 +194,7 @@ export default function TrendsPage() {
 
   return (
     <AppShell title="Trends">
-      <DataBanner error={dataError} onRetry={() => setRangeDays((d) => d)} />
+      <DataBanner error={dataError} onRetry={refetch} />
 
       {/* Range selector */}
       <div style={{ marginBottom: 14 }}>

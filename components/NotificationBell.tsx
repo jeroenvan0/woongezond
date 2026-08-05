@@ -1,8 +1,8 @@
 'use client'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Bell, Settings, ChevronUp } from 'lucide-react'
-import { withBase } from '@/lib/basePath'
 import { createClient } from '@/lib/supabase/client'
+import { startNotificationSweeps } from '@/lib/notificationSweep'
 
 interface Notif {
   id: string
@@ -95,18 +95,11 @@ export default function NotificationBell({ placement = 'top' }: { placement?: Pl
     }
   }, [supabase])
 
-  // Initial load + run threshold check + poll
+  // Initial load, then a single browser-wide sweep owner drives the periodic
+  // threshold check and tells every tab (including this one) to reload (5.5 / KI-4).
   useEffect(() => {
     load()
-    fetch(withBase('/api/notifications/check'), { method: 'POST' })
-      .then(() => load())
-      .catch(() => {})
-    const id = setInterval(() => {
-      fetch(withBase('/api/notifications/check'), { method: 'POST' })
-        .then(() => load())
-        .catch(() => {})
-    }, 120000)
-    return () => clearInterval(id)
+    return startNotificationSweeps(load)
   }, [load])
 
   // Close on outside click

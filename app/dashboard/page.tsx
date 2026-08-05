@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { withBase } from '@/lib/basePath'
@@ -12,7 +12,7 @@ import ChatWidget from '@/components/ChatWidget'
 import MLPredictionCard from '@/components/MLPredictionCard'
 import NightOutlookCard from '@/components/NightOutlookCard'
 import ContinuityChip from '@/components/ContinuityChip'
-import DataBanner, { DataError, describeError } from '@/components/DataBanner'
+import DataBanner from '@/components/DataBanner'
 import SegmentedControl from '@/components/ui/SegmentedControl'
 import SectionHeading from '@/components/ui/SectionHeading'
 import Stat from '@/components/ui/Stat'
@@ -25,6 +25,7 @@ import { useStickyState } from '@/lib/useStickyState'
 import { freshness } from '@/lib/freshness'
 import { useChartColors, alpha } from '@/lib/useChartColors'
 import { useSelectedDevice } from '@/lib/useSelectedDevice'
+import { useSeries } from '@/lib/useSeries'
 import { Wind, Thermometer, Droplets, Bug, Droplet, Activity, MapPin } from 'lucide-react'
 
 const PERIOD_OPTIONS = [
@@ -85,60 +86,30 @@ export default function DashboardPage() {
   const router = useRouter()
   const supabase = createClient()
   const selectedDevice = useSelectedDevice()
-  const [rawRows, setRawRows] = useState<SensorRow[]>([])
-  const [loading, setLoading] = useState(true)
   const [period, setPeriod] = useStickyState('wz-dash-period', 1440)
   const [tab, setTab] = useState('metingen')
   // Smoothing window in SAMPLES, not minutes — see applyMA. The wall-clock
   // equivalent is derived from bucketMinutes and shown next to the slider.
   const [maPoints, setMaPoints] = useState(0)
-  const [bucketMinutes, setBucketMinutes] = useState(1)
   const [latest, setLatest] = useState<ProcessedRow | null>(null)
   const [latestTs, setLatestTs] = useState<Date | null>(null)
   const [weather, setWeather] = useState<any>(null)
   const [poll, setPoll] = useState<any>(null)
-  const [dataError, setDataError] = useState<DataError>(null)
   // Tick so the "x min geleden" line and staleness re-evaluate without a refetch.
   const [nowTick, setNowTick] = useState(() => Date.now())
   const chartC = useChartColors()
 
-  const fetchData = useCallback(async () => {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser()
-    if (!user) {
-      router.push('/login')
-      return
-    }
-    try {
-      const r = await fetch(withBase(`/api/data?minutes=${period}`))
-      if (!r.ok) {
-        // A failed or rate-limited fetch is now visible (A5) instead of a silent
-        // console.error that left old data looking current.
-        setDataError(describeError(r.status, false))
-        return
-      }
-      const d = await r.json()
-      setDataError(null)
-      setRawRows(d.rows ?? [])
-      // The server tells us how wide one sample is; without it the smoothing slider
-      // cannot report a truthful window.
-      setBucketMinutes(d.bucketMinutes > 0 ? d.bucketMinutes : 1)
-    } catch (e) {
-      setDataError(describeError(undefined, true))
-    } finally {
-      // Always clear, even on failure. Otherwise the KPI cards render "—" forever
-      // while the charts still show the previous data — the state the dashboard was
-      // left in by any failed request, since `loading` gates only the card values.
-      setLoading(false)
-    }
-  }, [period, supabase, router])
+  // The chart series come through the shared, cached, visibility-gated data path
+  // (5.1/5.2) — one request per window across the whole app, polling paused on a
+  // hidden tab. A5 fetch failures surface via `dataError`.
+  const { rows: rawRows, bucketMinutes, loading, error: dataError, refetch } = useSeries(period, { poll: true })
 
+  // Auth guard — the fetch used to double as this; useSeries doesn't, so keep it explicit.
   useEffect(() => {
-    fetchData()
-    const id = setInterval(fetchData, 60000)
-    return () => clearInterval(id)
-  }, [fetchData])
+    supabase.auth.getUser().then(({ data }) => {
+      if (!data.user) router.push('/login')
+    })
+  }, [supabase, router])
 
   // The newest actual measurement, fetched independently of the chart period.
   //
@@ -231,16 +202,7 @@ export default function DashboardPage() {
   const periodSelect = (
     <select
       value={period}
-      onChange={(e) => {
-        const next = +e.target.value
-        // Only flag loading when the period genuinely changes. Setting it
-        // unconditionally left the KPI cards stuck on "—" whenever the effect that
-        // refetches didn't re-run, because `loading` gates the card values but the
-        // fetch is keyed on `period`.
-        if (next === period) return
-        setPeriod(next)
-        setLoading(true)
-      }}
+      onChange={(e) => setPeriod(+e.target.value)}
       style={{ padding: '7px 10px', fontSize: 13, fontWeight: 500, border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface)', color: 'var(--text)', cursor: 'pointer' }}
     >
       {PERIOD_OPTIONS.map((o) => (
@@ -253,7 +215,7 @@ export default function DashboardPage() {
 
   return (
     <AppShell title="Dashboard" actions={periodSelect}>
-      <DataBanner error={dataError} onRetry={fetchData} />
+      <DataBanner error={dataError} onRetry={refetch} />
 
       {/* KPI cards — aria-live so a screen reader hears the values update (D4) */}
       <section aria-label="Huidige metingen" aria-live="polite">
