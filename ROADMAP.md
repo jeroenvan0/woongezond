@@ -115,6 +115,11 @@ categories deliberately deferred to M2 and one dashboard toggle (below).
 Goal: 10 physical devices can each write their own readings without trusting a shared public
 key, and one can be individually revoked without breaking the other 9.
 
+> **Design written, not implemented:** [docs/milestone-2-device-trust-design.md](docs/milestone-2-device-trust-design.md)
+> — credential model, `deployments` table, ingest route, 3-phase migration path that
+> doesn't break the live sensor, and 5 open questions that need the firmware. Implementation
+> deliberately waits for the firmware and someone awake to watch the first device reconnect.
+
 **Why this matters even more given the QR-code self-install goal**: a QR-code flow means a
 device needs to arrive at a household with *no* per-device configuration already burned in by
 you — it has to provision itself against a fresh account when scanned. That's only safe if each
