@@ -106,7 +106,7 @@ export default function AppShell({ title, actions, children }: Props) {
 
         <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
           <div className="wz-footrow" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <NotificationBell />
+            <NotificationBell placement="side" />
             {themeBtn}
           </div>
           <div className="wz-user">

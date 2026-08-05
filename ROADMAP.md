@@ -251,17 +251,22 @@ Goal: the app is safe to hand to 10 real households and looks/feels finished.
       → 72 tests in `tests/`, `npm test`. They assert physical invariants (dew point ≤ air
       temperature, VTT index bounded 0–6, RH↔absolute-humidity round-trip) rather than
       restating the formulas, so they would catch a wrong formula rather than ratify it.
-- [ ] **Fix the smoothing slider — it reports misleading numbers today.** The slider is
-      labelled in minutes but applies a window in *samples*, and `/api/data`'s bucket size
-      varies by period, so on the 1-year view "60 min" smooths over 15 days. Worse, the KPI
-      cards and health score read from the smoothed series, so dragging a cosmetic slider
-      changes the headline "current" readings. Root cause + proposed fix:
-      [docs/known-issues.md §KI-1](docs/known-issues.md#ki-1--the-smoothing-slider-lies-about-its-unit-misleading-data).
-      High priority — this app's output is framed as evidentiary.
-- [ ] **Fix the notification centre opening off-screen.** It hangs off the bottom-left
-      sidebar but is positioned as if it were a top-right header menu: 263 px clipped off
-      the left edge, 61 px below the fold, only 57 px of a 320 px panel visible. Measured,
-      not estimated: [docs/known-issues.md §KI-2](docs/known-issues.md#ki-2--notification-centre-opens-off-screen).
+- [x] **Fix the smoothing slider — it reported misleading numbers.** ✅ 2026-08-05.
+      The slider's value is now a number of data points and it describes itself in real
+      time from the bucket size the server reports (`12 uur · 12 punten`, `1 punt = 1 uur`).
+      Conversion extracted to `lib/smoothing.ts` with 20 tests. **Two further distortions
+      surfaced while fixing it and were also fixed**: the KPI cards took the last *bucket*,
+      so the headline read 1016 ppm at 24 h and 736 ppm at 30 days for the same instant —
+      they now come from their own single-row query and read identically at every period;
+      and the cards could stick on "—" whenever `loading` was set without a refetch being
+      triggered. Detail in
+      [docs/known-issues.md §KI-1](docs/known-issues.md#ki-1--the-smoothing-slider-lied-about-its-unit--fixed-2026-08-05).
+- [x] **Fix the notification centre opening off-screen.** ✅ 2026-08-05. `NotificationBell`
+      is now placement-aware: the sidebar instance flies out right-and-up, the top-bar
+      instance is pinned to the viewport (absolute was not enough — the bell is not the
+      rightmost item in the bar). Verified with zero clipping across seven viewports
+      including a collapsed rail and 360 px mobile:
+      [docs/known-issues.md §KI-2](docs/known-issues.md#ki-2--notification-centre-opened-off-screen--fixed-2026-08-05).
 - [ ] Multi-device UI: dashboard/trends need a device switcher now that one account can have
       several devices (today's UI implicitly assumes one).
 - [ ] Decide + implement password reset / account creation flow for onboarding 10 new pilot

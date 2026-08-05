@@ -27,6 +27,10 @@ import { NextRequest, NextResponse } from 'next/server'
 //   fonts.googleapis.com / fonts.gstatic.com are allowed because app/layout.tsx loads
 //   Inter from Google. Self-hosting it via next/font would remove both exceptions and
 //   one third-party dependency — worth doing, tracked in docs/known-issues.md.
+//
+// openweathermap.org is in img-src for the weather condition icons the dashboard
+// renders straight from their CDN (app/dashboard/page.tsx). Images only — the API
+// itself is called server-side and stays out of connect-src.
 
 export function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString('base64')
@@ -37,7 +41,7 @@ export function proxy(request: NextRequest) {
     default-src 'self';
     script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${isDev ? " 'unsafe-eval'" : ''};
     style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
-    img-src 'self' blob: data:;
+    img-src 'self' blob: data: https://openweathermap.org;
     font-src 'self' data: https://fonts.gstatic.com;
     connect-src 'self' ${supabaseUrl} ${supabaseUrl.replace(/^https:/, 'wss:')};
     object-src 'none';

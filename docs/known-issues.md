@@ -9,7 +9,7 @@ Scheduled into Milestone 4 (pilot UX polish) in [../ROADMAP.md](../ROADMAP.md).
 
 ---
 
-## KI-1 — The smoothing slider lies about its unit (misleading data)
+## KI-1 — The smoothing slider lied about its unit ✅ FIXED 2026-08-05
 
 **Reported by Jeroen, 2026-08-05.** "It is smoothing the data automatically based on the
 time frame, which is fine, but when the smoothing slider is used, it gives the wrong
@@ -84,31 +84,64 @@ makes the headline "current CO₂" an average of the preceding ~22 days.
 
 ### Proposed fix
 
-1. Keep `bucketMinutes` from the API response in state.
-2. Convert in `applyMA`: `const n = Math.max(2, Math.round(windowMin / bucketMinutes))`,
-   so the label means what it says at every period.
-3. Clamp/step the slider to multiples of `bucketMinutes`, and show the effective window
-   (`"2 uur (8 punten)"`) rather than a raw minute count. When `windowMin < bucketMinutes`
-   the slider can do nothing — disable it and say so.
-4. **Drive the KPI cards from `rows`, never `displayed`.** Smoothing is a chart-reading
-   aid; it must not touch the reported current value or the health score. If a smoothed
-   headline is ever wanted, it needs an explicit label.
-5. Consider a trailing rather than centred average for anything labelled "current", since
-   a centred window at the last index is neither one thing nor the other.
+### The fix, as applied
 
-### Related, found while diagnosing
+The slider no longer pretends to be a time control that it cannot be. Its **value is a
+number of data points**, and it *describes itself* in real time using the bucket size the
+server reports.
+
+1. `bucketMinutes` is now kept from the API response ([app/dashboard/page.tsx](../app/dashboard/page.tsx)).
+   It is read from the response rather than recomputed, which matters because the
+   `air_quality_bucketed` RPC picks its bucket adaptively — the observed size on a 24-hour
+   view was 2 min, not the 1 min the static table suggests.
+2. The conversion lives in [lib/smoothing.ts](../lib/smoothing.ts) (`windowMinutes`,
+   `windowPoints`, `maxWindowPoints`, `formatWindow`) and is covered by
+   [tests/smoothing.test.ts](../tests/smoothing.test.ts) — 20 tests over every real bucket
+   size, including a round-trip and an assertion that the advertised window equals the
+   span `movingAverage` actually consumes.
+3. The label reads e.g. `12 uur · 12 punten`, with `1 punt = 1 uur` beside it, so the
+   window is unambiguous at any period. The slider disables itself with *"Te weinig data"*
+   when the series is too short to smooth, and is capped at a quarter of the series so it
+   cannot flatten the trend being examined.
+4. **The KPI cards and health score no longer read the smoothed series.**
+5. …and they no longer read the bucketed series either. That turned out to be a second,
+   separate distortion — see below.
+
+### Second defect found while fixing: the headline value moved with the *period* too
+
+With the slider fixed, the cards still disagreed with themselves across chart ranges:
+**1016 ppm at 24 hours and 736 ppm at 30 days, for the same room at the same instant.**
+`rows` is server-bucketed, so its final element is an average over one bucket — a whole
+hour on the 30-day view.
+
+A reported current value must not depend on which chart range is selected, so the cards
+now come from **their own single-row query** for the newest actual measurement,
+independent of the chart entirely. Verified: **1013 ppm at 24 h, 7 d and 30 d alike**, and
+unchanged as the slider moves.
+
+### Third defect found while verifying: KPI cards could stick on "—"
+
+`loading` gates the card values but the refetch is keyed on `period`, so any path that set
+`loading` without triggering a fetch left the cards blank while the charts showed data.
+Two paths did: a failed `/api/data` response returned early without clearing the flag
+(reachable via the new rate limiter or any network blip), and re-selecting the
+already-selected period set the flag without changing `period`. Both fixed — the flag is
+now cleared in a `finally`, and only set when the period genuinely changes.
+
+### Still open — `rawCount` is wrong
 
 `rawCount` in the RPC fast path is set to the **bucketed** row count, not the raw one
 ([app/api/data/route.ts:54](../app/api/data/route.ts#L54)) — `rawCount: rows.length`,
 where `rows` is already aggregated. The JS fallback gets it right (`all.length`,
 [line 76](../app/api/data/route.ts#L76)). This defeats commit `1d7bf04` ("Show raw
 measurement count separately from graph points"). The dashboard footer separately shows
-`rows.length` ("meetpunten", [line 269](../app/dashboard/page.tsx#L269)), which is the
-bucket count too — so on the 1-year view "meetpunten" understates reality by ~360×.
+`rows.length` ("meetpunten"), which is the bucket count too — so on the 1-year view
+"meetpunten" understates reality by ~360×. Not fixed: it needs the RPC to return a true
+raw count, which is a database change rather than a UI one.
 
 ---
 
-## KI-2 — Notification centre opens off-screen
+## KI-2 — Notification centre opened off-screen ✅ FIXED 2026-08-05
 
 **Reported by Jeroen, 2026-08-05.** Confirmed by measurement, not just inspection.
 
@@ -152,26 +185,41 @@ Repro harness and screenshots: `scratchpad/repro.mjs`, `scratchpad/repro-*.png`
 (scratchpad is session-local; the script is ~40 lines and trivially re-creatable from
 the numbers above).
 
-### Proposed fix
+### The fix, as applied
 
-Position it for where the anchor actually is:
+`NotificationBell` now takes a `placement` prop, because the component renders in two
+places whose geometry has nothing in common and one set of coordinates cannot serve both.
 
-```ts
-bottom: 0,            // instead of top: calc(100% + 8px)
-left: 'calc(100% + 8px)',   // instead of right: 0
-maxHeight: 'min(460px, calc(100vh - 32px))',
-```
+- **`placement="side"`** (desktop sidebar footer): `bottom: 0; left: calc(100% + 8px)` —
+  flies out to the right of the rail and upward, the conventional pattern for a
+  bottom-of-sidebar menu.
+- **`placement="top"`** (mobile top bar): `position: fixed`, pinned under the header at
+  `right: 12`. Absolute positioning was *not* enough here: the bell is not the last item
+  in the top bar (the theme and logout buttons sit to its right), so anchoring to the
+  button's right edge still pushed 36 px off a 390 px screen. The viewport is the only
+  frame of reference that guarantees the panel stays on it.
+- `width: min(320px, calc(100vw - 24px))`, and `maxHeight` bounded by the space actually
+  available in each direction rather than a flat 460 px.
+- Also added: Escape closes the panel, and `overscroll-behavior: contain` stops a scroll
+  inside it from scrolling the page behind.
 
-i.e. fly out **to the right of the rail and upward**, the conventional pattern for a
-bottom-of-sidebar menu. Also:
+### Verified
 
-- The same component renders in the **mobile top bar** ([AppShell.tsx:125-134](../components/AppShell.tsx#L125-L134)),
-  where `top`/`right: 0` *is* correct. The fix must be placement-aware — either a prop
-  (`placement="side" | "top"`) or CSS driven by the parent — not a blanket flip.
-- `width: 320` is wider than the 74 px collapsed rail and near the 375 px mobile
-  viewport; clamp with `width: 'min(320px, calc(100vw - 24px))'`.
-- Verify with Puppeteer at 1440×900, 1280×720, collapsed rail, and 390×844 mobile, per
-  [../CLAUDE.md](../CLAUDE.md).
+Measured in headless Chrome against the running app, signed in, with the ⚙ Drempelwaarden
+section expanded so the panel is at its tallest. **Zero clipping on every axis:**
+
+| Viewport | Position | Panel box | Clipped |
+|---|---|---|---|
+| 1440×900 | absolute | x 65→385, y 504→824 | none |
+| 1280×720 | absolute | x 65→385, y 508→644 | none |
+| 1440×620 | absolute | x 65→385, y 224→544 | none |
+| 1440×500 | absolute | x 65→385, y 104→424 | none |
+| 1440×900 collapsed rail | absolute | x 65→385, y 610→746 | none |
+| 390×844 mobile | fixed | x 50→370, y 65→385 | none |
+| 360×640 mobile | fixed | x 20→340, y 65→201 | none |
+
+Compare the "before" on the same measurement: 263 px off the left edge, 61 px below the
+fold, 57 px of 320 px visible.
 
 ---
 

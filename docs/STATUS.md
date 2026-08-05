@@ -78,20 +78,36 @@ Chrome for the CSP.
   `/api/notifications/check`, keyed per user after auth.
 - `tests/` + `vitest` — 72 tests over the calculation layer. `npm test`.
 
+**The two UI defects you reported — both fixed and verified**
+
+- **Smoothing (KI-1)**: the slider is now valued in data points and states its real window
+  (`12 uur · 12 punten`, `1 punt = 1 uur`), correct at every period. Conversion lives in
+  `lib/smoothing.ts` with 20 tests. Fixing it exposed two more distortions of the same
+  kind, both also fixed: the KPI cards read the last *bucket*, so the headline showed
+  1016 ppm at 24 h and 736 ppm at 30 days for the same instant — they now read 1013 ppm at
+  every period and do not move with the slider; and they could stick on "—" whenever
+  `loading` was set without a refetch firing.
+- **Notification centre (KI-2)**: `NotificationBell` is placement-aware. Verified with zero
+  clipping across seven viewports (1440×900, 1280×720, 1440×620, 1440×500, collapsed rail,
+  390×844, 360×640), with the panel at its tallest.
+
 **Documentation**
 
-- [known-issues.md](known-issues.md) — five diagnosed defects, root causes proven, with
-  proposed fixes. KI-1 (smoothing slider) and KI-2 (notification centre) are the two you
-  spotted; KI-4 and KI-5 were found along the way.
+- [known-issues.md](known-issues.md) — every defect with its root cause. KI-1 and KI-2 are
+  fixed; KI-3 (sensor outages), KI-4 (duplicate notifications) and KI-5 (Google Fonts)
+  remain open.
 
 ## Deliberately not done, and why
 
-- **The two UI bugs you reported are documented, not fixed.** You asked for them written
-  down, and the endpoints prioritised. KI-1 in particular deserves a considered fix rather
-  than a quick one: the honest version changes what the KPI cards display.
+- **`rawCount` is still wrong** (KI-1's tail): the RPC returns the bucketed row count, so
+  the "meetpunten" footer understates reality by up to 360×. Fixing it means changing the
+  `air_quality_bucketed` RPC, which is a database change, not a UI one.
 - **ML retrain is still user-scoped**, unlike the alert sweep. Making it device-scoped
   requires deciding whether a model belongs to a device or an account — that is bound up
   with the multi-device UI in M4, so it shouldn't be settled in passing.
+- **The KPI query has no device filter.** It shows the newest reading from any of the
+  account's devices, matching the rest of the dashboard's single-device assumption. The
+  device switcher in M4 is where that gets settled.
 - **Rate limiting is in-process memory.** Correct for one `next start` process; wrong the
   moment the app is containerized or scaled. Flagged in the file itself.
 

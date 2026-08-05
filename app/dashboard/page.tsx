@@ -13,6 +13,7 @@ import NightOutlookCard from '@/components/NightOutlookCard'
 import ContinuityChip from '@/components/ContinuityChip'
 import { ProcessedRow, SensorRow } from '@/lib/types'
 import { dewpoint, mouldRisk, co2Status, rhStatus, tempStatus, mouldStatus, movingAverage, healthScore, healthLabel, absHumidityGkg } from '@/lib/calculations'
+import { windowMinutes, maxWindowPoints, formatWindow } from '@/lib/smoothing'
 import { toSeries, buildDiagnosis } from '@/lib/reportAnalytics'
 import { useStickyState } from '@/lib/useStickyState'
 import { Wind, Thermometer, Droplets, Bug, Droplet, Activity } from 'lucide-react'
@@ -43,15 +44,25 @@ function processRows(raw: SensorRow[]): ProcessedRow[] {
     })
 }
 
-function applyMA(rows: ProcessedRow[], windowMin: number): ProcessedRow[] {
-  if (windowMin <= 0) return rows
-  const n = Math.max(2, Math.round(windowMin))
+/**
+ * Smooth the series over `points` samples.
+ *
+ * The window is in SAMPLES, not minutes, because that is what movingAverage takes.
+ * /api/data has already bucketed the series by period (1 min at 24 h, up to 720 min
+ * beyond a year), so one sample is `bucketMinutes` of wall-clock time — which is why
+ * the UI must convert rather than pass a minute count straight through. It used to,
+ * and "60 min" on the 1-year view silently meant 15 days.
+ */
+function applyMA(rows: ProcessedRow[], points: number): ProcessedRow[] {
+  if (points < 2) return rows
+  const n = Math.round(points)
   const co2 = movingAverage(rows.map((x) => x.co2), n)
   const temp = movingAverage(rows.map((x) => x.temp), n)
   const rh = movingAverage(rows.map((x) => x.rh), n)
   const mr = movingAverage(rows.map((x) => x.mr), n)
   return rows.map((r, i) => ({ ...r, co2: co2[i], temp: temp[i], rh: rh[i], mr: mr[i] }))
 }
+
 
 const AQI_LABELS: Record<number, { label: string; color: string }> = {
   1: { label: 'Goed', color: '#16A34A' },
@@ -68,7 +79,11 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true)
   const [period, setPeriod] = useStickyState('wz-dash-period', 1440)
   const [tab, setTab] = useState('metingen')
-  const [maMin, setMaMin] = useState(0)
+  // Smoothing window in SAMPLES, not minutes — see applyMA. The wall-clock
+  // equivalent is derived from bucketMinutes and shown next to the slider.
+  const [maPoints, setMaPoints] = useState(0)
+  const [bucketMinutes, setBucketMinutes] = useState(1)
+  const [latest, setLatest] = useState<ProcessedRow | null>(null)
   const [weather, setWeather] = useState<any>(null)
   const [poll, setPoll] = useState<any>(null)
 
@@ -80,11 +95,25 @@ export default function DashboardPage() {
       router.push('/login')
       return
     }
-    const r = await fetch(withBase(`/api/data?minutes=${period}`))
-    if (!r.ok) return
-    const d = await r.json()
-    setRawRows(d.rows ?? [])
-    setLoading(false)
+    try {
+      const r = await fetch(withBase(`/api/data?minutes=${period}`))
+      if (!r.ok) {
+        console.error('[dashboard] /api/data failed', r.status)
+        return
+      }
+      const d = await r.json()
+      setRawRows(d.rows ?? [])
+      // The server tells us how wide one sample is; without it the smoothing slider
+      // cannot report a truthful window.
+      setBucketMinutes(d.bucketMinutes > 0 ? d.bucketMinutes : 1)
+    } catch (e) {
+      console.error('[dashboard] /api/data error', e)
+    } finally {
+      // Always clear, even on failure. Otherwise the KPI cards render "—" forever
+      // while the charts still show the previous data — the state the dashboard was
+      // left in by any failed request, since `loading` gates only the card values.
+      setLoading(false)
+    }
   }, [period, supabase, router])
 
   useEffect(() => {
@@ -92,6 +121,37 @@ export default function DashboardPage() {
     const id = setInterval(fetchData, 60000)
     return () => clearInterval(id)
   }, [fetchData])
+
+  // The newest actual measurement, fetched independently of the chart period.
+  //
+  // The KPI cards cannot be derived from `rows`: /api/data returns a series bucketed
+  // by period, so the final element is an average over one bucket — a whole hour on
+  // the 30-day view. That made the headline "current CO₂" read 1016 ppm at 24 hours
+  // and 736 ppm at 30 days for the same room at the same moment. A reported current
+  // value must not depend on which chart range happens to be selected.
+  //
+  // One row, RLS-scoped to this user. Like the rest of the dashboard it has no
+  // device filter yet, so on a multi-device account it shows the newest reading from
+  // any of them — that waits on the device switcher (ROADMAP M4).
+  useEffect(() => {
+    let cancelled = false
+    const loadLatest = async () => {
+      const { data } = await supabase
+        .from('air_quality')
+        .select('created_at,co2,temperature,humidity')
+        .order('created_at', { ascending: false })
+        .limit(1)
+      if (cancelled) return
+      const p = processRows((data ?? []) as SensorRow[])
+      setLatest(p[0] ?? null)
+    }
+    loadLatest()
+    const id = setInterval(loadLatest, 60000)
+    return () => {
+      cancelled = true
+      clearInterval(id)
+    }
+  }, [supabase])
 
   useEffect(() => {
     fetch(withBase('/api/weather'))
@@ -105,8 +165,16 @@ export default function DashboardPage() {
 
   const rows = useMemo(() => processRows(rawRows), [rawRows])
   const diag = useMemo(() => (rawRows.length >= 12 ? buildDiagnosis(toSeries(rawRows)) : null), [rawRows])
-  const displayed = useMemo(() => applyMA(rows, maMin), [rows, maMin])
-  const last = displayed[displayed.length - 1]
+  // `displayed` feeds the CHARTS only. Smoothing is a reading aid for a noisy line;
+  // it must never reach the KPI cards or the health score, or dragging the slider
+  // would change what the app reports as the current state of the room. It used to:
+  // the cards read the smoothed array, and because movingAverage is centred, the
+  // final point was an average of the trailing half-window rather than a measurement.
+  const displayed = useMemo(() => applyMA(rows, maPoints), [rows, maPoints])
+  // Falls back to the last bucket only if the single-row query hasn't landed yet.
+  const last = latest ?? rows[rows.length - 1]
+
+  const maxPoints = maxWindowPoints(rows.length)
 
   const co2s = last ? co2Status(last.co2) : null
   const rhs = last ? rhStatus(last.rh) : null
@@ -123,7 +191,13 @@ export default function DashboardPage() {
     <select
       value={period}
       onChange={(e) => {
-        setPeriod(+e.target.value)
+        const next = +e.target.value
+        // Only flag loading when the period genuinely changes. Setting it
+        // unconditionally left the KPI cards stuck on "—" whenever the effect that
+        // refetches didn't re-run, because `loading` gates the card values but the
+        // fetch is keyed on `period`.
+        if (next === period) return
+        setPeriod(next)
         setLoading(true)
       }}
       style={{ padding: '7px 10px', fontSize: 13, fontWeight: 500, border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface)', color: 'var(--text)', cursor: 'pointer' }}
@@ -229,11 +303,35 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      {/* MA slider — compact, only useful with charts visible */}
-      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '10px 16px', marginBottom: 14, boxShadow: 'var(--shadow-xs)', display: 'flex', alignItems: 'center', gap: 12 }}>
-        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>Smoothing</span>
-        <input type="range" min={0} max={180} step={5} value={maMin} onChange={(e) => setMaMin(+e.target.value)} style={{ flex: 1, accentColor: '#3B82F6' }} />
-        <span style={{ fontSize: 12, color: 'var(--muted)', minWidth: 48, textAlign: 'right' }}>{maMin === 0 ? 'Uit' : `${maMin} min`}</span>
+      {/* Smoothing slider. The slider value is a number of data points; the label
+          converts it to real time using the server's bucket size, so it stays honest
+          across every period. Capped at a quarter of the visible series — smoothing
+          over more than that flattens the trend you came to look at. */}
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '10px 16px', marginBottom: 14, boxShadow: 'var(--shadow-xs)', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' }}>
+          Smoothing
+        </span>
+        <input
+          type="range"
+          min={0}
+          max={maxPoints}
+          step={1}
+          value={Math.min(maPoints, maxPoints)}
+          disabled={maxPoints < 2}
+          onChange={(e) => setMaPoints(+e.target.value)}
+          style={{ flex: 1, minWidth: 120, accentColor: '#3B82F6', opacity: maxPoints < 2 ? 0.4 : 1 }}
+        />
+        <span style={{ fontSize: 12, color: 'var(--muted)', minWidth: 118, textAlign: 'right', whiteSpace: 'nowrap' }}>
+          {maxPoints < 2
+            ? 'Te weinig data'
+            : maPoints < 2
+              ? 'Uit'
+              : `${formatWindow(windowMinutes(maPoints, bucketMinutes))} · ${maPoints} punten`}
+        </span>
+        <span style={{ fontSize: 10.5, color: 'var(--subtle)', flexBasis: '100%', textAlign: 'right' }}>
+          Alleen de grafieken — de waarden bovenaan blijven ongewijzigde metingen.
+          {rows.length > 0 && ` 1 punt = ${formatWindow(bucketMinutes)}.`}
+        </span>
       </div>
 
       {tab === 'metingen' && (

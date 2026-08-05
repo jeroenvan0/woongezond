@@ -32,7 +32,21 @@ function timeAgo(iso: string): string {
   return `${Math.floor(h / 24)} dag(en) geleden`
 }
 
-export default function NotificationBell() {
+/**
+ * Where the panel flies out from. This component renders in two very different
+ * places and a single set of coordinates cannot serve both:
+ *
+ *   'side' — the desktop sidebar footer, bottom-LEFT of the viewport. The panel must
+ *            open rightwards out of the rail and upwards from the button.
+ *   'top'  — the mobile top bar, top-RIGHT. The panel opens downwards and leftwards.
+ *
+ * Before this was a prop, both used the 'top' coordinates, so on desktop the panel
+ * was positioned 263px off the left edge of the screen and 61px below the fold —
+ * only 57px of a 320px panel was visible. See docs/known-issues.md KI-2.
+ */
+type Placement = 'side' | 'top'
+
+export default function NotificationBell({ placement = 'top' }: { placement?: Placement }) {
   const supabase = createClient()
   const [open, setOpen] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
@@ -41,6 +55,9 @@ export default function NotificationBell() {
   const [thresholds, setThresholds] = useState(DEFAULTS)
   const [saveMsg, setSaveMsg] = useState('')
   const ref = useRef<HTMLDivElement>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
+  // Viewport coordinates for the 'top' placement, measured when the panel opens.
+  const [topCoords, setTopCoords] = useState<{ top: number; right: number } | null>(null)
 
   const unread = notifs.filter((n) => !n.read).length
 
@@ -100,6 +117,31 @@ export default function NotificationBell() {
     return () => document.removeEventListener('mousedown', onClick)
   }, [open])
 
+  // In the top bar the bell is not the last item — the theme and logout buttons sit
+  // to its right — so anchoring the panel to the button's right edge pushed 320px of
+  // panel off the left of a 390px phone. Pin it to the viewport instead, which is the
+  // only frame of reference that guarantees it stays on screen.
+  useEffect(() => {
+    if (!open || placement !== 'top') return
+    const measure = () => {
+      const r = btnRef.current?.getBoundingClientRect()
+      if (r) setTopCoords({ top: r.bottom + 8, right: 12 })
+    }
+    measure()
+    window.addEventListener('resize', measure)
+    return () => window.removeEventListener('resize', measure)
+  }, [open, placement])
+
+  // Close on Escape — the panel can cover most of a phone screen.
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [open])
+
   async function markAll() {
     if (!userId) return
     await supabase.from('notifications').update({ read: true }).eq('user_id', userId).eq('read', false)
@@ -135,8 +177,10 @@ export default function NotificationBell() {
   return (
     <div ref={ref} style={{ position: 'relative' }}>
       <button
+        ref={btnRef}
         onClick={() => setOpen((o) => !o)}
         title="Meldingen"
+        aria-expanded={open}
         style={{
           padding: '6px 10px',
           fontSize: 15,
@@ -176,12 +220,27 @@ export default function NotificationBell() {
       {open && (
         <div
           style={{
-            position: 'absolute',
-            top: 'calc(100% + 8px)',
-            right: 0,
-            width: 320,
-            maxHeight: 460,
+            // 'side': the rail is a fixed 230px (74px collapsed) at the left edge, so
+            // flying out rightwards and upwards from the button is always on screen and
+            // absolute positioning is enough.
+            // 'top': pinned to the viewport, because the button's own right edge is not
+            // the screen's right edge.
+            ...(placement === 'side'
+              ? { position: 'absolute' as const, bottom: 0, left: 'calc(100% + 8px)' }
+              : {
+                  position: 'fixed' as const,
+                  top: topCoords?.top ?? 56,
+                  right: topCoords?.right ?? 12,
+                }),
+            // Never wider than the viewport on a narrow phone, and never taller than
+            // the space actually available — the settings section used to sit below
+            // the fold. 'side' grows upward from a button near the bottom of the
+            // screen, so its ceiling is the room above that button; 'top' grows
+            // downward from just under the header.
+            width: 'min(320px, calc(100vw - 24px))',
+            maxHeight: placement === 'side' ? 'min(460px, calc(100vh - 120px))' : 'min(460px, calc(100vh - 90px))',
             overflowY: 'auto',
+            overscrollBehavior: 'contain',
             background: 'var(--surface)',
             border: '1px solid var(--border)',
             borderRadius: 14,
