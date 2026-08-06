@@ -9,7 +9,8 @@ import SegmentedControl from '@/components/ui/SegmentedControl'
 import DataBanner, { DataError, describeError } from '@/components/DataBanner'
 import { MetricCardSkeleton } from '@/components/ui/Skeleton'
 import { withBase } from '@/lib/basePath'
-import { Building2, AlertTriangle, Wind, CheckCircle2, WifiOff } from 'lucide-react'
+import Link from 'next/link'
+import { Building2, AlertTriangle, Wind, CheckCircle2, WifiOff, Ticket } from 'lucide-react'
 
 // C1 — corporation fleet overview. Reads only per-household AGGREGATES from /api/fleet
 // (SECURITY DEFINER fleet_overview RPC): staleness + latest CO2/T/RH + a server-derived
@@ -108,8 +109,13 @@ export default function VlootPage() {
       {isMember && (
         <>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--sp-3)', flexWrap: 'wrap', marginBottom: 'var(--sp-4)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', fontSize: 'var(--fs-sm)', color: 'var(--muted)' }}>
-              <Building2 size={15} /> {orgName} · {households.length} woning{households.length === 1 ? '' : 'en'}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', fontSize: 'var(--fs-sm)', color: 'var(--muted)', flexWrap: 'wrap' }}>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+                <Building2 size={15} /> {orgName} · {households.length} woning{households.length === 1 ? '' : 'en'}
+              </span>
+              <Link href="/uitnodigingen" className="wz-navlink" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', fontSize: 'var(--fs-xs)', fontWeight: 600 }}>
+                <Ticket size={14} /> Uitnodigingscodes
+              </Link>
             </div>
             {orgs.length > 1 && (
               <SegmentedControl

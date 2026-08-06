@@ -138,10 +138,11 @@ De org-lijst blijft zo verborgen voor bewoners; de corporatie bepaalt het label 
 `organizations` krijgt één extra SELECT-policy zodat de bewoner alleen de **naam** ziet van
 een org waarmee hij een actieve toestemming heeft (voor het overzicht op `/delen`).
 
-Oppervlak: `app/delen/page.tsx` (bewoner) + `app/api/consents/route.ts`
-(GET lijst · POST inwisselen · PATCH intrekken/heractiveren). De corporatie-kant van het
-aanmaken van invites is nog handmatig/seed (zie progress-doc); een invite-beheerscherm voor
-de corporatie is fase 2.
+Oppervlak — bewoner: `app/delen/page.tsx` + `app/api/consents/route.ts`
+(GET lijst · POST inwisselen · PATCH intrekken/heractiveren). Corporatie:
+`app/uitnodigingen/page.tsx` + `app/api/invites/route.ts` (GET lijst · POST code aanmaken ·
+DELETE ongebruikte code), bereikbaar via een link op `/vloot`. De hele flow is daarmee
+self-serve: corporatie maakt code → bewoner wisselt in → woning verschijnt in het vlootoverzicht.
 
 ## 6. UI-oppervlak
 

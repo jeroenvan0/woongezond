@@ -36,7 +36,10 @@ Groen sinds de B3-wiring-commit.
       voegt `org_invites` + `redeem_org_invite()` toe + een org-naam-SELECT voor bewoners
       met actieve toestemming. Shell heeft een "Delen"-ingang (sidebar + mobiele topbar).
       **Migratie nog niet toegepast.** typecheck + build groen.
-- [ ] **Invite-beheerscherm voor de corporatie** (codes aanmaken in de UI) — nu handmatig/seed. NOG TE DOEN.
+- [x] **Invite-beheerscherm voor de corporatie** — `/uitnodigingen` + `app/api/invites/route.ts`
+      (GET lijst · POST code aanmaken · DELETE ongebruikte code). Org-lid maakt een leesbare
+      code (WONING-XXXX) met vooraf ingevuld label, kopieert die, deelt met de bewoner. Bereikbaar
+      via een link op `/vloot`. Hele C1-flow is nu self-serve zonder SQL. typecheck/build/tests groen.
 
 ### B3 + A3 — per-device scoping & eerlijke ruwe telling
 - [x] **Ontwerp** — [b3-a3-device-scoping.md](./b3-a3-device-scoping.md).
