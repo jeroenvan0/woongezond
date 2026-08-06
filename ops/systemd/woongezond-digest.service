@@ -1,0 +1,14 @@
+[Unit]
+Description=Woongezond weekly household summary email (B5)
+After=network.target woongezond-react.service
+Wants=woongezond-react.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/var/www/woongezond-dev-react
+# Read the shared cron secret from .env.local and POST the weekly-digest endpoint.
+# -fsS makes curl exit non-zero on HTTP errors so systemd records a failure.
+# Without the header the route falls back to a per-user preview and sends nothing.
+# Email itself is a no-op until RESEND_API_KEY is set (see lib/email.ts), so enabling
+# this timer before the mail provider is configured is harmless.
+ExecStart=/usr/bin/bash -lc 'SECRET=$(grep -m1 "^CRON_SECRET=" /var/www/woongezond-dev-react/.env.local | cut -d= -f2-); curl -fsS -X POST -H "x-cron-secret: $SECRET" http://localhost:3001/api/digest/weekly'
