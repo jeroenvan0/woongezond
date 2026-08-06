@@ -18,6 +18,7 @@ import { SensorRow } from '@/lib/types'
 import { healthLabel } from '@/lib/calculations'
 import { useStickyState } from '@/lib/useStickyState'
 import { useSeries } from '@/lib/useSeries'
+import { useSelectedDevice } from '@/lib/useSelectedDevice'
 import { Plus, Trash2 } from 'lucide-react'
 import {
   computeHealthTimeline,
@@ -90,7 +91,10 @@ export default function TrendsPage() {
   const router = useRouter()
   const supabase = createClient()
   const [rangeDays, setRangeDays] = useStickyState('wz-trends-range', 90)
-  const { rows, loading, error: dataError, refetch } = useSeries(rangeDays * 1440)
+  // B3: scope the whole trends series to the selected room, like the dashboard. Falls
+  // back to all-devices when nothing is selected or the device-aware RPC isn't deployed.
+  const selectedDevice = useSelectedDevice()
+  const { rows, loading, error: dataError, refetch } = useSeries(rangeDays * 1440, { device: selectedDevice })
   const [metric, setMetric] = useStickyState<HeatmapMetric>('wz-trends-metric', 'co2')
   const [userId, setUserId] = useState<string | null>(null)
 

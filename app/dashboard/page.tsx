@@ -107,7 +107,11 @@ export default function DashboardPage() {
   // The chart series come through the shared, cached, visibility-gated data path
   // (5.1/5.2) — one request per window across the whole app, polling paused on a
   // hidden tab. A5 fetch failures surface via `dataError`.
-  const { rows: rawRows, bucketMinutes, loading, error: dataError, refetch } = useSeries(period, { poll: true })
+  //
+  // B3: scope the series to the selected device. The cache is keyed by window+device,
+  // so switching rooms is a separate cached fetch; the /api/data route falls back to
+  // all-devices if the device-aware RPC (migration 20260806120100) isn't deployed yet.
+  const { rows: rawRows, bucketMinutes, loading, error: dataError, refetch } = useSeries(period, { poll: true, device: selectedDevice })
 
   // Auth guard — the fetch used to double as this; useSeries doesn't, so keep it explicit.
   useEffect(() => {
@@ -131,8 +135,8 @@ export default function DashboardPage() {
     let cancelled = false
     const loadLatest = async () => {
       // Scope the headline reading to the chosen device (6.1). This is the direct,
-      // device-filterable query; the chart series still come from /api/data, whose
-      // RPC has no device parameter yet.
+      // device-filterable query; the chart series are now device-scoped too via
+      // useSeries({ device }) → /api/data?device= (B3).
       let q = supabase
         .from('air_quality')
         .select('created_at,co2,temperature,humidity')
@@ -229,6 +233,11 @@ export default function DashboardPage() {
 
       {!firstRun && (
       <>
+      {/* A1 — dashboard IA in four zones: Nu (wat gebeurt er) → Wat dit betekent & wat
+          te doen (het advies, samen en op ernst) → Bewijs (de grafieken). Voorheen was
+          het één ongedifferentieerde scroll met de diagnose onder de grafieken. */}
+      <SectionHeading>Nu in huis</SectionHeading>
+
       {/* KPI cards — aria-live so a screen reader hears the values update (D4) */}
       <section aria-label="Huidige metingen" aria-live="polite">
         {loading && !last ? (
@@ -305,6 +314,13 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* ── Zone 2: Wat dit betekent — en wat te doen. Alle advies bij elkaar en op
+             ernst: eerst het directe handelingsadvies (ventileren), dan de vooruitblik
+             (nacht + ML), dan de diagnose die het duidt. */}
+      <div style={{ marginTop: 20 }}>
+        <SectionHeading>Wat dit betekent — en wat te doen</SectionHeading>
+      </div>
+
       {/* Ventilation-moment advisor: is now a good time to air out? */}
       {last && weather && weather.temp != null && weather.humidity != null && (() => {
         const indoorAbs = absHumidityGkg(last.temp, last.rh)
@@ -345,6 +361,15 @@ export default function DashboardPage() {
       {/* Night ventilation outlook + ML prediction */}
       <NightOutlookCard />
       <MLPredictionCard />
+
+      {/* Diagnose & advies — moved up (A1) so it sits with the other advice instead of
+          below the charts. Real diagnostics reusing the report engine. */}
+      <DiagnoseCard diag={diag} loading={loading} />
+
+      {/* ── Zone 3: Bewijs — de gemeten reeksen waarop het advies rust. */}
+      <div style={{ marginTop: 20 }}>
+        <SectionHeading>Bewijs — de metingen</SectionHeading>
+      </div>
 
       {/* Chart tabs — now a real ARIA tablist (D3) */}
       <div style={{ marginBottom: 14 }}>
@@ -417,10 +442,6 @@ export default function DashboardPage() {
           </ChartCard>
         </div>
       )}
-
-      {/* Diagnose & advies — real diagnostics (replaces the empty Ventilatie tab,
-          insight banner and ad-hoc Diagnose tab; reuses the report engine). */}
-      <DiagnoseCard diag={diag} loading={loading} />
 
       <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--subtle)', marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
         <ContinuityChip />

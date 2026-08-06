@@ -22,6 +22,7 @@ import {
 import { calcWallConditions, INSULATION_R, type InsulationClass } from '@/lib/calculations'
 import { useStickyState } from '@/lib/useStickyState'
 import { useChartColors } from '@/lib/useChartColors'
+import { useSelectedDevice } from '@/lib/useSelectedDevice'
 import { ChevronDown, ChevronUp, FlaskConical } from 'lucide-react'
 
 const INSULATION_LABELS: Record<InsulationClass, string> = {
@@ -293,6 +294,9 @@ export default function SchimmelrisicoPage() {
   const [showExplain, setShowExplain] = useState(false)
   const [dataError, setDataError] = useState<DataError>(null)
   const chartC = useChartColors()
+  // B3: scope the mould analysis to the selected room. Falls back to all-devices when
+  // nothing is selected or the device-aware RPC isn't deployed.
+  const selectedDevice = useSelectedDevice()
 
   useEffect(() => {
     ;(async () => {
@@ -316,7 +320,7 @@ export default function SchimmelrisicoPage() {
       }
       try {
         const [r, wr] = await Promise.all([
-          fetch(withBase('/api/data?minutes=' + 28 * 1440)),
+          fetch(withBase('/api/data?minutes=' + 28 * 1440 + (selectedDevice ? '&device=' + encodeURIComponent(selectedDevice) : ''))),
           fetch(withBase('/api/weather/history?minutes=' + 28 * 1440)),
         ])
         if (!r.ok) {
@@ -349,7 +353,7 @@ export default function SchimmelrisicoPage() {
         setSeries(makeDemo())
       }
     })()
-  }, [router, supabase])
+  }, [router, supabase, selectedDevice])
 
   const computed = useMemo(() => {
     if (!series) return null

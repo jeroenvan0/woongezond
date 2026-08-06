@@ -31,8 +31,14 @@ function aggregate(rows: any[], bucketMin: number) {
   }))
 }
 
+// Only pass a UUID through to the RPC — anything else is ignored (falls back to
+// all-devices), so a stray query param can never widen or break the query.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export async function GET(req: NextRequest) {
   const minutes = parseInt(req.nextUrl.searchParams.get('minutes') ?? '1440')
+  const deviceParam = req.nextUrl.searchParams.get('device')
+  const deviceId = deviceParam && UUID_RE.test(deviceParam) ? deviceParam : null
   const cookieStore = await cookies()
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -42,7 +48,24 @@ export async function GET(req: NextRequest) {
   // Fast path: aggregate server-side in a single RPC call. The function buckets
   // the whole window down to ≤~900 rows, so it stays under Supabase's row cap
   // and avoids fetching tens of thousands of raw readings.
-  const { data: bucketed, error: rpcError } = await supabase.rpc('air_quality_bucketed', { minutes })
+  //
+  // B3: pass the selected device through when we have one. The two-arg RPC may not be
+  // deployed yet (migration 20260806120100), so fall back to the one-arg signature on a
+  // param error — the app keeps working before the migration is applied.
+  let bucketed: any = null
+  let rpcError: any = null
+  if (deviceId) {
+    const r = await supabase.rpc('air_quality_bucketed', { minutes, p_device_id: deviceId })
+    if (r.error && /p_device_id|function|does not exist|argument/i.test(r.error.message ?? '')) {
+      const r2 = await supabase.rpc('air_quality_bucketed', { minutes })
+      bucketed = r2.data; rpcError = r2.error
+    } else {
+      bucketed = r.data; rpcError = r.error
+    }
+  } else {
+    const r = await supabase.rpc('air_quality_bucketed', { minutes })
+    bucketed = r.data; rpcError = r.error
+  }
   if (!rpcError && bucketed) {
     const bucketSec = bucketed[0]?.bucket_seconds ?? bucketMinutes(minutes) * 60
     const rows = bucketed.map((r: any) => ({
@@ -51,7 +74,12 @@ export async function GET(req: NextRequest) {
       temperature: r.temperature,
       humidity: r.humidity,
     }))
-    return NextResponse.json({ rows, bucketMinutes: Math.round(bucketSec / 60), rawCount: rows.length })
+    // A3: ask for the true raw count. Falls back to bucket count if the RPC isn't
+    // deployed yet — no worse than today, never blocks the response.
+    let rawCount = rows.length
+    const rc = await supabase.rpc('air_quality_raw_count', deviceId ? { minutes, p_device_id: deviceId } : { minutes })
+    if (!rc.error && typeof rc.data === 'number') rawCount = rc.data
+    return NextResponse.json({ rows, bucketMinutes: Math.round(bucketSec / 60), rawCount })
   }
 
   // Fallback: paginate raw rows and bucket in JS (used if the RPC is unavailable).
