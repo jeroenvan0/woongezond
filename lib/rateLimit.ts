@@ -47,6 +47,9 @@ export const LIMITS = {
   mlRetrain: { max: 3, windowMs: 60 * 60 * 1000 },
   // The bell polls every 120s = 2.5/5min. 10 leaves headroom for several open tabs.
   notifications: { max: 10, windowMs: 5 * 60 * 1000 },
+  // Sensors write ~1/min. 4/min per device leaves headroom for a retry/burst without
+  // letting a stuck device hammer the ingest endpoint.
+  ingest: { max: 4, windowMs: 60 * 1000 },
 } as const satisfies Record<string, Limit>
 
 export interface RateResult {
