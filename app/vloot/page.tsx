@@ -10,7 +10,7 @@ import DataBanner, { DataError, describeError } from '@/components/DataBanner'
 import { MetricCardSkeleton } from '@/components/ui/Skeleton'
 import { withBase } from '@/lib/basePath'
 import Link from 'next/link'
-import { Building2, AlertTriangle, Wind, CheckCircle2, WifiOff, Ticket } from 'lucide-react'
+import { Building2, AlertTriangle, Wind, CheckCircle2, WifiOff, Ticket, QrCode } from 'lucide-react'
 
 // C1 — corporation fleet overview. Reads only per-household AGGREGATES from /api/fleet
 // (SECURITY DEFINER fleet_overview RPC): staleness + latest CO2/T/RH + a server-derived
@@ -115,6 +115,9 @@ export default function VlootPage() {
               </span>
               <Link href="/uitnodigingen" className="wz-navlink" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', fontSize: 'var(--fs-xs)', fontWeight: 600 }}>
                 <Ticket size={14} /> Uitnodigingscodes
+              </Link>
+              <Link href="/vloot/koppelen" className="wz-navlink" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', fontSize: 'var(--fs-xs)', fontWeight: 600 }}>
+                <QrCode size={14} /> Sensor koppelen
               </Link>
             </div>
             {orgs.length > 1 && (
