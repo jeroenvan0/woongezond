@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Woongezond — Update voor compagnons · augustus 2026</title>
+<style>
+  :root{
+    --brand:#0B7A5C; --brand-mark:#12B886; --brand-deep:#08402F;
+    --ink:#1A211E; --muted:#4A5A53; --subtle:#6b7a72;
+    --bg:#FBFAF7; --surface:#ffffff; --tint:#F1EFE8; --line:rgba(26,33,30,.10);
+    --accent:#4338CA; --warn:#B45309; --ok:#15803D;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+  }
+  .wrap{max-width:860px; margin:0 auto; padding:0 24px}
+  .page{padding:56px 0; border-bottom:1px solid var(--line)}
+  .page:last-child{border-bottom:0}
+  h1{font-size:38px; line-height:1.15; letter-spacing:-.02em; margin:.2em 0 .3em}
+  h2{font-size:26px; letter-spacing:-.01em; margin:1.4em 0 .5em; color:var(--brand-deep)}
+  h3{font-size:18px; margin:1.2em 0 .3em}
+  p{margin:.6em 0}
+  .lead{font-size:19px; color:var(--muted)}
+  .eyebrow{font-size:12px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--brand)}
+  .mark{display:inline-flex; align-items:center; gap:10px; font-weight:800; font-size:20px; letter-spacing:-.02em}
+  .dot{width:26px; height:26px; border-radius:8px; background:linear-gradient(135deg,var(--brand-mark),var(--brand)); display:inline-block}
+  .cover{background:linear-gradient(160deg,var(--brand-deep),var(--brand) 70%); color:#fff; border-radius:22px; padding:48px 40px; margin-top:28px}
+  .cover .eyebrow{color:#bff3df}
+  .cover h1{color:#fff; margin-top:.1em}
+  .cover p{color:#e6f5ee}
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:18px 0}
+  .card{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:18px 20px; box-shadow:0 1px 3px rgba(26,33,30,.05)}
+  .card h3{margin-top:0; display:flex; align-items:center; gap:8px}
+  .card p{font-size:14.5px; color:var(--muted); margin:.3em 0 0}
+  .ico{width:30px; height:30px; border-radius:8px; background:var(--tint); color:var(--brand); display:inline-flex; align-items:center; justify-content:center; font-size:16px; flex:0 0 auto}
+  .badge{display:inline-block; font-size:11.5px; font-weight:700; padding:3px 9px; border-radius:99px; background:#eaf7f1; color:var(--ok); border:1px solid #cdeadd}
+  .badge.plan{background:#eef0fe; color:var(--accent); border-color:#d9dcfb}
+  .badge.soon{background:#fdf1e3; color:var(--warn); border-color:#f6ddbe}
+  ul.clean{list-style:none; padding:0; margin:.6em 0}
+  ul.clean li{position:relative; padding-left:24px; margin:.45em 0; color:var(--muted)}
+  ul.clean li:before{content:""; position:absolute; left:4px; top:.62em; width:8px; height:8px; border-radius:50%; background:var(--brand-mark)}
+  .timeline{border-left:2px solid var(--line); margin:16px 0 0; padding-left:22px}
+  .tl{position:relative; margin:0 0 20px}
+  .tl:before{content:""; position:absolute; left:-29px; top:4px; width:12px; height:12px; border-radius:50%; background:var(--brand); border:3px solid var(--bg)}
+  .tl .when{font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--brand)}
+  .callout{background:#f3faf6; border:1px solid #cdeadd; border-left:4px solid var(--brand); border-radius:12px; padding:16px 20px; margin:18px 0}
+  .q{background:var(--surface); border:1px solid var(--line); border-radius:12px; padding:14px 18px; margin:10px 0}
+  .q b{color:var(--brand-deep)}
+  .kpis{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin:20px 0}
+  .kpi{background:var(--surface); border:1px solid var(--line); border-radius:14px; padding:18px; text-align:center}
+  .kpi .n{font-size:30px; font-weight:800; color:var(--brand-deep); letter-spacing:-.02em}
+  .kpi .l{font-size:12.5px; color:var(--subtle)}
+  .foot{color:var(--subtle); font-size:13px}
+  .step{display:flex; gap:14px; align-items:flex-start; margin:12px 0}
+  .step .num{flex:0 0 auto; width:28px; height:28px; border-radius:50%; background:var(--brand); color:#fff; font-weight:700; display:flex; align-items:center; justify-content:center; font-size:14px}
+  .step .t{font-size:14.5px; color:var(--muted)}
+  .step .t b{color:var(--ink)}
+  a{color:var(--brand)}
+  @media (max-width:640px){ .grid,.kpis{grid-template-columns:1fr} h1{font-size:30px} }
+  @media print{
+    body{background:#fff}
+    .page{page-break-after:always; border:0; padding:34px 0}
+    .cover{-webkit-print-color-adjust:exact; print-color-adjust:exact}
+    .card,.kpi,.q,.callout{box-shadow:none}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- ─────────────── PAGINA 1 — COVER ─────────────── -->
+<section class="page">
+  <div class="mark"><span class="dot"></span> Woongezond</div>
+  <div class="cover">
+    <div class="eyebrow">Interne update · vertrouwelijk</div>
+    <h1>Van één sensor naar<br>een gezonde woningvloot</h1>
+    <p class="lead" style="color:#eafaf3">Wat er de afgelopen week is gebouwd, waar de pilot straks staat,
+      en waar we jullie hoofd bij kunnen gebruiken. Augustus 2026.</p>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi"><div class="n">7</div><div class="l">features / verbeterrondes gebouwd</div></div>
+    <div class="kpi"><div class="n">8</div><div class="l">sensoren in de eerste pilot</div></div>
+    <div class="kpi"><div class="n">100%</div><div class="l">privacy-by-design & toestemming</div></div>
+  </div>
+
+  <p class="lead">Kort gezegd: Woongezond is deze week gegroeid van een <b>app voor één huishouden</b>
+    naar een <b>platform waarmee een woningcorporatie een hele vloot woningen gezond kan houden</b> —
+    zonder ooit de privacy van bewoners te schaden. Dit document legt in gewone taal uit wat dat betekent.</p>
+
+  <p class="foot">Leestijd ~8 minuten. Niet technisch — maar we laten bewust zien dat er een hoop
+    onder de motorkap zit. Denk vooral mee: de vragen achterin zijn echt.</p>
+</section>
+
+<!-- ─────────────── PAGINA 2 — WAT WE BOUWDEN ─────────────── -->
+<section class="page">
+  <div class="eyebrow">Afgelopen week</div>
+  <h1>Wat er nu werkt</h1>
+  <p class="lead">Zeven bouwstenen, van de bewonerskant tot de corporatiekant. Alles getest en
+    werkend; klaar om met echte sensoren te vullen.</p>
+
+  <div class="grid">
+    <div class="card">
+      <h3><span class="ico">◐</span> Een mooiere, eerlijke app <span class="badge">klaar</span></h3>
+      <p>De bewonersapp kreeg een compleet nieuw uiterlijk, en — belangrijker — leert nu <b>nooit iets
+        onwaars te tonen</b>: een oude meting wordt niet als "nu" gepresenteerd, en voorbeeld­data is
+        duidelijk gemarkeerd. Ook volledig toegankelijk (kleuren, toetsenbord, schermlezers).</p>
+    </div>
+    <div class="card">
+      <h3><span class="ico">▦</span> Vlootoverzicht voor de corporatie <span class="badge">klaar</span></h3>
+      <p>Een corporatie ziet in één blik welke woningen aandacht vragen — gerangschikt van
+        "actie nodig" naar "in orde". <b>Zonder namen, adressen of ruwe metingen</b>: alleen een status
+        per woning.</p>
+    </div>
+    <div class="card">
+      <h3><span class="ico">⛨</span> Privacy & toestemming <span class="badge">klaar</span></h3>
+      <p>Een bewoner beslist zelf of een corporatie mag meekijken, geeft toestemming met een code,
+        en kan die met één klik weer intrekken. <b>Opt-in, altijd omkeerbaar.</b></p>
+    </div>
+    <div class="card">
+      <h3><span class="ico">✎</span> Onboarding <span class="badge">klaar</span></h3>
+      <p>Een begeleide instap zodat dag één geen leeg scherm is: sensor benoemen, woning­gegevens,
+        wanneer je een melding wilt. Straks doet de <b>corporatie</b> dit bij plaatsing.</p>
+    </div>
+    <div class="card">
+      <h3><span class="ico">▣</span> Sensor koppelen via QR <span class="badge">klaar</span></h3>
+      <p>Elke sensor krijgt een QR-code. De bewoner scant, en het apparaat is aan de woning gekoppeld.
+        De corporatie vult vooraf de <b>huisgegevens en een plaatsingsfoto</b> in.</p>
+    </div>
+    <div class="card">
+      <h3><span class="ico">⇅</span> Veilige datastroom + weekmail <span class="badge">klaar</span></h3>
+      <p>Elke sensor krijgt een eigen sleutel om veilig metingen te sturen — nodig om van 1 naar
+        veel apparaten te schalen. En bewoners krijgen een <b>vriendelijke weeksamenvatting</b> per mail.</p>
+    </div>
+  </div>
+
+  <div class="callout">
+    <b>De rode draad:</b> alles wat de corporatie ziet is <b>geaggregeerd en geanonimiseerd</b>.
+    Het product is bruikbaar én betrouwbaar — juist omdat het bewust níét alles laat zien.
+  </div>
+</section>
+
+<!-- ─────────────── PAGINA 3 — WAAROM DIT KNAP IS ─────────────── -->
+<section class="page">
+  <div class="eyebrow">Onder de motorkap</div>
+  <h1>Waarom dit niet triviaal is</h1>
+  <p class="lead">We houden het luchtig, maar het is goed om te weten dat hier serieuze
+    vraagstukken achter zitten. Vier ervan.</p>
+
+  <h3>1 · Privacy is een ontwerp, geen bijzaak</h3>
+  <p>De data van een bewoner mag <i>nooit</i> naar de verkeerde persoon lekken. We hebben dat op het
+    diepste niveau van de database afgedwongen: elke woning ziet alleen zijn eigen gegevens, en een
+    corporatie krijgt uitsluitend samenvattingen van woningen die daar <b>expliciet toestemming</b>
+    voor gaven. Dit is de moeilijkste en belangrijkste laag van het hele systeem.</p>
+
+  <h3>2 · Veiligheid die met de pilot meeschaalt</h3>
+  <p>Eén sensor beveiligen is makkelijk. Acht sensoren van verschillende huishoudens, elk met hun eigen
+    data, zonder dat iemand bij een ander kan — dat vraagt om een echte identiteit per apparaat.
+    Die hebben we deze week gebouwd (elke sensor een eigen sleutel).</p>
+
+  <h3>3 · Er zit echte wetenschap in</h3>
+  <p>Schimmelrisico voorspellen is geen thermometer aflezen. We rekenen met gevalideerde bouwfysische
+    modellen (temperatuur, vocht, isolatie, dauwpunt) en een zelflerend voorspelmodel. De uitkomst is
+    bruikbaar als <b>bewijs</b> — bijvoorbeeld richting een verhuurder bij vochtklachten.</p>
+
+  <h3>4 · Van losse meting naar portfolio-inzicht</h3>
+  <p>De sprong die eraan komt is de interessantste: niet "wat doet deze sensor", maar "wat vertelt de
+    hele vloot ons". Dáár zit de waarde voor een corporatie — en de volgende pagina's gaan erover.</p>
+
+  <div class="callout">
+    Kort: het lastige zit niet in het <i>tonen</i> van een getal, maar in het <b>betrouwbaar, veilig en
+    privacyvast</b> maken van dat getal — en er vervolgens slimme, geaggregeerde inzichten uit halen.
+  </div>
+</section>
+
+<!-- ─────────────── PAGINA 4 — DE PILOT ─────────────── -->
+<section class="page">
+  <div class="eyebrow">Volgende stap</div>
+  <h1>De eerste pilot</h1>
+  <p class="lead">Een fictieve woningcorporatie met <b>8 sensoren</b> (en 1 die we houden voor
+    ontwikkeling). De hardware — een compact meetapparaat met lucht­kwaliteits­sensor — wordt komende
+    week gebouwd; de firmware sluiten we daarna aan op wat we nu al klaar hebben staan.</p>
+
+  <h2>Zo verloopt de onboarding van een nieuwe sensor</h2>
+  <div class="step"><div class="num">1</div><div class="t"><b>Corporatie voegt de sensor toe</b> in de app en vult de woninggegevens in (bouwjaar, woningtype, isolatie, waar de sensor hangt) — met een foto.</div></div>
+  <div class="step"><div class="num">2</div><div class="t"><b>De app geeft drie dingen terug:</b> een QR-code voor de bewoner, een veilige sleutel voor het apparaat, en een plek voor de plaatsingsfoto.</div></div>
+  <div class="step"><div class="num">3</div><div class="t"><b>De sensor gaat online</b> — bij plaatsing verbonden met de wifi van de woning — en begint elke minuut te meten.</div></div>
+  <div class="step"><div class="num">4</div><div class="t"><b>De bewoner scant de QR</b> en de sensor is aan zijn woning gekoppeld. Metingen van vlak vóór het koppelen gaan niet verloren.</div></div>
+  <div class="step"><div class="num">5</div><div class="t"><b>De bewoner geeft (optioneel) toestemming</b> — en de woning verschijnt geanonimiseerd in het vlootoverzicht van de corporatie.</div></div>
+
+  <div class="callout">
+    Deze hele keten staat softwarematig al klaar. Wat er volgende week bij komt, is de
+    <b>fysieke sensor + firmware</b>. De koppeling met de app is bewust simpel gehouden: scannen en klaar.
+  </div>
+
+  <h3>Waar we nog een knoop doorhakken</h3>
+  <ul class="clean">
+    <li>Hoe de sensor precies met de wifi verbindt (twee methodes; we kiezen de eenvoudigste bij plaatsing).</li>
+    <li>Welke waarden de sensor meestuurt en hoe vaak.</li>
+    <li>Hoe we later honderden sensoren in één keer klaarzetten in plaats van één voor één.</li>
+  </ul>
+</section>
+
+<!-- ─────────────── PAGINA 5 — ROADMAP + MEEDENKEN ─────────────── -->
+<section class="page">
+  <div class="eyebrow">Wat komt eraan</div>
+  <h1>De roadmap — en waar we jullie hulp bij willen</h1>
+  <p class="lead">De grootste waarde ligt vóór ons: van een lijst met woningen naar échte
+    <b>vloot-intelligentie</b> voor de corporatie. Alles geaggregeerd en geanonimiseerd.</p>
+
+  <div class="timeline">
+    <div class="tl"><div class="when">Binnenkort · pilot</div>
+      <h3>Sensoren live + onboarding op schaal <span class="badge soon">in voorbereiding</span></h3>
+      <p style="color:var(--muted); font-size:14.5px">8 sensoren uitrollen, de corporatie-onboarding aanscherpen, en het proces zó maken dat het straks met honderden apparaten werkt.</p>
+    </div>
+    <div class="tl"><div class="when">Daarna · vloot-intelligentie</div>
+      <h3>Portfolio-dashboard <span class="badge plan">ontworpen</span></h3>
+      <p style="color:var(--muted); font-size:14.5px">Hoe staat de hele vloot ervoor? Verdelingen, trends, hoeveel woningen gezond zijn — in één blik.</p>
+    </div>
+    <div class="tl"><div class="when">Daarna</div>
+      <h3>Grote afwijkingen opsporen <span class="badge plan">ontworpen</span></h3>
+      <p style="color:var(--muted); font-size:14.5px">Welke woningen wijken sterk af van de rest, en welke gaan het snelst achteruit? Vroege signalen, automatisch.</p>
+    </div>
+    <div class="tl"><div class="when">Daarna</div>
+      <h3>Patronen & vergelijkbare woningen <span class="badge plan">ontworpen</span></h3>
+      <p style="color:var(--muted); font-size:14.5px">"Slecht geïsoleerde woningen van vóór 1975 hebben 2× het schimmelrisico" — dat is een investerings­signaal, geen losse klacht. En de bewoner ziet hoe hij scoort t.o.v. vergelijkbare woningen.</p>
+    </div>
+    <div class="tl"><div class="when">Later</div>
+      <h3>Werklijst & gebouw-alerts <span class="badge plan">ontworpen</span></h3>
+      <p style="color:var(--muted); font-size:14.5px">Een prioriteitenlijst "welke woning eerst", en een seintje als een heel complex tekenen van een gebouwprobleem vertoont.</p>
+    </div>
+  </div>
+
+  <h2>Denk met ons mee</h2>
+  <p>Jullie zijn niet technisch — en dat is precies waarom deze vragen waardevol zijn. Waar zou een
+    woningcorporatie voor betalen, en wat maakt dit onweerstaanbaar?</p>
+
+  <div class="q"><b>1.</b> Als jij een corporatie was: welke <b>drie inzichten</b> over je woningvloot wil je 's ochtends als eerste zien?</div>
+  <div class="q"><b>2.</b> Is het <b>portfolio-overzicht</b> het betaalde product (een abonnement voor de corporatie), of iets anders?</div>
+  <div class="q"><b>3.</b> Welke woningkenmerken moeten we bij plaatsing vastleggen om later slim te kunnen groeperen? (verwarming, ventilatie, aantal bewoners…?)</div>
+  <div class="q"><b>4.</b> Hoe komen we binnen bij corporaties — via vochtklachten, verduurzaming, of gezondheid van bewoners?</div>
+
+  <div class="callout" style="margin-top:26px">
+    <b>Tot morgen.</b> De basis staat, de pilot komt eraan, en de echt interessante laag —
+    vloot-intelligentie — is doordacht en klaar om te bouwen. Alle input op de vier vragen hierboven
+    stuurt direct wat we hierna maken.
+  </div>
+
+  <p class="foot" style="margin-top:22px">Woongezond · interne update augustus 2026 · niet extern delen.</p>
+</section>
+
+</div>
+</body>
+</html>
