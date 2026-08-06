@@ -7,6 +7,7 @@ The app runs on a rented VPS under systemd, not Vercel. `woongezond-react.servic
 |---|---|---|
 | `woongezond-weather.{service,timer}` | hourly, `*:05` | Fetches OpenWeather per city that has an active device → `city_weather` |
 | `woongezond-notifications.{service,timer}` | every 15 min, `*:02,17,32,47` | Threshold + device-liveness alert sweep across all users |
+| `woongezond-digest.{service,timer}` | weekly, `Mon 08:00` | Weekly household summary email per user (B5) |
 
 Both POST a localhost route guarded by the `x-cron-secret` header, read from
 `CRON_SECRET` in `/var/www/woongezond-dev-react/.env.local`.
@@ -18,6 +19,20 @@ sudo cp ops/systemd/woongezond-notifications.* /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now woongezond-notifications.timer
 ```
+
+The weekly digest installs the same way:
+
+```bash
+sudo cp ops/systemd/woongezond-digest.* /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now woongezond-digest.timer
+# Preview without sending (per-household counts + subjects), any time:
+SECRET=$(grep -m1 '^CRON_SECRET=' /var/www/woongezond-dev-react/.env.local | cut -d= -f2-)
+curl -fsS -X POST -H "x-cron-secret: $SECRET" 'http://localhost:3001/api/digest/weekly?dry=1' | jq
+```
+
+The digest only sends real email once `RESEND_API_KEY` is set (`lib/email.ts` is a no-op
+otherwise), so the timer is safe to enable before the mail provider is configured.
 
 ## Verifying
 

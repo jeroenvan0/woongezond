@@ -1,5 +1,6 @@
 'use client'
-import { Sprout } from 'lucide-react'
+import Link from 'next/link'
+import { Sprout, ArrowRight } from 'lucide-react'
 
 /**
  * Day-one experience (H3). On a fresh account the dashboard used to greet a resident
@@ -30,6 +31,10 @@ export default function FirstRunNotice() {
           </li>
         ))}
       </ul>
+      {/* B2 — entry point into the onboarding wizard: name the sensor, set alerts. */}
+      <Link href="/welkom" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 14, padding: '8px 14px', borderRadius: 'var(--r-sm)', background: 'var(--brand)', color: '#fff', fontSize: 'var(--fs-sm)', fontWeight: 600, textDecoration: 'none' }}>
+        Richt je woning in <ArrowRight size={15} />
+      </Link>
     </div>
   )
 }

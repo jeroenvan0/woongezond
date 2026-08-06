@@ -63,9 +63,14 @@ Groen sinds de B3-wiring-commit.
       De zones + hergroepering zijn de veilige eerste helft; de echte samensmelting van de
       vier componenten kan daarna zonder de IA opnieuw aan te raken.
 
-### Nog niet gestart (vervolg)
-- **B2** onboarding-wizard · **B1** grond-waarheid (foto's, Storage) · **B5** weekmail ·
-  **A2** notificaties · **A3-chat** paginacontext · **C2/C3**. Zie ux-and-features-plan.md.
+### Vervolg — voortgang
+- [x] **B2** onboarding-wizard — `/welkom` (branch `feat/onboarding`). Zie [onboarding-b2.md](./onboarding-b2.md).
+- [x] **B5** weekmail — `lib/weeklyDigest.ts` (unit-tested) + `app/api/digest/weekly` (cron +
+      preview) + `ops/systemd/woongezond-digest.{service,timer}` (Mon 08:00). E-mail is no-op
+      tot `RESEND_API_KEY` gezet is; `?dry=1` previewt zonder te sturen.
+- [ ] **B1** grond-waarheid (foto's, Supabase Storage) · **A2** notificaties beheerbaar ·
+      **A3-chat** paginacontext · **"vergelijk kamers"** · **A1** volledige advies-merge ·
+      **C2/C3**. Zie ux-and-features-plan.md.
 
 ## Migraties toepassen (jouw stap, te reviewen)
 ```bash
