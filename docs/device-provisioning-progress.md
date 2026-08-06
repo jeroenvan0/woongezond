@@ -29,8 +29,15 @@ de WiFi-handshake is **gescaffold** (firmware-contract, geen fake). Migratie **n
       op `/vloot/koppelen` roept 'm aan en toont nu de "wacht op firmware"-melding. Zodra de
       firmware één endpoint levert, is alleen die adapter in te vullen.
 
+### Per-device ingest (gedaan — pilot-schrijfpad, Feather S3)
+- [x] **`/api/ingest`** + `devices.ingest_token` (migratie `20260806120400`): elke sensor
+      schrijft met een eigen token i.p.v. de anon-key ("DEVICE SYNC HOLE"). Token + ingest-URL
+      zichtbaar per sensor in `/vloot/koppelen`. Koppelen backfillt pre-claim metingen.
+      Volledig firmware-contract: [pilot-feather-s3-plan.md](./pilot-feather-s3-plan.md).
+
 ### Nog te doen
 - [ ] Firmware-endpoint kiezen + `provisionWifi` invullen (zie design §WiFi).
+- [ ] Anon-sync-policy uitfaseren zodra de live-sensor op een token draait.
 - [ ] Foto's tonen in het rapport / bij grond-waarheid (B1, `device_photos.kind='observation'`).
 - [ ] Bulk-provisioning (meerdere sensoren in één keer) voor grotere uitrol.
 

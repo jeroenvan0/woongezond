@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
+import { randomBytes } from 'crypto'
 
 // Device provisioning — corporation side.
 //
@@ -36,6 +37,12 @@ function genCode(): string {
   return `DEVICE-${s}`
 }
 
+// Long random per-device ingest secret. The firmware carries this and sends it to
+// /api/ingest — it is the device's only credential (see docs/pilot-feather-s3-plan.md).
+function genIngestToken(): string {
+  return `wgd_${randomBytes(24).toString('hex')}`
+}
+
 export async function GET(req: NextRequest) {
   const supabase = await client()
   const { data: userData } = await supabase.auth.getUser()
@@ -49,7 +56,7 @@ export async function GET(req: NextRequest) {
 
   const { data: devices, error } = await supabase
     .from('devices')
-    .select('id, name, location, insulation, build_year, house_type, placement_note, user_id, active, device_claim_codes(code, used_at, expires_at)')
+    .select('id, name, location, insulation, build_year, house_type, placement_note, user_id, active, ingest_token, device_claim_codes(code, used_at, expires_at)')
     .eq('org_id', org)
     .order('created_at', { ascending: false })
   if (error) return NextResponse.json({ orgs, org, devices: [] })
@@ -61,6 +68,7 @@ export async function GET(req: NextRequest) {
       build_year: d.build_year, house_type: d.house_type, placement_note: d.placement_note,
       claimed: d.user_id != null, active: d.active,
       claim_code: openCode?.code ?? null,
+      ingest_token: d.ingest_token ?? null,
     }
   })
   return NextResponse.json({ orgs, org, devices: shaped }, { headers: { 'Cache-Control': 'no-store' } })
@@ -89,8 +97,9 @@ export async function POST(req: NextRequest) {
       insulation, build_year: buildYear,
       house_type: typeof b.house_type === 'string' ? b.house_type.trim().slice(0, 60) || null : null,
       placement_note: typeof b.placement_note === 'string' ? b.placement_note.trim().slice(0, 300) || null : null,
+      ingest_token: genIngestToken(),
     })
-    .select('id, name')
+    .select('id, name, ingest_token')
     .single()
   if (devErr) return NextResponse.json({ error: devErr.message }, { status: 400 })
 

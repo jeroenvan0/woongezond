@@ -10,7 +10,7 @@ import QrImage from '@/components/ui/QrImage'
 import { MetricCardSkeleton } from '@/components/ui/Skeleton'
 import { withBase } from '@/lib/basePath'
 import { provisionWifi } from '@/lib/wifiProvision'
-import { Building2, Plus, Copy, Check, Wifi, Camera, CheckCircle2, Circle } from 'lucide-react'
+import { Building2, Plus, Copy, Check, Wifi, Camera, CheckCircle2, Circle, KeyRound } from 'lucide-react'
 
 // Corporation device provisioning: add a sensor to a home with its house profile, get a QR
 // claim code, upload a placement photo, and (scaffolded) push WiFi credentials.
@@ -19,7 +19,7 @@ import { Building2, Plus, Copy, Check, Wifi, Camera, CheckCircle2, Circle } from
 interface Device {
   id: string; name: string; location: string | null; insulation: string
   build_year: number | null; house_type: string | null; placement_note: string | null
-  claimed: boolean; active: boolean; claim_code: string | null
+  claimed: boolean; active: boolean; claim_code: string | null; ingest_token: string | null
 }
 interface Org { id: string; name: string; role: string }
 
@@ -32,6 +32,11 @@ const empty = { name: '', location: '', insulation: 'poor', build_year: '', hous
 function claimUrl(code: string): string {
   const origin = typeof window !== 'undefined' ? window.location.origin : ''
   return `${origin}${withBase('/koppel')}?code=${encodeURIComponent(code)}`
+}
+
+function ingestUrl(): string {
+  const origin = typeof window !== 'undefined' ? window.location.origin : ''
+  return `${origin}${withBase('/api/ingest')}`
 }
 
 export default function KoppelenPage() {
@@ -165,6 +170,23 @@ function DeviceCard({ d, supabase, copied, onCopy }: { d: Device; supabase: Retu
           </div>
           {photoMsg && <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--muted)', marginTop: 6 }}>{photoMsg}</div>}
 
+          {/* Firmware config — the per-device ingest endpoint + token to flash onto the
+              Feather S3. This screen is org-only (RLS), so showing the token here is safe. */}
+          {d.ingest_token && (
+            <div style={{ marginTop: 'var(--sp-3)', paddingTop: 'var(--sp-3)', borderTop: '1px solid var(--border-soft)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--fs-xs)', fontWeight: 700, color: 'var(--muted)', marginBottom: 6 }}>
+                <KeyRound size={13} /> Firmware-config
+              </div>
+              <div style={{ display: 'grid', gap: 4 }}>
+                <TokenRow label="Ingest-URL" value={ingestUrl()} onCopy={onCopy} copied={copied} />
+                <TokenRow label="Device-token" value={d.ingest_token} onCopy={onCopy} copied={copied} mono />
+              </div>
+              <div style={{ fontSize: 'var(--fs-2xs)', color: 'var(--subtle)', marginTop: 6 }}>
+                De sensor POST't metingen naar deze URL met header <code>x-device-token</code>. Zie docs/pilot-feather-s3-plan.md.
+              </div>
+            </div>
+          )}
+
           {/* WiFi provisioning — scaffolded; provisionWifi() is a stub until firmware ships. */}
           <div style={{ marginTop: 'var(--sp-3)', paddingTop: 'var(--sp-3)', borderTop: '1px solid var(--border-soft)' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 'var(--fs-xs)', fontWeight: 700, color: 'var(--muted)', marginBottom: 6 }}>
@@ -193,6 +215,18 @@ function DeviceCard({ d, supabase, copied, onCopy }: { d: Device; supabase: Retu
         )}
       </div>
     </Card>
+  )
+}
+
+function TokenRow({ label, value, onCopy, copied, mono }: { label: string; value: string; onCopy: (t: string) => void; copied: string | null; mono?: boolean }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+      <span style={{ fontSize: 'var(--fs-2xs)', color: 'var(--subtle)', minWidth: 88 }}>{label}</span>
+      <code style={{ flex: 1, minWidth: 0, fontSize: 'var(--fs-xs)', color: 'var(--text)', fontFamily: mono ? 'ui-monospace, monospace' : 'inherit', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', background: 'var(--surface-tint)', padding: '3px 7px', borderRadius: 'var(--r-sm)' }}>{value}</code>
+      <button onClick={() => onCopy(value)} className="wz-iconbtn" title={`Kopieer ${label}`} aria-label={`Kopieer ${label}`} style={{ width: 26, height: 26, flexShrink: 0 }}>
+        {copied === value ? <Check size={13} /> : <Copy size={13} />}
+      </button>
+    </div>
   )
 }
 
