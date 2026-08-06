@@ -44,7 +44,18 @@ Groen sinds de B3-wiring-commit.
 - [ ] **"Vergelijk kamers"-weergave** — NOG TE DOEN.
 
 ### A1 — dashboard-IA (Nu → Betekenis → Actie → Bewijs)
-- [ ] NOG TE DOEN. Pure frontend, veilig los te leveren.
+- [x] **Drie zone-headings** toegevoegd: *Nu in huis* (KPI's + versheid + weer) →
+      *Wat dit betekent — en wat te doen* (ventilatie-advies + nacht + ML + diagnose, samen
+      en op ernst) → *Bewijs — de metingen* (grafieken). `DiagnoseCard` van ONDER de grafieken
+      naar boven verplaatst zodat al het advies bij elkaar staat. typecheck/build/tests groen.
+- [ ] **Volledige merge tot één op-ernst-gerangschikte advieskaart** (ventilatie+nacht+ML+
+      diagnose in één component met expliciete ranking) — grotere refactor, NOG TE DOEN.
+      De zones + hergroepering zijn de veilige eerste helft; de echte samensmelting van de
+      vier componenten kan daarna zonder de IA opnieuw aan te raken.
+
+### Nog niet gestart (vervolg)
+- **B2** onboarding-wizard · **B1** grond-waarheid (foto's, Storage) · **B5** weekmail ·
+  **A2** notificaties · **A3-chat** paginacontext · **C2/C3**. Zie ux-and-features-plan.md.
 
 ## Migraties toepassen (jouw stap, te reviewen)
 ```bash
