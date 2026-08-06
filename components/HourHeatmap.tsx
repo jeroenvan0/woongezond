@@ -1,6 +1,9 @@
 'use client'
 import { useState } from 'react'
 import { HeatmapResult, HeatmapMetric, MONTH_NL_SHORT } from '@/lib/trends'
+import ChartTable from '@/components/ui/ChartTable'
+
+const METRIC_NL: Record<HeatmapMetric, string> = { co2: 'CO₂', humidity: 'luchtvochtigheid', temperature: 'temperatuur' }
 
 interface Stop {
   at: number
@@ -76,9 +79,23 @@ export default function HourHeatmap({ metric, result }: { metric: HeatmapMetric;
       </div>
     )
 
+  // Screen readers get the numbers via the table below; the coloured grid is decorative
+  // for them (role="img" with a summary), which avoids 24×N unlabelled focus stops (D3).
+  const tableRows = result.months.flatMap((mo, ri) =>
+    HOURS.filter((h) => result.matrix[ri][h] != null).map((h) => ({
+      m: MONTH_NL_SHORT[mo],
+      h: `${String(h).padStart(2, '0')}:00`,
+      v: `${result.matrix[ri][h]!.toFixed(1)} ${meta.unit}`,
+    })),
+  )
+
   return (
     <div style={{ overflowX: 'auto' }}>
-      <div style={{ minWidth: 520 }}>
+      <div
+        style={{ minWidth: 520 }}
+        role="img"
+        aria-label={`Warmtekaart van gemiddelde ${METRIC_NL[metric]} per maand en uur van de dag over ${result.months.length} maanden. Gebruik "Toon als tabel" voor de exacte waarden.`}
+      >
         {result.months.map((mo, ri) => (
           <div key={mo} style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 2 }}>
             <div style={{ width: 32, fontSize: 11, color: 'var(--muted)', flexShrink: 0, textAlign: 'right', paddingRight: 4 }}>
@@ -141,6 +158,12 @@ export default function HourHeatmap({ metric, result }: { metric: HeatmapMetric;
           )}
         </div>
       </div>
+      <ChartTable
+        caption={`Gemiddelde ${METRIC_NL[metric]} per maand en uur`}
+        columns={[{ key: 'm', label: 'Maand' }, { key: 'h', label: 'Uur' }, { key: 'v', label: 'Gemiddelde' }]}
+        rows={tableRows}
+        max={500}
+      />
     </div>
   )
 }

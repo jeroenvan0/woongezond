@@ -1,5 +1,6 @@
 'use client'
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { Plus, History, X, ArrowUp, MessageCircle, ThumbsUp, ThumbsDown } from 'lucide-react'
 import { withBase } from '@/lib/basePath'
 import { createClient } from '@/lib/supabase/client'
 
@@ -158,18 +159,19 @@ export default function ChatWidget() {
     await supabase.from('chat_messages').update({ feedback: next, feedback_at: new Date().toISOString() }).eq('id', m.dbId)
   }
 
-  const iconBtn: React.CSSProperties = { background: 'none', border: 'none', fontSize: 14, cursor: 'pointer', color: 'var(--muted)', padding: 4 }
+  const iconBtn: React.CSSProperties = { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 5, borderRadius: 'var(--r-sm)' }
 
   return (
     <div className="wz-chat" style={{ position: 'fixed', right: 24, zIndex: 1000 }}>
       {open && (
         <div
+          className="wz-chat-panel"
+          role="dialog"
+          aria-label="Luchtkwaliteit AI"
           style={{
-            width: 360,
-            height: 520,
             background: 'var(--surface)',
             border: '1px solid var(--border)',
-            borderRadius: 16,
+            borderRadius: 'var(--r-lg)',
             boxShadow: 'var(--shadow-lg)',
             display: 'flex',
             flexDirection: 'column',
@@ -179,29 +181,29 @@ export default function ChatWidget() {
         >
           <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)' }}>Luchtkwaliteit AI</div>
-              <div style={{ fontSize: 10, color: 'var(--muted)' }}>Live data · weer · schimmel</div>
+              <div style={{ fontWeight: 600, fontSize: 'var(--fs-md)', color: 'var(--text)' }}>Luchtkwaliteit AI</div>
+              <div style={{ fontSize: 'var(--fs-2xs)', color: 'var(--muted)' }}>Live data · weer · schimmel</div>
             </div>
             <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-              <button onClick={newChat} title="Nieuw gesprek" style={iconBtn}>
-                ✚
+              <button onClick={newChat} title="Nieuw gesprek" aria-label="Nieuw gesprek" style={iconBtn}>
+                <Plus size={16} />
               </button>
-              <button onClick={view === 'history' ? () => setView('chat') : openHistory} title="Geschiedenis" style={iconBtn}>
-                🕘
+              <button onClick={view === 'history' ? () => setView('chat') : openHistory} title="Geschiedenis" aria-label="Geschiedenis" style={iconBtn}>
+                <History size={16} />
               </button>
-              <button onClick={() => setOpen(false)} title="Sluiten" style={{ ...iconBtn, fontSize: 16 }}>
-                ✕
+              <button onClick={() => setOpen(false)} title="Sluiten" aria-label="Sluiten" style={iconBtn}>
+                <X size={17} />
               </button>
             </div>
           </div>
 
           {view === 'history' ? (
             <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px' }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
+              <div style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
                 Gesprekken
               </div>
               {sessions.length === 0 ? (
-                <div style={{ fontSize: 12.5, color: 'var(--muted)', textAlign: 'center', marginTop: 30 }}>Nog geen gesprekken.</div>
+                <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--muted)', textAlign: 'center', marginTop: 30 }}>Nog geen gesprekken.</div>
               ) : (
                 sessions.map((s) => (
                   <button
@@ -213,16 +215,16 @@ export default function ChatWidget() {
                       textAlign: 'left',
                       padding: '9px 11px',
                       marginBottom: 6,
-                      borderRadius: 9,
+                      borderRadius: 'var(--r-sm)',
                       border: '1px solid var(--border)',
                       background: s.id === sessionId ? 'var(--surface-tint)' : 'var(--surface-2)',
                       cursor: 'pointer',
                     }}
                   >
-                    <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <div style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {s.title}
                     </div>
-                    <div style={{ fontSize: 10.5, color: 'var(--subtle)', marginTop: 2 }}>
+                    <div style={{ fontSize: 'var(--fs-2xs)', color: 'var(--subtle)', marginTop: 2 }}>
                       {s.message_count} berichten · {new Date(s.updated_at).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}
                     </div>
                   </button>
@@ -230,9 +232,9 @@ export default function ChatWidget() {
               )}
             </div>
           ) : (
-            <div style={{ flex: 1, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div aria-live="polite" style={{ flex: 1, overflowY: 'auto', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
               {msgs.length === 0 && (
-                <div style={{ color: 'var(--muted)', fontSize: 13, textAlign: 'center', marginTop: 30 }}>
+                <div style={{ color: 'var(--muted)', fontSize: 'var(--fs-md)', textAlign: 'center', marginTop: 30 }}>
                   Stel een vraag over je luchtkwaliteit, het buitenweer of een specifieke periode…
                 </div>
               )}
@@ -243,9 +245,9 @@ export default function ChatWidget() {
                       maxWidth: '85%',
                       padding: '8px 12px',
                       borderRadius: m.role === 'user' ? '12px 12px 2px 12px' : '12px 12px 12px 2px',
-                      background: m.role === 'user' ? '#3B82F6' : 'var(--surface-tint)',
+                      background: m.role === 'user' ? 'var(--brand)' : 'var(--surface-tint)',
                       color: m.role === 'user' ? '#fff' : 'var(--text)',
-                      fontSize: 13,
+                      fontSize: 'var(--fs-md)',
                       lineHeight: 1.5,
                     }}
                   >
@@ -253,17 +255,17 @@ export default function ChatWidget() {
                   </div>
                   {m.role === 'assistant' && m.dbId && (
                     <div style={{ display: 'flex', gap: 4, marginTop: 3, marginLeft: 2 }}>
-                      <button onClick={() => vote(i, 1)} title="Nuttig" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, opacity: m.feedback === 1 ? 1 : 0.4 }}>
-                        👍
+                      <button onClick={() => vote(i, 1)} title="Nuttig" aria-label="Nuttig antwoord" aria-pressed={m.feedback === 1} style={{ display: 'inline-flex', background: 'none', border: 'none', cursor: 'pointer', color: m.feedback === 1 ? 'var(--ok)' : 'var(--subtle)', padding: 2 }}>
+                        <ThumbsUp size={13} />
                       </button>
-                      <button onClick={() => vote(i, -1)} title="Niet nuttig" style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, opacity: m.feedback === -1 ? 1 : 0.4 }}>
-                        👎
+                      <button onClick={() => vote(i, -1)} title="Niet nuttig" aria-label="Niet nuttig antwoord" aria-pressed={m.feedback === -1} style={{ display: 'inline-flex', background: 'none', border: 'none', cursor: 'pointer', color: m.feedback === -1 ? 'var(--crit)' : 'var(--subtle)', padding: 2 }}>
+                        <ThumbsDown size={13} />
                       </button>
                     </div>
                   )}
                 </div>
               ))}
-              {loading && <div style={{ color: 'var(--muted)', fontSize: 12 }}>Aan het typen…</div>}
+              {loading && <div style={{ color: 'var(--muted)', fontSize: 'var(--fs-sm)' }}>Aan het typen…</div>}
               <div ref={bottomRef} />
             </div>
           )}
@@ -275,14 +277,16 @@ export default function ChatWidget() {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && send()}
                 placeholder="Vraag iets over de data…"
-                style={{ flex: 1, padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13, background: 'var(--surface-2)', color: 'var(--text)', outline: 'none' }}
+                aria-label="Vraag aan de luchtkwaliteit AI"
+                style={{ flex: 1, padding: '8px 12px', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', fontSize: 'var(--fs-md)', background: 'var(--surface-2)', color: 'var(--text)', outline: 'none' }}
               />
               <button
                 onClick={send}
                 disabled={!input.trim() || loading}
-                style={{ padding: '8px 12px', background: '#3B82F6', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 13, fontWeight: 600, opacity: !input.trim() || loading ? 0.5 : 1 }}
+                aria-label="Verstuur"
+                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '8px 12px', background: 'var(--brand)', color: '#fff', border: 'none', borderRadius: 'var(--r-sm)', cursor: 'pointer', fontWeight: 600, opacity: !input.trim() || loading ? 0.5 : 1 }}
               >
-                ↑
+                <ArrowUp size={16} />
               </button>
             </div>
           )}
@@ -290,9 +294,10 @@ export default function ChatWidget() {
       )}
       <button
         onClick={() => setOpen((o) => !o)}
-        style={{ width: 52, height: 52, borderRadius: '50%', background: 'linear-gradient(135deg,#3B82F6 0%,#2563EB 100%)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 16px rgba(59,130,246,0.4)', fontSize: 22 }}
+        aria-label={open ? 'Chat sluiten' : 'Chat openen'}
+        style={{ width: 52, height: 52, borderRadius: '50%', background: 'linear-gradient(135deg,var(--brand-mark) 0%,var(--brand-700) 100%)', color: '#fff', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: 'var(--shadow-md)' }}
       >
-        {open ? '✕' : '💬'}
+        {open ? <X size={22} /> : <MessageCircle size={22} />}
       </button>
     </div>
   )

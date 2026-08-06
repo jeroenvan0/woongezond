@@ -2,6 +2,7 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import { buildTrainingSet, train } from '@/lib/ml'
+import { enforce, LIMITS } from '@/lib/rateLimit'
 import { SensorReading } from '@/lib/ml'
 
 async function client() {
@@ -49,6 +50,11 @@ export async function POST(req: Request) {
     data: { user },
   } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Niet ingelogd' }, { status: 401 })
+
+  // Scans up to 200k rows and refits the model — expensive, and pointless to repeat
+  // within the hour since the fit barely moves.
+  const limited = enforce('ml-retrain', user.id, LIMITS.mlRetrain)
+  if (limited) return limited
 
   const body = await req.json().catch(() => ({}))
   const days = body.days ?? 30

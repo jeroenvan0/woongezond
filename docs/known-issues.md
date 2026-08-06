@@ -1,0 +1,323 @@
+# Known issues — found, diagnosed, not yet fixed
+
+Running list of defects that are understood but deliberately not fixed yet, so the
+diagnosis isn't lost between sessions. Each entry carries the root cause and the
+proposed fix, not just the symptom. Fixed entries move out of this file and into
+[../DECISIONS.md](../DECISIONS.md) if the fix was non-obvious.
+
+Scheduled into Milestone 4 (pilot UX polish) in [../ROADMAP.md](../ROADMAP.md).
+
+---
+
+## KI-1 — The smoothing slider lied about its unit ✅ FIXED 2026-08-05
+
+**Reported by Jeroen, 2026-08-05.** "It is smoothing the data automatically based on the
+time frame, which is fine, but when the smoothing slider is used, it gives the wrong
+impression."
+
+**Severity: high.** This is the one class of bug this product cannot afford — the app
+positions its output as evidentiary (see `lib/coverage.ts`, [../CALCULATIONS.md](../CALCULATIONS.md)),
+and today the headline numbers on the dashboard change when you drag a cosmetic-looking
+slider.
+
+### There are two separate defects here
+
+#### KI-1a — The slider is labelled in minutes but applies *samples*
+
+The automatic smoothing Jeroen refers to is correct and intentional: `/api/data`
+buckets server-side by requested period, and returns the bucket size it used
+([app/api/data/route.ts:5-12](../app/api/data/route.ts#L5-L12)):
+
+| Period requested | Bucket size returned |
+|---|---|
+| ≤ 2 days | 1 min |
+| ≤ 7 days | 5 min |
+| ≤ 30 days | 15 min |
+| ≤ 90 days | 60 min |
+| ≤ 365 days | 360 min |
+| > 365 days | 720 min |
+
+The route reports this to the client as `bucketMinutes` ([route.ts:54](../app/api/data/route.ts#L54)).
+**The dashboard throws it away** — `fetchData` keeps only `d.rows`
+([app/dashboard/page.tsx:86](../app/dashboard/page.tsx#L86)).
+
+Then `applyMA` passes the slider's minute value straight into `movingAverage` as a
+**window size in array elements** ([app/dashboard/page.tsx:46-54](../app/dashboard/page.tsx#L46-L54)
+→ [lib/calculations.ts:220-229](../lib/calculations.ts#L220-L229)):
+
+```ts
+const n = Math.max(2, Math.round(windowMin))   // "minutes" used as a sample count
+const co2 = movingAverage(rows.map((x) => x.co2), n)
+```
+
+So the true smoothing window is `sliderMinutes × bucketMinutes`. The label is only
+correct on the 30-min…24-hour views, where buckets happen to be 1 minute wide (the
+sensor writes ~every 60 s — 1,424 rows/day observed, see KI-3):
+
+| View | Slider says | Actually smooths over | Error |
+|---|---|---|---|
+| 24 uur | 60 min | 60 min | ✅ correct |
+| 7 dagen | 60 min | 5 hours | 5× |
+| 30 dagen | 60 min | 15 hours | 15× |
+| 1 jaar | 60 min | **15 days** | 360× |
+| 1 jaar | 180 min (max) | **45 days** | 360× |
+
+#### KI-1b — The KPI cards read from the smoothed series, not the measurements
+
+`last` is taken from the *smoothed* array
+([app/dashboard/page.tsx:108-116](../app/dashboard/page.tsx#L108-L116)):
+
+```ts
+const displayed = useMemo(() => applyMA(rows, maMin), [rows, maMin])
+const last = displayed[displayed.length - 1]
+```
+
+Everything derived from `last` — the CO₂ / temperature / humidity / mould / dewpoint
+metric cards, their status colours, and the **health score** — therefore moves when the
+slider moves. Nothing on screen tells the user the "current" reading is no longer a
+reading.
+
+It compounds: `movingAverage` is a **centred** window (`i - half` … `i + half`), so at
+the final index the window is truncated to its trailing half. The "now" figure is an
+average of roughly the *previous* `n/2` samples. On the 1-year view at max slider that
+makes the headline "current CO₂" an average of the preceding ~22 days.
+
+### Proposed fix
+
+### The fix, as applied
+
+The slider no longer pretends to be a time control that it cannot be. Its **value is a
+number of data points**, and it *describes itself* in real time using the bucket size the
+server reports.
+
+1. `bucketMinutes` is now kept from the API response ([app/dashboard/page.tsx](../app/dashboard/page.tsx)).
+   It is read from the response rather than recomputed, which matters because the
+   `air_quality_bucketed` RPC picks its bucket adaptively — the observed size on a 24-hour
+   view was 2 min, not the 1 min the static table suggests.
+2. The conversion lives in [lib/smoothing.ts](../lib/smoothing.ts) (`windowMinutes`,
+   `windowPoints`, `maxWindowPoints`, `formatWindow`) and is covered by
+   [tests/smoothing.test.ts](../tests/smoothing.test.ts) — 20 tests over every real bucket
+   size, including a round-trip and an assertion that the advertised window equals the
+   span `movingAverage` actually consumes.
+3. The label reads e.g. `12 uur · 12 punten`, with `1 punt = 1 uur` beside it, so the
+   window is unambiguous at any period. The slider disables itself with *"Te weinig data"*
+   when the series is too short to smooth, and is capped at a quarter of the series so it
+   cannot flatten the trend being examined.
+4. **The KPI cards and health score no longer read the smoothed series.**
+5. …and they no longer read the bucketed series either. That turned out to be a second,
+   separate distortion — see below.
+
+### Second defect found while fixing: the headline value moved with the *period* too
+
+With the slider fixed, the cards still disagreed with themselves across chart ranges:
+**1016 ppm at 24 hours and 736 ppm at 30 days, for the same room at the same instant.**
+`rows` is server-bucketed, so its final element is an average over one bucket — a whole
+hour on the 30-day view.
+
+A reported current value must not depend on which chart range is selected, so the cards
+now come from **their own single-row query** for the newest actual measurement,
+independent of the chart entirely. Verified: **1013 ppm at 24 h, 7 d and 30 d alike**, and
+unchanged as the slider moves.
+
+### Third defect found while verifying: KPI cards could stick on "—"
+
+`loading` gates the card values but the refetch is keyed on `period`, so any path that set
+`loading` without triggering a fetch left the cards blank while the charts showed data.
+Two paths did: a failed `/api/data` response returned early without clearing the flag
+(reachable via the new rate limiter or any network blip), and re-selecting the
+already-selected period set the flag without changing `period`. Both fixed — the flag is
+now cleared in a `finally`, and only set when the period genuinely changes.
+
+### Still open — `rawCount` is wrong
+
+`rawCount` in the RPC fast path is set to the **bucketed** row count, not the raw one
+([app/api/data/route.ts:54](../app/api/data/route.ts#L54)) — `rawCount: rows.length`,
+where `rows` is already aggregated. The JS fallback gets it right (`all.length`,
+[line 76](../app/api/data/route.ts#L76)). This defeats commit `1d7bf04` ("Show raw
+measurement count separately from graph points"). The dashboard footer separately shows
+`rows.length` ("meetpunten"), which is the bucket count too — so on the 1-year view
+"meetpunten" understates reality by ~360×. Not fixed: it needs the RPC to return a true
+raw count, which is a database change rather than a UI one.
+
+---
+
+## KI-2 — Notification centre opened off-screen ✅ FIXED 2026-08-05
+
+**Reported by Jeroen, 2026-08-05.** Confirmed by measurement, not just inspection.
+
+**Severity: medium.** The feature is effectively unusable on desktop; threshold settings
+sit at the bottom of a panel whose bottom is below the fold.
+
+### Root cause
+
+The bell lives in the **sidebar footer** ([components/AppShell.tsx:107-111](../components/AppShell.tsx#L107-L111)),
+i.e. bottom-left of the viewport. The sidebar is `position:fixed; left:0; bottom:0;
+width:230px` ([app/globals.css:69](../app/globals.css#L69)).
+
+The dropdown is positioned as if it were hanging off a top-right header button
+([components/NotificationBell.tsx:176-192](../components/NotificationBell.tsx#L176-L192)):
+
+```ts
+position: 'absolute',
+top: 'calc(100% + 8px)',   // opens DOWNWARD from a button already at the bottom
+right: 0,                  // grows LEFTWARD 320px from a button at x≈16..57
+width: 320,
+maxHeight: 460,            // fixed, ignores viewport height
+```
+
+Both axes are wrong for where the button actually sits. Measured with headless Chrome
+against the real sidebar CSS, at 1440×900 **and** 1280×720 (identical, because the
+sidebar is bottom-anchored):
+
+| | value |
+|---|---|
+| Button box | x 16 → 57 |
+| Panel box | x **−263** → 57, y 838 → 961 |
+| Viewport | 1440 × 900 |
+| Clipped off the left | **263 px** |
+| Clipped below the fold | **61 px** |
+
+Only 57 px of a 320 px panel is on screen — and that is with an *empty* notification
+list. With notifications loaded, or the ⚙ Drempelwaarden section expanded, the panel
+grows toward `maxHeight: 460` and the bottom overflow grows with it.
+
+Repro harness and screenshots: `scratchpad/repro.mjs`, `scratchpad/repro-*.png`
+(scratchpad is session-local; the script is ~40 lines and trivially re-creatable from
+the numbers above).
+
+### The fix, as applied
+
+`NotificationBell` now takes a `placement` prop, because the component renders in two
+places whose geometry has nothing in common and one set of coordinates cannot serve both.
+
+- **`placement="side"`** (desktop sidebar footer): `bottom: 0; left: calc(100% + 8px)` —
+  flies out to the right of the rail and upward, the conventional pattern for a
+  bottom-of-sidebar menu.
+- **`placement="top"`** (mobile top bar): `position: fixed`, pinned under the header at
+  `right: 12`. Absolute positioning was *not* enough here: the bell is not the last item
+  in the top bar (the theme and logout buttons sit to its right), so anchoring to the
+  button's right edge still pushed 36 px off a 390 px screen. The viewport is the only
+  frame of reference that guarantees the panel stays on it.
+- `width: min(320px, calc(100vw - 24px))`, and `maxHeight` bounded by the space actually
+  available in each direction rather than a flat 460 px.
+- Also added: Escape closes the panel, and `overscroll-behavior: contain` stops a scroll
+  inside it from scrolling the page behind.
+
+### Verified
+
+Measured in headless Chrome against the running app, signed in, with the ⚙ Drempelwaarden
+section expanded so the panel is at its tallest. **Zero clipping on every axis:**
+
+| Viewport | Position | Panel box | Clipped |
+|---|---|---|---|
+| 1440×900 | absolute | x 65→385, y 504→824 | none |
+| 1280×720 | absolute | x 65→385, y 508→644 | none |
+| 1440×620 | absolute | x 65→385, y 224→544 | none |
+| 1440×500 | absolute | x 65→385, y 104→424 | none |
+| 1440×900 collapsed rail | absolute | x 65→385, y 610→746 | none |
+| 390×844 mobile | fixed | x 50→370, y 65→385 | none |
+| 360×640 mobile | fixed | x 20→340, y 65→201 | none |
+
+Compare the "before" on the same measurement: 263 px off the left edge, 61 px below the
+fold, 57 px of 320 px visible.
+
+---
+
+## KI-4 — Every notification is written twice (pre-existing race)
+
+**Found 2026-08-05** while testing the M3 alert sweep. **Not** introduced by it — the
+duplication is visible in rows going back months.
+
+**Severity: medium.** Cosmetic today (a doubled bell count). It gets worse once the
+15-minute timer runs alongside browser polling, and with 10 households it becomes
+duplicate *emails*, which is the kind of thing that gets an alert channel muted.
+
+### Evidence
+
+Every row has a twin milliseconds apart, across unrelated alert types and dates:
+
+| created_at | type |
+|---|---|
+| 2026-08-05 15:11:17.665781 / **.667839** | `device_offline` |
+| 2026-08-05 15:11:17.262757 / **.263397** | `device_offline` |
+| 2026-07-31 08:58:43.174406 / **.178838** | `threshold_humidity_warning` |
+| 2026-06-30 03:56:10.372726 / **.410314** | `threshold_co2_warning` |
+
+### Root cause
+
+Check-then-act with no atomicity. The sweep reads recent notifications to decide whether
+an alert is rate-limited, then inserts. Two concurrent callers — two browser tabs, or
+React StrictMode's double-invoke, or soon a tab *and* the systemd timer — both read
+"nothing recent" before either has committed, so both pass the check and both insert.
+
+The 2-hour and 12-hour rate limits do not help: the two requests are ~2 ms apart, well
+inside any window. No database constraint prevents it.
+
+### Proposed fix
+
+Move the guarantee into Postgres, since that is the only place both callers meet:
+
+```sql
+CREATE UNIQUE INDEX notifications_dedupe
+  ON public.notifications (user_id, device_id, type, date_trunc('hour', created_at AT TIME ZONE 'UTC'));
+```
+
+(`AT TIME ZONE 'UTC'` makes the expression immutable, which a plain `date_trunc` on
+`timestamptz` is not, and an index expression must be.)
+
+Then make the insert `.upsert(…, { onConflict: …, ignoreDuplicates: true })` so a losing
+race is a no-op rather than a 500.
+
+**Blocked on a decision, not on effort:** creating a unique index requires the existing
+duplicate rows to be removed first, and that is a destructive change to production data.
+It needs an explicit go-ahead. The dedupe query would be a standard
+`DELETE … USING … WHERE a.id > b.id` over the twins.
+
+An hour-granularity index is a slightly blunt instrument — it also collapses two
+*legitimate* alerts of the same type for the same device inside one clock hour. Given
+the existing rate limits are 2 h and 12 h, nothing legitimate is lost.
+
+---
+
+## KI-5 — Inter is loaded from Google Fonts
+
+**Severity: low.** Noted while writing the CSP, which had to be widened to
+`style-src https://fonts.googleapis.com` and `font-src https://fonts.gstatic.com`
+purely for this ([app/layout.tsx:13-15](../app/layout.tsx#L13-L15)).
+
+Switching to `next/font/google` self-hosts the font at build time: it removes two
+third-party origins from the CSP, one external dependency from the critical render path,
+and the privacy question of every resident's browser announcing itself to Google on
+every page load. Small change, worth doing when someone next touches the layout.
+
+---
+
+## KI-3 — Sensor outages going unnoticed
+
+**Severity: high for the pilot** — not a code bug, but proof of the gap Milestone 3 exists
+to close.
+
+`air_quality` observations on 2026-08-05:
+
+| Device | Rows | Last reading |
+|---|---|---|
+| `3f1380c9…` Jeroen Sensor (slaapkamer_jeroen) | 105,462 | 2026-08-03 11:12Z → **resumed 19:02Z** |
+| `084c71f1…` Jannouk Sensor (slaapkamer_jannouk) | 10,019 | **2026-05-25 18:44Z** (~72 days) |
+| `a1000000…` Feather S3 (Slaapkamer) | 0 | **never** |
+
+The active sensor was writing 1,424 rows/day (≈ every 60 s) with no degradation, then
+stopped **mid-day, abruptly** — the shape of a power cut, Wi-Fi drop or unplug, not a
+failing sensor. It came back on its own during the afternoon of 2026-08-05, after roughly
+56 hours down. The database holds nothing further to diagnose the cause; that is
+device-side.
+
+The point stands regardless of the recovery, and is arguably sharpened by it: **the
+outage began, ran for two and a half days, and ended, and no part of the system reported
+any of it.** It was noticed only because someone went looking. A second device has been
+dead for over two months and a third has never reported at all. With 10 households that
+is the difference between a pilot and an outage.
+
+This is what M3's `/api/health` (last ingest per device) and the `device_offline` alert
+in the sweep are for — and it is why device-liveness alerting landed in M3 rather than
+being deferred as the M2 design doc's §7 tentatively suggested. The recovery was visible
+in `/api/health` within a minute of the sensor reconnecting.

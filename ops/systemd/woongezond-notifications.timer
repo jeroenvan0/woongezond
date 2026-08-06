@@ -1,0 +1,15 @@
+[Unit]
+Description=Run the Woongezond alert sweep every 15 minutes
+
+[Timer]
+# Every 15 minutes. The sensors write ~every 60s, so this bounds alert latency at
+# 15 min while keeping the sweep cheap (one query per active device).
+# Offset from :00 so it does not collide with the hourly weather ingest at :05.
+OnCalendar=*:02,17,32,47:00
+# Persistent so a reboot or a VPS restart doesn't silently skip a window.
+Persistent=true
+# Spread load if more timers are added later.
+RandomizedDelaySec=30
+
+[Install]
+WantedBy=timers.target

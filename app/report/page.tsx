@@ -1,21 +1,29 @@
 'use client'
 import { useEffect, useMemo, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { withBase } from '@/lib/basePath'
 import { SensorRow } from '@/lib/types'
 import { toSeries, buildDiagnosis, buildTips, mean } from '@/lib/reportAnalytics'
 import { measurementCoverage, detectGaps } from '@/lib/coverage'
 import { ReportLineChart, ReportDualChart } from '@/components/ReportChart'
+import AppShell from '@/components/AppShell'
+import Button from '@/components/ui/Button'
+import DataBanner, { DataError, describeError } from '@/components/DataBanner'
+import { getSeries } from '@/lib/useSeries'
+import { Download, Printer } from 'lucide-react'
 
+// The report is a *printed document*, so its palette is fixed light values — a court
+// exhibit must render the same on paper regardless of the app's theme. These literals
+// are the deliberate print exception to the token system; the surrounding shell is
+// theme-aware, the paper sheet is not. PRIMARY is the brand green so the mark matches.
 const RED = '#DC2626',
-  AMBER = '#D97706',
-  GREEN = '#16A34A',
-  PRIMARY = '#3B82F6',
+  AMBER = '#B45309',
+  GREEN = '#15803D',
+  PRIMARY = '#0B7A5C',
   TEXT = '#0F172A',
   MUTED = '#475569',
-  SUBTLE = '#94A3B8'
+  SUBTLE = '#64748B'
 
 const PERIODS = [
   { label: '7 dagen', value: 10080 },
@@ -39,6 +47,7 @@ export default function ReportPage() {
   const [pollution, setPollution] = useState<any>(null)
   const [period, setPeriod] = useState(43200)
   const [loading, setLoading] = useState(true)
+  const [dataError, setDataError] = useState<DataError>(null)
   const [generatedAt, setGeneratedAt] = useState<Date | null>(null)
 
   const load = useCallback(async () => {
@@ -51,8 +60,13 @@ export default function ReportPage() {
       return
     }
     setEmail(user.email ?? '')
+    // Data via the shared cache (A5-visible errors); weather is best-effort.
     const [dRes, wRes] = await Promise.all([
-      fetch(withBase(`/api/data?minutes=${period}`)).then((r) => r.json()).catch(() => ({ rows: [] })),
+      getSeries(period).then((d) => { setDataError(null); return d }).catch((e) => {
+        const status = (e as { status?: number })?.status
+        setDataError(describeError(status, status == null))
+        return { rows: [], bucketMinutes: 1 }
+      }),
       fetch(withBase('/api/weather')).then((r) => r.json()).catch(() => ({ weather: null, pollution: null })),
     ])
     setRows(dRes.rows ?? [])
@@ -118,52 +132,46 @@ export default function ReportPage() {
   const colRh = (v: number) => (v >= 70 ? RED : v >= 60 ? AMBER : GREEN)
   const colMr = (v: number) => (v >= 80 ? RED : v >= 60 ? AMBER : GREEN)
 
+  const controls = (
+    <>
+      <select value={period} onChange={(e) => setPeriod(+e.target.value)} aria-label="Rapportperiode" style={{ padding: '7px 10px', fontSize: 'var(--fs-md)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--surface)', color: 'var(--text)' }}>
+        {PERIODS.map((p) => (
+          <option key={p.value} value={p.value}>
+            Periode: {p.label}
+          </option>
+        ))}
+      </select>
+      <Button variant="secondary" size="sm" onClick={downloadCsv} disabled={loading || !model} icon={<Download size={14} />}>CSV</Button>
+      <Button variant="primary" size="sm" onClick={() => window.print()} disabled={loading || !model} icon={<Printer size={14} />}>Download als PDF</Button>
+    </>
+  )
+
   return (
-    <div className="report-root" style={{ background: '#F1F5F9', minHeight: '100vh', padding: '20px 0' }}>
+    <AppShell title="Rapport" actions={controls}>
       <style>{`
         @page { size: A4; margin: 14mm; }
         @media print {
           .no-print { display: none !important; }
-          .report-root { background: #fff !important; padding: 0 !important; }
-          .report-sheet { box-shadow: none !important; margin: 0 !important; width: auto !important; border-radius: 0 !important; }
+          .report-sheet { box-shadow: none !important; margin: 0 !important; width: auto !important; max-width: none !important; border-radius: 0 !important; }
           .report-sheet, .report-sheet * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
           .page-break { break-before: page; }
         }
         .report-sheet { color: ${TEXT}; }
         .report-sheet h1,.report-sheet h2,.report-sheet p { margin: 0; }
+        /* Responsive report (4.2): stat grid 4→2→1, Kv rows stack under 560px. */
+        .report-stats { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-bottom: 14px; }
+        @media (max-width: 760px) { .report-stats { grid-template-columns: repeat(2,1fr); } }
+        @media (max-width: 420px) { .report-stats { grid-template-columns: 1fr; } }
+        @media (max-width: 560px) { .report-kv { flex-direction: column; gap: 1px !important; } .report-kv > span:first-child { min-width: 0 !important; } }
       `}</style>
 
-      {/* Controls — never printed */}
-      <div className="no-print" style={{ maxWidth: 800, margin: '0 auto 14px', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', padding: '0 12px' }}>
-        <Link href="/dashboard" style={{ fontSize: 13, color: MUTED, textDecoration: 'none', padding: '7px 12px', border: '1px solid #CBD5E1', borderRadius: 8, background: '#fff' }}>
-          ← Dashboard
-        </Link>
-        <select value={period} onChange={(e) => setPeriod(+e.target.value)} style={{ padding: '7px 10px', fontSize: 13, border: '1px solid #CBD5E1', borderRadius: 8, background: '#fff', color: TEXT }}>
-          {PERIODS.map((p) => (
-            <option key={p.value} value={p.value}>
-              Periode: {p.label}
-            </option>
-          ))}
-        </select>
-        <button
-          onClick={downloadCsv}
-          disabled={loading || !model}
-          style={{ marginLeft: 'auto', padding: '8px 14px', background: 'var(--surface)', color: MUTED, border: '1px solid #CBD5E1', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: loading || !model ? 0.5 : 1 }}
-        >
-          ⬇ CSV
-        </button>
-        <button
-          onClick={() => window.print()}
-          disabled={loading || !model}
-          style={{ padding: '8px 16px', background: PRIMARY, color: '#fff', border: 'none', borderRadius: 8, fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: loading || !model ? 0.5 : 1 }}
-        >
-          ⬇ Download als PDF
-        </button>
+      <div className="no-print" style={{ maxWidth: 800, margin: '0 auto' }}>
+        <DataBanner error={dataError} onRetry={load} />
       </div>
 
       <div
         className="report-sheet"
-        style={{ maxWidth: 800, margin: '0 auto', background: '#fff', borderRadius: 4, boxShadow: '0 1px 8px rgba(0,0,0,0.08)', padding: '32px 36px', fontFamily: 'Inter, system-ui, sans-serif' }}
+        style={{ maxWidth: 800, margin: '0 auto', background: '#fff', borderRadius: 'var(--r-md)', boxShadow: 'var(--shadow-sm)', padding: '32px 36px', fontFamily: 'inherit' }}
       >
         {loading ? (
           <div style={{ color: MUTED, fontSize: 14, padding: '40px 0', textAlign: 'center' }}>Rapport genereren…</div>
@@ -175,7 +183,7 @@ export default function ReportPage() {
           <>
             {/* ── Header ── */}
             <div style={{ borderRadius: 16, overflow: 'hidden', border: '1px solid #E2E8F0', marginBottom: 16 }}>
-              <div style={{ background: 'linear-gradient(135deg,#3B82F6 0%,#2563EB 100%)', padding: '22px 24px', color: '#fff' }}>
+              <div style={{ background: 'linear-gradient(135deg,#12B886 0%,#0B7A5C 100%)', padding: '22px 24px', color: '#fff' }}>
                 <div style={{ fontSize: 10.5, fontWeight: 700, letterSpacing: '0.09em', textTransform: 'uppercase', opacity: 0.85 }}>Woongezond · Luchtkwaliteit</div>
                 <h1 style={{ fontSize: 25, fontWeight: 800, letterSpacing: '-0.02em', marginTop: 3 }}>Luchtkwaliteitsrapport</h1>
                 <div style={{ fontSize: 12.5, opacity: 0.92, marginTop: 5 }}>
@@ -201,7 +209,7 @@ export default function ReportPage() {
 
             {/* ── Key stats ── */}
             <SectionHeader>Gemeten waarden (nu / periode)</SectionHeader>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 10, marginBottom: 14 }}>
+            <div className="report-stats">
               <Stat label="CO₂ (nu / gem / max)" value={`${kpi.co2Now} / ${kpi.co2Avg} / ${kpi.co2Max}`} unit="ppm" color={colCo2(kpi.co2Now)} />
               <Stat label="Temperatuur (nu / gem)" value={`${kpi.tempNow.toFixed(1)} / ${kpi.tempAvg.toFixed(1)}`} unit="°C" color={TEXT} />
               <Stat label="Luchtvochtigheid (nu / gem)" value={`${kpi.rhNow.toFixed(0)} / ${kpi.rhAvg.toFixed(0)}`} unit="%" color={colRh(kpi.rhNow)} />
@@ -241,8 +249,8 @@ export default function ReportPage() {
             <ReportLineChart
               title="CO₂ concentratie (ppm)"
               unit="ppm"
-              color="#3B82F6"
-              fill="rgba(59,130,246,0.12)"
+              color="#4338CA"
+              fill="rgba(67,56,202,0.12)"
               data={model.s.times.map((t, i) => ({ t: t.getTime(), v: model.s.co2[i] }))}
               refLines={[
                 { value: 1000, label: 'Bouwbesluit 1000', color: RED },
@@ -252,8 +260,8 @@ export default function ReportPage() {
             <ReportLineChart
               title="Luchtvochtigheid (%)"
               unit="%"
-              color="#10B981"
-              fill="rgba(16,185,129,0.12)"
+              color="#0E7490"
+              fill="rgba(14,116,144,0.12)"
               data={model.s.times.map((t, i) => ({ t: t.getTime(), v: model.s.rh[i] }))}
               refLines={[
                 { value: 70, label: 'Schimmelgrens 70%', color: RED },
@@ -263,8 +271,8 @@ export default function ReportPage() {
             <ReportDualChart
               title="Temperatuur & Dauwpunt (°C)"
               unit="°C"
-              aColor="#EF4444"
-              bColor="#3B82F6"
+              aColor="#BE123C"
+              bColor="#7E22CE"
               aLabel="Temperatuur"
               bLabel="Dauwpunt"
               a={model.s.times.map((t, i) => ({ t: t.getTime(), v: model.s.temp[i] }))}
@@ -273,8 +281,8 @@ export default function ReportPage() {
             <ReportLineChart
               title="Schimmelrisico (0–100)"
               unit="score"
-              color="#F97316"
-              fill="rgba(249,115,22,0.12)"
+              color="#B45309"
+              fill="rgba(180,83,9,0.12)"
               data={model.s.times.map((t, i) => ({ t: t.getTime(), v: model.s.mr[i] }))}
               yMin={0}
               refLines={[
@@ -368,7 +376,7 @@ export default function ReportPage() {
           </>
         )}
       </div>
-    </div>
+    </AppShell>
   )
 }
 
@@ -451,7 +459,7 @@ function Stat({ label, value, unit, color }: { label: string; value: string; uni
 
 function Kv({ label, value, color }: { label: string; value: string; color: string }) {
   return (
-    <div style={{ display: 'flex', gap: 8, padding: '3px 0', fontSize: 12 }}>
+    <div className="report-kv" style={{ display: 'flex', gap: 8, padding: '3px 0', fontSize: 12 }}>
       <span style={{ color: MUTED, minWidth: 220 }}>{label}</span>
       <span style={{ fontWeight: 700, color }}>{value}</span>
     </div>

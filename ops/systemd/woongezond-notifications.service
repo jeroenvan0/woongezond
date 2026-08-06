@@ -1,0 +1,12 @@
+[Unit]
+Description=Woongezond threshold + device-liveness alert sweep
+After=network.target woongezond-react.service
+Wants=woongezond-react.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/var/www/woongezond-dev-react
+# Read the shared cron secret from .env.local and POST the sweep endpoint.
+# -fsS makes curl exit non-zero on HTTP errors so systemd records a failure.
+# Without the header the route falls back to session auth and returns 401.
+ExecStart=/usr/bin/bash -lc 'SECRET=$(grep -m1 "^CRON_SECRET=" /var/www/woongezond-dev-react/.env.local | cut -d= -f2-); curl -fsS -X POST -H "x-cron-secret: $SECRET" http://localhost:3001/api/notifications/check'

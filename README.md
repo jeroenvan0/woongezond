@@ -27,19 +27,47 @@ Live: `https://woongezond-react.vostech.group` (systemd `woongezond-react`, port
 ## Key code
 
 ```
-app/api/        data · chat · recommendations · weather · ml/{model,retrain} · notifications/check
+app/api/        data · chat · recommendations · weather · ml/{model,retrain}
+                notifications/check · health
 lib/            calculations · trends · mouldModels · chatTools · ml/* · supabase/*
+                logger · email · rateLimit
 components/     MetricCard · ChartCard · SensorChart · TimeSeriesChart · DualAxisChart
                 HealthTimelineChart · MonthlyTrendChart · HourHeatmap
                 NotificationBell · MLPredictionCard · ChatWidget · Navigation
+proxy.ts        per-request CSP nonce (Next 16 renamed middleware.ts → proxy.ts)
+ops/            systemd units for the VPS — see ops/README.md
+tests/          vitest suite over the calculation layer
 ```
+
+## Operations
+
+- **Health**: `GET /api/health` — `ok` / `degraded` / `error`. Counts only in public
+  responses; per-device detail requires the `x-cron-secret` header.
+- **Scheduled jobs**: hourly weather ingest and a 15-minute alert sweep, both systemd
+  timers. See [ops/README.md](ops/README.md), including how to dry-run the alert sweep
+  before enabling it.
+- **Logs**: one JSON object per line →
+  `journalctl -u woongezond-react -o cat | jq 'select(.level=="error")'`.
+
+## Project docs
+
+| | |
+|---|---|
+| [docs/STATUS.md](docs/STATUS.md) | **Start here when resuming** — what's done, blocked, and on whom |
+| [ROADMAP.md](ROADMAP.md) | Milestones to a 10-device pilot |
+| [docs/known-issues.md](docs/known-issues.md) | Diagnosed-but-unfixed defects, with root causes |
+| [docs/firmware-provisioning.md](docs/firmware-provisioning.md) | One image per fleet, per-device identity, resident Wi-Fi setup |
+| [DECISIONS.md](DECISIONS.md) | Why things are the way they are |
+| [CALCULATIONS.md](CALCULATIONS.md) | Every formula and threshold |
 
 ## Environment (`.env.local`)
 
 Required: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
 `SUPABASE_SERVICE_ROLE_KEY`, `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENWEATHER_API_KEY`.
 Optional: `RESEND_API_KEY`, `ALERT_FROM_ADDR` (email alerts — no-op when unset);
-`CRON_SECRET` (guards the weather-ingest route);
+`CRON_SECRET` (guards the weather-ingest and alert-sweep routes, and unlocks the
+per-device detail in `/api/health` — the repo's `.env.local` leaves it blank, the VPS
+sets it);
 `NEXT_PUBLIC_BASE_PATH` (serve the whole app under a prefix, e.g. `/admin` — leave
 unset to serve at the domain root; must match at build time and runtime).
 
@@ -47,6 +75,8 @@ unset to serve at the domain root; must match at build time and runtime).
 
 ```bash
 npm run dev                       # dev server
+npm test                          # vitest — calculation layer
+npm run typecheck                 # tsc --noEmit
 npm run build && npm start        # production
 sudo systemctl restart woongezond-react   # reload the live service after a build
 ```

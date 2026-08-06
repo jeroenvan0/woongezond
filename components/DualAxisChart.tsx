@@ -11,6 +11,7 @@ import {
   Legend,
 } from 'recharts'
 import { buildTimeAxis, makeTimeTick, tooltipLabel, insertGaps } from '@/components/chartAxis'
+import { useChartColors } from '@/lib/useChartColors'
 
 export interface DualPoint {
   t: number
@@ -64,6 +65,7 @@ export default function DualAxisChart({
   height = 220,
   bRefLine,
 }: Props) {
+  const c = useChartColors()
   if (!data.length)
     return (
       <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', fontSize: 13 }}>
@@ -76,7 +78,7 @@ export default function DualAxisChart({
   return (
     <ResponsiveContainer width="100%" height={height}>
       <ComposedChart data={plotData} margin={{ top: 8, right: 8, left: 0, bottom: 12 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(128,128,128,0.12)" vertical={false} />
+        <CartesianGrid strokeDasharray="3 3" stroke={c.grid} vertical={false} />
         <XAxis
           dataKey="t"
           type="number"

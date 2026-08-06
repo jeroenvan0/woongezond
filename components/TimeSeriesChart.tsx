@@ -12,6 +12,7 @@ import {
   ReferenceLine,
 } from 'recharts'
 import { buildTimeAxis, makeTimeTick, tooltipLabel, insertGaps } from '@/components/chartAxis'
+import { useChartColors } from '@/lib/useChartColors'
 
 export interface Point {
   t: number // epoch ms
@@ -60,6 +61,7 @@ export default function TimeSeriesChart({
   area = true,
   id = 'ts',
 }: Props) {
+  const c = useChartColors()
   if (!data.length)
     return (
       <div
@@ -89,7 +91,7 @@ export default function TimeSeriesChart({
             <stop offset="95%" stopColor={color} stopOpacity={0.01} />
           </linearGradient>
         </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke="rgba(128,128,128,0.12)" vertical={false} />
+        <CartesianGrid strokeDasharray="3 3" stroke={c.grid} vertical={false} />
         <XAxis
           dataKey="t"
           type="number"
