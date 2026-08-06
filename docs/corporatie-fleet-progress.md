@@ -45,9 +45,10 @@ Groen sinds de B3-wiring-commit.
 - [x] **Code gewired (defensief)** — `app/api/data/route.ts` accepteert `?device=<uuid>`,
       valt terug op de één-arg RPC en op `rows.length` als de migratie nog niet leeft.
       `lib/useSeries.ts` cache-key = window+device; dashboard geeft `selectedDevice` mee.
-- [ ] **Per-kamer trends/schimmel** — alleen dashboard is nu device-scoped; trends + schimmel
-      volgen hetzelfde patroon. NOG TE DOEN.
-- [ ] **"Vergelijk kamers"-weergave** — NOG TE DOEN.
+- [x] **Per-kamer trends/schimmel** — trends (`useSeries({ device })`) en schimmel
+      (`/api/data?device=`) volgen nu hetzelfde device-scoping patroon als het dashboard.
+      Alle drie de datapagina's respecteren de `DeviceSwitcher`. typecheck/build/tests groen.
+- [ ] **"Vergelijk kamers"-weergave** (slaapkamer naast badkamer in één beeld) — NOG TE DOEN.
 
 ### A1 — dashboard-IA (Nu → Betekenis → Actie → Bewijs)
 - [x] **Drie zone-headings** toegevoegd: *Nu in huis* (KPI's + versheid + weer) →
