@@ -13,6 +13,7 @@ import {
   Droplets,
   FlaskConical,
   FileText,
+  Building2,
   Moon,
   Sun,
   Monitor,
@@ -35,6 +36,9 @@ const NAV = [
   { href: '/scenarios', label: "Scenario's", Icon: FlaskConical },
   { href: '/report', label: 'Rapport', Icon: FileText },
 ]
+// Fleet (C1) is only shown to corporation members. Appended to NAV once the
+// membership check resolves, so residents never see it.
+const FLEET_NAV = { href: '/vloot', label: 'Vloot', Icon: Building2 }
 
 interface Props {
   title?: string
@@ -49,13 +53,21 @@ export default function AppShell({ title, actions, children }: Props) {
   const [theme, setTheme] = useState<ThemePref>('system')
   const [collapsed, setCollapsed] = useState(false)
   const [email, setEmail] = useState('')
+  const [isOrgMember, setIsOrgMember] = useState(false)
 
   useEffect(() => {
     const stored = localStorage.getItem('theme')
     setTheme(stored === 'light' || stored === 'dark' ? stored : 'system')
     setCollapsed(localStorage.getItem('wz-sidebar-collapsed') === '1')
     supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? ''))
+    // Show the Vloot nav only for corporation members. A single count query; if the
+    // org tables aren't deployed yet it errors and we simply keep the item hidden.
+    supabase.from('org_members').select('id', { count: 'exact', head: true }).then(({ count }) => {
+      if ((count ?? 0) > 0) setIsOrgMember(true)
+    })
   }, [supabase])
+
+  const nav = isOrgMember ? [...NAV, FLEET_NAV] : NAV
 
   // While on "system", follow OS changes live (D8 — the toggle is no longer a
   // one-way door out of system).
@@ -122,7 +134,7 @@ export default function AppShell({ title, actions, children }: Props) {
         </div>
 
         <nav aria-label="Hoofdnavigatie" style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-          {NAV.map(({ href, label, Icon }) => (
+          {nav.map(({ href, label, Icon }) => (
             <Link key={href} href={href} aria-current={isActive(href) ? 'page' : undefined} className={`wz-navlink${isActive(href) ? ' active' : ''}`} title={collapsed ? label : undefined}>
               <Icon />
               <span className="wz-navlabel">{label}</span>
@@ -178,7 +190,7 @@ export default function AppShell({ title, actions, children }: Props) {
 
       {/* ── Mobile bottom tab bar ── */}
       <nav aria-label="Hoofdnavigatie" className="wz-bottombar">
-        {NAV.map(({ href, label, Icon }) => (
+        {nav.map(({ href, label, Icon }) => (
           <Link key={href} href={href} className={isActive(href) ? 'active' : ''}>
             <span className="wz-bicon">
               <Icon />

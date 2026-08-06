@@ -26,7 +26,10 @@ Groen sinds de B3-wiring-commit.
 - [x] **Migratie geschreven** — [`20260806120000_add_org_and_consent_model.sql`](../supabase/migrations/20260806120000_add_org_and_consent_model.sql):
       `organizations`, `org_members`, `household_consents` + RLS + `is_org_member()` +
       `fleet_overview()`. **Nog niet toegepast.**
-- [ ] **Fleet-scherm** — route `/vloot`, API, component. NOG TE DOEN (leunt op de migratie).
+- [x] **Fleet-scherm** — route `/vloot` + `app/api/fleet/route.ts` + severity-gerangschikte
+      kaarten (crit→warn→ok, versheid-chip, 4 KPI's). Nav-item `Vloot` alleen zichtbaar voor
+      org-leden (AppShell doet een `org_members`-count). Draait leeg + toont "geen vloottoegang"
+      tot de migratie is toegepast — geen crash. typecheck + build groen.
 - [ ] **Consent-beheer** in de bewoner-app (zien welke corporatie meekijkt, intrekken). NOG TE DOEN.
 
 ### B3 + A3 — per-device scoping & eerlijke ruwe telling
