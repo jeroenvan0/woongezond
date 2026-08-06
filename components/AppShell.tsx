@@ -14,6 +14,7 @@ import {
   FlaskConical,
   FileText,
   Building2,
+  Share2,
   Moon,
   Sun,
   Monitor,
@@ -144,6 +145,12 @@ export default function AppShell({ title, actions, children }: Props) {
 
         <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 10, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
           <DeviceHealthChip />
+          {/* Resident privacy control (C1): who may see this home. Always available so
+              sharing is transparent and revocable from anywhere. */}
+          <Link href="/delen" aria-current={isActive('/delen') ? 'page' : undefined} className={`wz-navlink${isActive('/delen') ? ' active' : ''}`} title={collapsed ? 'Delen met je corporatie' : undefined}>
+            <Share2 />
+            <span className="wz-navlabel">Delen</span>
+          </Link>
           <div className="wz-footrow" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <NotificationBell placement="side" />
             {themeBtn}
@@ -164,6 +171,9 @@ export default function AppShell({ title, actions, children }: Props) {
       <header className="wz-topbar">
         {logo}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Link href="/delen" className="wz-iconbtn" title="Delen met je corporatie" aria-label="Delen met je corporatie">
+            <Share2 />
+          </Link>
           <NotificationBell />
           {themeBtn}
           <button onClick={logout} className="wz-iconbtn" title="Uitloggen" aria-label="Uitloggen">

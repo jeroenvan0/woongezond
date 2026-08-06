@@ -30,7 +30,13 @@ Groen sinds de B3-wiring-commit.
       kaarten (crit→warn→ok, versheid-chip, 4 KPI's). Nav-item `Vloot` alleen zichtbaar voor
       org-leden (AppShell doet een `org_members`-count). Draait leeg + toont "geen vloottoegang"
       tot de migratie is toegepast — geen crash. typecheck + build groen.
-- [ ] **Consent-beheer** in de bewoner-app (zien welke corporatie meekijkt, intrekken). NOG TE DOEN.
+- [x] **Consent-beheer** in de bewoner-app — `/delen` + `app/api/consents/route.ts`
+      (GET lijst · POST code inwisselen · PATCH intrekken/heractiveren). Invite-gedreven:
+      migratie [`20260806120200_add_org_invites_and_consent_rpc.sql`](../supabase/migrations/20260806120200_add_org_invites_and_consent_rpc.sql)
+      voegt `org_invites` + `redeem_org_invite()` toe + een org-naam-SELECT voor bewoners
+      met actieve toestemming. Shell heeft een "Delen"-ingang (sidebar + mobiele topbar).
+      **Migratie nog niet toegepast.** typecheck + build groen.
+- [ ] **Invite-beheerscherm voor de corporatie** (codes aanmaken in de UI) — nu handmatig/seed. NOG TE DOEN.
 
 ### B3 + A3 — per-device scoping & eerlijke ruwe telling
 - [x] **Ontwerp** — [b3-a3-device-scoping.md](./b3-a3-device-scoping.md).
@@ -67,14 +73,29 @@ npm run typecheck && npm run build && npm test
 Daarna snapshot bijwerken in `supabase/_snapshots/` (bestaande workflow) en, op de VPS na
 een build: `systemctl restart woongezond-react` (poort 3001).
 
-## Seed voor test (na toepassen migratie)
+## Seed + end-to-end test (na toepassen migraties)
+Draai in de Supabase SQL-editor (of via de MCP `execute_sql`). Vervang de UID's.
+
 ```sql
+-- 1) Organisatie + corporatie-medewerker (jouw account als admin).
 insert into organizations (name) values ('Test Corporatie') returning id;      -- <org>
 insert into org_members (org_id, user_id, role) values ('<org>', '<jouw-uid>', 'admin');
+
+-- 2a) Vlootweergave testen zonder invite-flow: direct een toestemming zetten.
 insert into household_consents (org_id, resident_id, label)
   values ('<org>', 'b2025777-5d28-4d74-9280-2eb970318a4f', 'Woning 1 — testreeks');
 select * from fleet_overview('<org>');   -- moet één woning met severity teruggeven
+
+-- 2b) OF de echte bewoner-flow testen: maak een invite-code aan…
+insert into org_invites (org_id, code, label)
+  values ('<org>', 'WONING-7F3A', 'Woning 7, teststraat');
+--     …log daarna in als de BEWONER en vul die code in op /delen.
+--       redeem_org_invite maakt dan de household_consents-rij automatisch.
 ```
+
+Verwacht: `/vloot` toont de woning(en) op severity; `/delen` (als bewoner) toont met wie je
+deelt + "Stop delen". De nav-items verschijnen alleen bij de juiste rol (Vloot voor
+org-leden; Delen voor iedereen).
 
 ## Open / risico's
 - Migraties niet toegepast → fleet-scherm toont leeg tot dat gebeurt (bewust).

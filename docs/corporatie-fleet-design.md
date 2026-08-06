@@ -114,12 +114,34 @@ science-ports in sync houden met de Flask-app).
 
 - **Opt-in, niet opt-out.** Geen woning verschijnt in een vlootoverzicht zonder een rij in
   `household_consents` met `revoked_at is null`.
-- **Intrekbaar.** De bewoner ziet in de app welke corporatie meekijkt en kan intrekken
-  (zet `revoked_at`); direct effect op de volgende RPC-aanroep.
+- **Intrekbaar.** De bewoner ziet in de app (`/delen`) welke corporatie meekijkt en kan
+  intrekken (zet `revoked_at`); direct effect op de volgende RPC-aanroep.
 - **Geaggregeerd + gepseudonimiseerd.** Corporatie ziet status per woning, geen ruwe
   metingen, geen namen/adressen tenzij de corporatie die zelf als `label` invulde.
 - **Auditlog** (fase 2): elke `fleet_overview`-aanroep loggen (org, aanroeper, aantal
   woningen) — sluit aan op de JSON-logging in `lib/logger.ts`.
+
+### 5.1 Hoe de bewoner toestemming geeft — invite-codes
+
+Een bewoner mag `organizations` **niet** zien (RLS = alleen leden), dus kan niet zomaar een
+org kiezen. Passend bij de firmware-provisioning "claim via code"-filosofie:
+
+1. De corporatie maakt een **invite-code** aan (`org_invites`, migratie 20260806120200) met
+   een vooraf ingevuld gepseudonimiseerd `label` (bv. "Woning 12, Da Costastraat").
+2. De bewoner vult die code in op `/delen` → `redeem_org_invite(code)` (SECURITY DEFINER,
+   schrijft alleen voor `auth.uid()`) maakt/heractiveert de `household_consents`-rij en
+   markeert de invite als gebruikt.
+3. De bewoner ziet daarna op `/delen` met wie hij deelt en kan met één klik stoppen
+   (`revoked_at` zetten) of opnieuw delen.
+
+De org-lijst blijft zo verborgen voor bewoners; de corporatie bepaalt het label vooraf.
+`organizations` krijgt één extra SELECT-policy zodat de bewoner alleen de **naam** ziet van
+een org waarmee hij een actieve toestemming heeft (voor het overzicht op `/delen`).
+
+Oppervlak: `app/delen/page.tsx` (bewoner) + `app/api/consents/route.ts`
+(GET lijst · POST inwisselen · PATCH intrekken/heractiveren). De corporatie-kant van het
+aanmaken van invites is nog handmatig/seed (zie progress-doc); een invite-beheerscherm voor
+de corporatie is fase 2.
 
 ## 6. UI-oppervlak
 
