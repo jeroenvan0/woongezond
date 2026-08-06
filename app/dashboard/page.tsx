@@ -107,7 +107,11 @@ export default function DashboardPage() {
   // The chart series come through the shared, cached, visibility-gated data path
   // (5.1/5.2) — one request per window across the whole app, polling paused on a
   // hidden tab. A5 fetch failures surface via `dataError`.
-  const { rows: rawRows, bucketMinutes, loading, error: dataError, refetch } = useSeries(period, { poll: true })
+  //
+  // B3: scope the series to the selected device. The cache is keyed by window+device,
+  // so switching rooms is a separate cached fetch; the /api/data route falls back to
+  // all-devices if the device-aware RPC (migration 20260806120100) isn't deployed yet.
+  const { rows: rawRows, bucketMinutes, loading, error: dataError, refetch } = useSeries(period, { poll: true, device: selectedDevice })
 
   // Auth guard — the fetch used to double as this; useSeries doesn't, so keep it explicit.
   useEffect(() => {
@@ -131,8 +135,8 @@ export default function DashboardPage() {
     let cancelled = false
     const loadLatest = async () => {
       // Scope the headline reading to the chosen device (6.1). This is the direct,
-      // device-filterable query; the chart series still come from /api/data, whose
-      // RPC has no device parameter yet.
+      // device-filterable query; the chart series are now device-scoped too via
+      // useSeries({ device }) → /api/data?device= (B3).
       let q = supabase
         .from('air_quality')
         .select('created_at,co2,temperature,humidity')

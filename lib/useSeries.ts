@@ -20,11 +20,15 @@ export interface SeriesData {
 }
 
 const TTL_MS = 55_000 // just under the 60s poll, so a poll always gets fresh data
-const cache = new Map<number, { data: SeriesData; ts: number }>()
-const inflight = new Map<number, Promise<SeriesData>>()
+// Keyed by window AND device (B3): "1440:" is all-devices, "1440:<uuid>" is one room.
+const cache = new Map<string, { data: SeriesData; ts: number }>()
+const inflight = new Map<string, Promise<SeriesData>>()
 
-async function fetchSeries(minutes: number): Promise<SeriesData> {
-  const r = await fetch(withBase(`/api/data?minutes=${minutes}`))
+const keyOf = (minutes: number, device: string | null) => `${minutes}:${device ?? ''}`
+
+async function fetchSeries(minutes: number, device: string | null): Promise<SeriesData> {
+  const q = `/api/data?minutes=${minutes}` + (device ? `&device=${encodeURIComponent(device)}` : '')
+  const r = await fetch(withBase(q))
   if (!r.ok) {
     const e = new Error(`HTTP ${r.status}`) as Error & { status?: number }
     e.status = r.status
@@ -34,23 +38,24 @@ async function fetchSeries(minutes: number): Promise<SeriesData> {
   return { rows: d.rows ?? [], bucketMinutes: d.bucketMinutes > 0 ? d.bucketMinutes : 1 }
 }
 
-export function getSeries(minutes: number, force = false): Promise<SeriesData> {
+export function getSeries(minutes: number, force = false, device: string | null = null): Promise<SeriesData> {
   const now = Date.now()
-  const cached = cache.get(minutes)
+  const k = keyOf(minutes, device)
+  const cached = cache.get(k)
   if (!force && cached && now - cached.ts < TTL_MS) return Promise.resolve(cached.data)
-  const existing = inflight.get(minutes)
+  const existing = inflight.get(k)
   if (!force && existing) return existing
-  const p = fetchSeries(minutes)
+  const p = fetchSeries(minutes, device)
     .then((data) => {
-      cache.set(minutes, { data, ts: Date.now() })
-      inflight.delete(minutes)
+      cache.set(k, { data, ts: Date.now() })
+      inflight.delete(k)
       return data
     })
     .catch((e) => {
-      inflight.delete(minutes)
+      inflight.delete(k)
       throw e
     })
-  inflight.set(minutes, p)
+  inflight.set(k, p)
   return p
 }
 
@@ -59,10 +64,12 @@ interface Options {
   poll?: boolean
   /** Skip fetching entirely (e.g. before auth resolves). */
   enabled?: boolean
+  /** Scope the series to one device (B3). null/undefined = all devices. */
+  device?: string | null
 }
 
 export function useSeries(minutes: number, opts: Options = {}) {
-  const { poll = false, enabled = true } = opts
+  const { poll = false, enabled = true, device = null } = opts
   const [data, setData] = useState<SeriesData>({ rows: [], bucketMinutes: 1 })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<DataError>(null)
@@ -71,7 +78,7 @@ export function useSeries(minutes: number, opts: Options = {}) {
     async (force = false) => {
       if (!enabled) return
       try {
-        const d = await getSeries(minutes, force)
+        const d = await getSeries(minutes, force, device)
         setData(d)
         setError(null)
       } catch (e) {
@@ -81,7 +88,7 @@ export function useSeries(minutes: number, opts: Options = {}) {
         setLoading(false)
       }
     },
-    [minutes, enabled],
+    [minutes, enabled, device],
   )
 
   useEffect(() => {

@@ -6,10 +6,10 @@ import { useSyncExternalStore } from 'react'
 // selection needs to be shared outside React's tree — a tiny external store keyed to
 // localStorage, read via useSyncExternalStore so every subscriber stays in sync.
 //
-// Scope note: this scopes the dashboard's headline reading, which is a direct,
-// device-filterable query. The chart series still come from /api/data, whose
-// air_quality_bucketed RPC has no device parameter yet — per-device charts wait on
-// that migration (see docs/ui-ux-plan.md A3 / ROADMAP M4).
+// Scope: this drives both the dashboard's headline reading (a direct, device-filterable
+// query) and the chart series via useSeries({ device }) → /api/data?device= (B3). The
+// server RPC gained a device param in migration 20260806120100; /api/data falls back to
+// all-devices if it isn't deployed yet.
 
 const KEY = 'wz-selected-device'
 const listeners = new Set<() => void>()
