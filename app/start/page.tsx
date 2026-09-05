@@ -13,14 +13,17 @@ import { Plug, Wifi, CheckCircle2, Home, ArrowRight, ArrowLeft, Loader2, PartyPo
 //   →  3 ten house questions  →  4 done (optional: claim with an account).
 // Steps 2 and 3 are independent: answering first and plugging in later is fine.
 
-type Status = { device_number: number | null; name: string; ap_name: string; online: boolean; minutes_since: number | null; profile_completed: boolean }
+type Status = { session: string; device_number: number | null; name: string; ap_name: string; online: boolean; minutes_since: number | null; registered_at: string | null; recent_boot: boolean }
 const ERR: Record<string, string> = {
   code_invalid: 'Deze code klopt niet. Hij ziet eruit als DEVICE-7F3A.',
   code_unknown: 'Deze code kennen we niet. Kijk of je hem goed hebt overgetypt.',
   not_deployed: 'Deze server is nog niet klaar voor het koppelen van sensoren.',
   unconfigured: 'De server is niet goed ingesteld. Probeer het later.',
+  session_invalid: 'Je sessie is verlopen. Scan de QR-code opnieuw.',
+  rate_limited: 'Even te veel pogingen. Wacht een paar minuten.',
   error: 'Er ging iets mis. Probeer het opnieuw.',
 }
+const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })
 const STEPS = ['Start', 'WiFi', 'Je huis', 'Klaar']
 
 function StartInner() {
@@ -34,14 +37,20 @@ function StartInner() {
   const [answers, setAnswers] = useState<Partial<HouseProfile>>({})
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [overwrite, setOverwrite] = useState(false)
+  const [locked, setLocked] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  const sessionRef = useRef<string | null>(null)
   const fetchStatus = useCallback(async (c: string) => {
     try {
-      const r = await fetch(withBase(`/api/devices/status?code=${encodeURIComponent(c)}`), { cache: 'no-store' })
+      // First call exchanges the sticker code for a 30-min session; every later call (the
+      // poll, the profile save) uses the session and never resends the code.
+      const q = sessionRef.current ? `session=${encodeURIComponent(sessionRef.current)}` : `code=${encodeURIComponent(c)}`
+      const r = await fetch(withBase(`/api/devices/status?${q}`), { cache: 'no-store' })
       const d = await r.json()
       if (!r.ok) { setErr(ERR[d.error] ?? ERR.error); setStatus(null); return null }
-      setErr(null); setStatus(d); return d as Status
+      sessionRef.current = d.session; setErr(null); setStatus(d); return d as Status
     } catch { setErr(ERR.error); return null }
   }, [])
 
@@ -49,19 +58,20 @@ function StartInner() {
   useEffect(() => { if (CLAIM_CODE_RE.test(code)) fetchStatus(code) }, [code, fetchStatus])
   useEffect(() => {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
-    if (step === 1 && code && !(status?.online)) {
+    if (code && ((step === 1 && !(status?.online)) || (step === 2 && locked && !(status?.recent_boot)))) {
       pollRef.current = setInterval(() => fetchStatus(code), 5000)
     }
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
-  }, [step, code, status?.online, fetchStatus])
+  }, [step, code, status?.online, status?.recent_boot, locked, fetchStatus])
 
   async function submitProfile() {
     setSaving(true); setErr(null)
     try {
-      const r = await fetch(withBase('/api/devices/profile'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code, answers }) })
+      const r = await fetch(withBase('/api/devices/profile'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session: sessionRef.current, answers, overwrite }) })
       const d = await r.json()
+      if (r.status === 423) { setLocked(true); await fetchStatus(code); return }
       if (!r.ok) { setErr(ERR[d.error] ?? ERR.error); return }
-      setSaved(true); setStep(3)
+      setLocked(false); setSaved(true); setStep(3)
     } catch { setErr(ERR.error) } finally { setSaving(false) }
   }
 
@@ -98,11 +108,22 @@ function StartInner() {
                   </div>
                 </>
               ) : (
-                <>
-                  <P>In drie stappen meet deze sensor de lucht in je huis. Het kost ongeveer vijf minuten en je hebt geen account nodig.</P>
-                  <Steps items={['Sensor in het stopcontact', 'Sensor op je WiFi zetten', 'Tien korte vragen over je huis']} />
-                  {status.profile_completed && <Note>De vragen over dit huis zijn al eens ingevuld. Je kunt ze opnieuw doen, dan overschrijven we de oude antwoorden.</Note>}
-                </>
+                status.registered_at && !overwrite ? (
+                  <>
+                    <P>Deze sensor is al geregistreerd op <b style={{ color: 'var(--text)' }}>{fmtDate(status.registered_at)}</b>. De vragen over het huis zijn toen ingevuld.</P>
+                    <P>Wil je die gegevens overschrijven, bijvoorbeeld omdat de sensor naar een ander huis of een andere kamer is verhuisd?</P>
+                    <div style={{ display: 'grid', gap: 8 }}>
+                      <Button variant="primary" icon={<ArrowRight size={15} />} onClick={() => { setOverwrite(true); setStep(1) }}>Ja, opnieuw registreren</Button>
+                      <Button variant="ghost" onClick={() => setStep(1)}>Nee, alleen de WiFi instellen</Button>
+                    </div>
+                    <Note>Overschrijven kan alleen als je de sensor in handen hebt: we vragen je straks de stekker er even uit en weer in te doen.</Note>
+                  </>
+                ) : (
+                  <>
+                    <P>In drie stappen meet deze sensor de lucht in je huis. Het kost ongeveer vijf minuten en je hebt geen account nodig.</P>
+                    <Steps items={['Sensor in het stopcontact', 'Sensor op je WiFi zetten', 'Tien korte vragen over je huis']} />
+                  </>
+                )
               )}
             </Panel>
           )}
@@ -150,6 +171,12 @@ function StartInner() {
                   )
                 })}
               </div>
+              {locked && (
+                <Note>
+                  <b style={{ color: 'var(--text)' }}>Bevestig dat je de sensor in handen hebt.</b> Haal de stekker eruit, steek hem er weer in en wacht tot het lampje brandt (ongeveer een minuut). Klik daarna opnieuw op Opslaan.
+                  {status?.recent_boot ? ' De sensor is net opnieuw gestart, je kunt nu opslaan.' : ''}
+                </Note>
+              )}
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 'var(--sp-4)' }}>
                 <Button variant="ghost" icon={<ArrowLeft size={15} />} onClick={() => (q > 0 ? setQ(q - 1) : setStep(1))}>Terug</Button>
                 {q < QUESTIONS.length - 1
@@ -162,13 +189,13 @@ function StartInner() {
           {/* ---- 3 · done ---- */}
           {step === 3 && (
             <Panel icon={<PartyPopper size={26} color="var(--ok)" />} title="Klaar, bedankt!">
-              <P>{saved ? 'Je antwoorden zijn opgeslagen. ' : ''}{status?.online ? `Sensor ${nr} meet en stuurt zijn metingen door.` : `Zodra sensor ${nr} op WiFi zit, begint hij vanzelf met meten.`} Je hoeft verder niets te doen.</P>
+              <P>{saved ? (overwrite ? 'De oude registratie is overschreven. ' : 'Je antwoorden zijn opgeslagen. ') : ''}{status?.online ? `Sensor ${nr} meet en stuurt zijn metingen door.` : `Zodra sensor ${nr} op WiFi zit, begint hij vanzelf met meten.`} Je hoeft verder niets te doen.</P>
               <P>Wil je zelf zien hoe de lucht in je huis is? Dan kun je een account maken en de sensor aan jezelf koppelen. Dat is helemaal optioneel.</P>
               <a href={withBase(`/koppel?code=${encodeURIComponent(code)}`)} style={{ color: 'var(--brand)', fontWeight: 600, fontSize: 'var(--fs-md)' }}>Eigen account maken en koppelen →</a>
             </Panel>
           )}
 
-          {step < 2 && status && (
+          {step < 2 && status && !(step === 0 && status.registered_at && !overwrite) && (
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 'var(--sp-4)' }}>
               {step > 0 ? <Button variant="ghost" icon={<ArrowLeft size={15} />} onClick={() => setStep(step - 1)}>Terug</Button> : <span />}
               <Button variant="primary" icon={<ArrowRight size={15} />} onClick={() => setStep(step + 1)}>

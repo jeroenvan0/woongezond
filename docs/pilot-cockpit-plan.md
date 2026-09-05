@@ -91,6 +91,21 @@ op de sticker en in de database, **niet** in de firmware.
   `/cockpit/[id]`.
 - Open vraag 1 (login voor bewoners?) is hiermee beantwoord: **niet nodig**, optioneel in stap 4.
 
+### Veiligheid (gebouwd 2026-09-05)
+- **De sticker-code is alleen een identificatie**, geen schrijfrecht. `/api/devices/status`
+  wisselt een geldige code om voor een **ondertekend sessietoken** (HMAC, 30 min, gebonden
+  aan één device-id). Alleen dat token mag antwoorden opslaan; de code wordt daarna nooit
+  meer meegestuurd. Sleutel: `PILOT_SESSION_SECRET` (valt terug op `CRON_SECRET`).
+- **Codes zijn 6 tekens** (32^6 ≈ 1 miljard) en per code maximaal 20 lookups per uur, per
+  IP 120 per 5 min. Raden is zinloos.
+- **Al geregistreerd → expliciete keuze.** Bij een tweede scan toont de wizard de
+  registratiedatum en vraagt "opnieuw registreren?" of "alleen WiFi".
+- **Overschrijven vereist fysiek bezit.** `/api/ingest` zet `last_boot_at` zodra een meting
+  een kleine `uptime_s` heeft. Overschrijven mag alleen binnen 10 minuten na zo'n herstart:
+  "haal de stekker eruit en steek hem er weer in". Een foto van de sticker is dus niet genoeg.
+- Overschrijven zonder recente herstart → 423 `overwrite_locked`; zonder `overwrite: true` →
+  409 `already_registered`; zonder/verlopen sessie → 401.
+
 ### Valkuilen die we vooraf afdekken
 | Valkuil | Antwoord |
 |---|---|
@@ -168,17 +183,18 @@ npm run dev            # http://localhost:3005  (lokaal géén /admin-prefix; ze
   experimenten een Supabase-branch (`supabase branches create pilot`) de veilige route; de
   app hoeft dan alleen andere `NEXT_PUBLIC_SUPABASE_URL/KEY` in `.env.local`.
 
-### Zo test je het nu al (zonder hardware, zonder migraties) — gebouwd 2026-09-05
+### Zo test je het (gebouwd 2026-09-05; migraties + seed zijn toegepast op het project)
 ```bash
-npm run dev:mock                                   # = PILOT_MOCK=1 next dev -p 3005 (mock is uit in productie)
-npm run pilot:qr -- --code DEVICE-MOCK1            # sticker-QR (PNG + terminal) met het LAN-IP van je Mac
-npm run pilot:sim -- --token wgd_mock_1            # nepsensor: elke 10 s een meting naar /api/ingest
+npm run dev                                        # http://localhost:3005, echte database
+npm run pilot:qr -- --code DEVICE-E98DXC --number 1   # sticker-QR (PNG + terminal) met het LAN-IP van je Mac
+npm run pilot:sim -- --token <token uit pilot:seed>   # nepsensor: elke 10 s een meting naar /api/ingest
 ```
-Scan de QR met je telefoon (zelfde WiFi) → `/start?code=DEVICE-MOCK1` → "Beginnen" → het
-WiFi-scherm wacht → start de nepsensor → het scherm springt op groen → tien vragen → klaar.
-Acht mock-apparaten: `DEVICE-MOCK1..8` met tokens `wgd_mock_1..8` (`lib/pilot/store.ts`).
-Met een echte Feather: `base_url = http://<ip-van-de-mac>:3005` en een mock-token, of na de
-migraties een echt token uit `npm run pilot:seed`.
+Organisatie **Pilot** bestaat, met jou (woongezond@vostech.group) als admin en **Sensor 1–8**
+met `device_number`, koppelcode en ingest-token (`npm run pilot:seed` print ze; idempotent).
+Scan de QR met je telefoon (zelfde WiFi) → `/start?code=…` → "Beginnen" → het WiFi-scherm
+wacht → start de nepsensor (of een echte Feather met `base_url = http://<ip-van-de-mac>:3005`)
+→ groen → tien vragen → klaar. Antwoorden staan in `devices.house_profile` + de typed kolommen.
+Zonder database: `npm run dev:mock` met `DEVICE-MOCK1..8` / `wgd_mock_1..8` (nooit in productie).
 
 Wat er staat: `app/start` (wizard), `app/api/devices/status` + `profile`, `lib/houseProfile.ts`
 (de tien vragen + afleiding van isolatieklasse), `lib/pilot/store.ts` (mock/Supabase),

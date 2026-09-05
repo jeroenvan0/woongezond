@@ -10,7 +10,7 @@ const adminEmail = arg('--admin') ?? 'woongezond@vostech.group'
 const count = Number(arg('--count') ?? 8)
 const dry = process.argv.includes('--dry')
 const s = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } })
-const genCode = () => 'DEVICE-' + Array.from({ length: 4 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join('')
+const genCode = () => 'DEVICE-' + Array.from({ length: 6 }, () => 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]).join('')
 
 const { data: users } = await s.auth.admin.listUsers()
 const admin = users.users.find((u) => u.email === adminEmail)

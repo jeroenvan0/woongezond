@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { consume, LIMITS } from '@/lib/rateLimit'
 import { log, errText } from '@/lib/logger'
-import { pilotMockEnabled, pilotStore } from '@/lib/pilot/store'
+import { pilotMockEnabled, pilotStore, RECENT_BOOT_UPTIME_S } from '@/lib/pilot/store'
 
 // Per-device sensor ingest — the pilot's write path (Feather S3). See docs/pilot-feather-s3-plan.md.
 //
@@ -44,6 +44,7 @@ export async function POST(req: NextRequest) {
   const rssi = intOrNull(body.rssi)
   const fw = typeof body.fw === 'string' ? body.fw.slice(0, 32) : null
   const bootCount = intOrNull(body.boot_count)
+  const uptimeS = intOrNull(body.uptime_s)
   if (co2 == null && temperature == null && humidity == null) {
     return NextResponse.json({ error: 'no_metrics' }, { status: 400 })
   }
@@ -51,7 +52,7 @@ export async function POST(req: NextRequest) {
   // Local UX testing without a database (PILOT_MOCK=1, never in production): a mock
   // token marks the mock device as seen and stores nothing.
   if (pilotMockEnabled()) {
-    const mock = pilotStore().mockIngest(token, { rssi, fw, boot_count: bootCount })
+    const mock = pilotStore().mockIngest(token, { rssi, fw, boot_count: bootCount, uptime_s: uptimeS })
     if (mock) return NextResponse.json({ ok: true, device_id: mock.id, claimed: false, mock: true })
   }
 
@@ -88,6 +89,8 @@ export async function POST(req: NextRequest) {
   if (rssi != null) touch.last_rssi = rssi
   if (fw) touch.fw_version = fw
   if (bootCount != null) touch.boot_count = bootCount
+  // A small uptime = the sensor was just (re)plugged; /start uses this as possession proof.
+  if (uptimeS != null && uptimeS >= 0 && uptimeS < RECENT_BOOT_UPTIME_S) touch.last_boot_at = new Date(Date.now() - uptimeS * 1000).toISOString()
   const { error: touchErr } = await supabase.from('devices').update(touch).eq('id', device.id)
   if (touchErr && !/column|schema cache/i.test(touchErr.message)) log.warn('ingest', 'last_seen update failed', { device_id: device.id, detail: touchErr.message })
 

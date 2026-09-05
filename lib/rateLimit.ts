@@ -52,6 +52,9 @@ export const LIMITS = {
   ingest: { max: 4, windowMs: 60 * 1000 },
   // /start wizard (public, code-gated): a status poll every ~5s plus one profile POST.
   deviceStart: { max: 120, windowMs: 5 * 60 * 1000 },
+  // Per sticker code (any IP): a code is looked up once per wizard run, so 20/hour is
+  // generous for people and hopeless for guessing the 32^6 code space.
+  deviceCode: { max: 20, windowMs: 60 * 60 * 1000 },
 } as const satisfies Record<string, Limit>
 
 export interface RateResult {
