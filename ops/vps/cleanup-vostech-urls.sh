@@ -10,12 +10,15 @@ systemctl disable --now woongezond.service woongezond-dev.service || true
 echo "== remove nginx sites"
 rm -fv /etc/nginx/sites-enabled/woongezond /etc/nginx/sites-enabled/woongezond-dev /etc/nginx/sites-enabled/woongezond-react
 nginx -t && systemctl reload nginx
-echo "== kill stray next-server processes not managed by systemd (e.g. the one on :3999)"
+echo "== kill stray next-server processes started by hand from an SSH session (e.g. the one on :3999)"
+# Only processes in a systemd *session* scope (interactive shells) whose cwd is a woongezond checkout.
+# Never touch systemd services or Docker containers (offertefeest and Supabase Studio are Next.js too).
 for pid in $(pgrep -f 'next-server' || true); do
-  if ! systemctl status woongezond-react --no-pager 2>/dev/null | grep -q " $pid "; then
-    unit=$(sed 's#.*/##' /proc/$pid/cgroup 2>/dev/null || true)
-    case "$unit" in woongezond-react*.service) ;; *) echo "killing $pid ($unit)"; kill "$pid" || true ;; esac
-  fi
+  unit=$(sed 's#.*/##' /proc/$pid/cgroup 2>/dev/null || true)
+  cwd=$(readlink /proc/$pid/cwd 2>/dev/null || true)
+  case "$unit" in
+    session-*.scope) case "$cwd" in /var/www/woongezond*) echo "killing $pid ($unit, $cwd)"; kill "$pid" || true ;; esac ;;
+  esac
 done
 echo "== drop the three certificates (certbot stops renewing them)"
 for c in woongezond.vostech.group dev.woongezond.vostech.group woongezond-react.vostech.group; do
