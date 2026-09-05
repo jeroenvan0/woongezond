@@ -74,7 +74,7 @@ unset to serve at the domain root; must match at build time and runtime).
 ## Develop / build / deploy
 
 ```bash
-npm run dev                       # dev server
+npm run dev                       # dev server op http://localhost:3005 (3000 is lokaal van offertefeest)
 npm test                          # vitest — calculation layer
 npm run typecheck                 # tsc --noEmit
 npm run build && npm start        # production

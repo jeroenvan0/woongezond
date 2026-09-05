@@ -97,10 +97,10 @@ Nieuwe sketch `firmware/woongezond-sensor/` **in deze repo** (nu leeft 'm alleen
 
 ## 4. Lokaal testen ("ik wil een localhost zien")
 ```bash
-npm run dev            # http://localhost:3000  (lokaal géén /admin-prefix; zelfde Supabase als prod/dev!)
+npm run dev            # http://localhost:3005  (lokaal géén /admin-prefix; zelfde Supabase als prod/dev!)
 ```
 - **Echte sensor → localhost:** de Feather zit op hetzelfde WiFi als de Mac. Zet als `base_url`
-  `http://<ip-van-de-mac>:3000` (bijv. `http://192.168.1.23:3000`; lokaal geen /admin). Werkt zonder
+  `http://<ip-van-de-mac>:3005` (bijv. `http://192.168.1.23:3005`; lokaal geen /admin). Werkt zonder
   HTTPS, precies wat je wilt om ingest te debuggen met de serial monitor ernaast.
 - **Zonder hardware:** `scripts/simulate-devices.mts` post voor 8 fictieve tokens realistische
   dagcurves (CO₂ stijgt 's nachts in een slaapkamer) naar localhost. Deze devices krijgen
