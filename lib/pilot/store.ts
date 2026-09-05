@@ -16,12 +16,14 @@ export interface StartDevice {
   last_boot_at: string | null
   registered_at: string | null   // profile_completed_at
 }
+export interface Contact { name: string | null; email: string | null; address_note: string | null }
 export interface Telemetry { rssi?: number | null; fw?: string | null; boot_count?: number | null; uptime_s?: number | null }
 
 export interface PilotStore {
   findByCode(code: string): Promise<StartDevice | null | 'not_deployed'>
   findById(id: string): Promise<StartDevice | null>
   saveProfile(deviceId: string, profile: HouseProfile, termsVersion: string): Promise<'ok' | 'error'>
+  saveContact(deviceId: string, contact: Contact): Promise<'ok' | 'error'>
   // Mock-only ingest: returns the device if the token belongs to a mock device, else null
   // (the real ingest path lives in app/api/ingest and never calls this).
   mockIngest(token: string, t: Telemetry): StartDevice | null
@@ -46,6 +48,7 @@ const mockStore: PilotStore = {
   async findByCode(code) { const r = mockRows().get(code); return r ? pub(r) : null },
   async findById(id) { for (const r of mockRows().values()) if (r.id === id) return pub(r); return null },
   async saveProfile(id, profile) { for (const r of mockRows().values()) if (r.id === id) { r.profile = profile; r.registered_at = new Date().toISOString(); return 'ok' } return 'error' },
+  async saveContact(id) { for (const r of mockRows().values()) if (r.id === id) return 'ok'; return 'error' },
   mockIngest(token, t) {
     for (const r of mockRows().values()) if (r.token === token) {
       r.last_seen_at = new Date().toISOString()
@@ -88,6 +91,15 @@ const supabaseStore: PilotStore = {
     const { error } = await s.from('devices')
       .update({ house_profile: profile, profile_completed_at: now, terms_accepted_at: now, terms_version: termsVersion, ...deriveDeviceColumns(profile), updated_at: now })
       .eq('id', id)
+    return error ? 'error' : 'ok'
+  },
+  async saveContact(id, c) {
+    const s = createServiceClient()
+    const now = new Date().toISOString()
+    const { error } = await s.from('device_contacts').upsert(
+      { device_id: id, name: c.name, email: c.email, address_note: c.address_note, report_consent_at: c.email ? now : null, source: 'wizard', updated_at: now },
+      { onConflict: 'device_id' },
+    )
     return error ? 'error' : 'ok'
   },
   mockIngest() { return null },

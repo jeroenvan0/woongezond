@@ -127,6 +127,48 @@ op de sticker en in de database, **niet** in de firmware.
 | Iemand raadt een code | 32^4 ≈ 1M combinaties + rate limit op `/start`-API's + code alleen geldig voor niet-ingevulde apparaten of met `expires_at`. |
 | Twee huizen delen een sensor-naam | AP-naam bevat het device-nummer; nummer staat ook op de sticker. |
 
+## 2c. Wie woont achter sensor N — herleidbaar voor het rapport, privacy intact
+
+**Vraag (Jeroen, 5 sep):** ieder huishouden moet een eigen, specifiek rapport krijgen. Nu is
+alles "algemeenheden". Hoe herleiden we zonder de privacy te breken?
+
+### Principe: twee lagen, één koppelpunt
+```
+laag A — pseudoniem (de "wetenschap")          laag B — persoon (het "adresboek")
+  devices: nummer, kamer, huisprofiel            device_contacts: naam, e-mail, adres,
+  air_quality: metingen per device_id             rapport-toestemming   ── alleen org-ADMIN
+  fleet_overview(): aggregaten per woning         (nooit in fleet_overview, nooit voor viewers,
+                                                   nooit in exports/ML)
+                     └──── device_id ────┘
+```
+- Alles wat rekent, analyseert, exporteert of naar een corporatie gaat, werkt op laag A en
+  ziet alleen "sensor 03, slaapkamer, tussenwoning 1975–1991".
+- Laag B bestaat uit precies één tabel (`device_contacts`, migratie 20260905150000) met RLS
+  `is_org_admin()`. Een viewer-rol van de corporatie ziet 'm niet; de anon-key niet; de
+  RPC's niet. Eén rij verwijderen = huishouden ontkoppeld, metingen blijven bruikbaar.
+- De bewoner vult laag B **zelf** in als laatste, optionele stap van `/start` ("Wil je een
+  rapport over je eigen huis?") — dat is meteen de toestemming (`report_consent_at`).
+  Jij kunt het ook invullen/corrigeren in de cockpit (bron `admin`).
+
+### Het rapport zelf (fase 2, cockpit)
+1. **Per device i.p.v. per user.** De huidige `/report` leest op `auth.uid()`. Voor de pilot
+   komt `lib/report/deviceReport.ts`: dezelfde berekeningen (CALCULATIONS.md) maar gevoed met
+   `device_id` via de service-role, plus het huisprofiel als context ("enkel glas, 2 personen
+   in de slaapkamer → verwachte nachtelijke CO₂-piek …").
+2. **Bezorging zonder account.** Maandelijks (timer, zoals de weekmail) een e-mail naar
+   `device_contacts.email` met een **ondertekende link** `/rapport?t=…` (zelfde HMAC-mechanisme
+   als de sessie, 30 dagen geldig, gebonden aan één device). De pagina toont alleen dat ene
+   apparaat. Geen login, geen wachtwoord, en de link is per huishouden uniek.
+3. **Met account.** Claimt de bewoner het apparaat via de QR-link aan het einde (`/koppel`),
+   dan werkt het bestaande `/report` gewoon; laag B mag dan zelfs leeg blijven.
+4. **Cockpit-regel** (admin): "03 · Fam. Jansen · Kerkstraat 12 · slaapkamer · online · rapport
+   verstuurd 1 okt". Voor viewers: "03 · slaapkamer · online".
+
+### Wat NIET
+- Geen naam/adres in `devices.name` of `house_profile` (dat was het lek uit DECISIONS D1).
+- Geen e-mail in logs; `/api/devices/contact` geeft niets terug behalve `ok`.
+- Geen koppeling van laag B aan `air_quality`-rijen; alleen via `device_id` op aanvraag.
+
 ## 3. Wat er gebouwd wordt
 
 ### Fase 0 — fundament (voorwaarde voor alles, ~1 dagdeel)
@@ -167,7 +209,8 @@ Bewonershandleiding: `docs/handleiding-bewoner.{md,html}` (printkaart voor in he
 - [ ] `/cockpit/[id]`: grafiek (hergebruik dashboard-componenten met `?device=`), 24u/7d/30d,
       huisprofiel bewerken, token + QR + koppelcode (bestaat al in `/vloot/koppelen`, hierheen
       verplaatsen), logboek (`device_events`) met vrije notitie, CSV-export van de ruwe reeks.
-- [ ] `/start?code=…` bewoner-wizard + `/api/devices/profile` + `/api/devices/status` (zie §2b).
+- [x] `/start?code=…` bewoner-wizard + `/api/devices/profile` + `/api/devices/status` + `/api/devices/contact` (§2b, §2c) — live op dev.woongezond.com.
+- [ ] Rapport per device + maandmail met ondertekende link (§2c).
 - [ ] `/cockpit/vergelijk`: alle 8 CO₂-lijnen in één grafiek (verschillen tussen huizen zien).
 - [ ] `/api/health`-detail gebruikt `last_seen_at` (goedkoop) i.p.v. 8 max()-queries; de
       notifications-timer meldt "sensor N is 2 uur stil" aan Jeroen (die timer staat nog niet
