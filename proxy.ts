@@ -31,6 +31,11 @@ import { NextRequest, NextResponse } from 'next/server'
 // openweathermap.org is in img-src for the weather condition icons the dashboard
 // renders straight from their CDN (app/dashboard/page.tsx). Images only — the API
 // itself is called server-side and stays out of connect-src.
+//
+// upgrade-insecure-requests is production-only: in development the app is reached over
+// plain http from a phone on the LAN (http://<mac-ip>:3005, the /start wizard test), and
+// browsers honour the upgrade on non-localhost origins — every script and fetch would be
+// rewritten to https and fail silently, leaving a server-rendered shell with no JS.
 
 export function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString('base64')
@@ -48,7 +53,7 @@ export function proxy(request: NextRequest) {
     base-uri 'self';
     form-action 'self';
     frame-ancestors 'none';
-    upgrade-insecure-requests;
+    ${isDev ? '' : 'upgrade-insecure-requests;'}
   `
     .replace(/\s{2,}/g, ' ')
     .trim()
