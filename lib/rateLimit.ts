@@ -50,6 +50,8 @@ export const LIMITS = {
   // Sensors write ~1/min. 4/min per device leaves headroom for a retry/burst without
   // letting a stuck device hammer the ingest endpoint.
   ingest: { max: 4, windowMs: 60 * 1000 },
+  // /start wizard (public, code-gated): a status poll every ~5s plus one profile POST.
+  deviceStart: { max: 120, windowMs: 5 * 60 * 1000 },
 } as const satisfies Record<string, Limit>
 
 export interface RateResult {

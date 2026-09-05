@@ -168,6 +168,22 @@ npm run dev            # http://localhost:3005  (lokaal géén /admin-prefix; ze
   experimenten een Supabase-branch (`supabase branches create pilot`) de veilige route; de
   app hoeft dan alleen andere `NEXT_PUBLIC_SUPABASE_URL/KEY` in `.env.local`.
 
+### Zo test je het nu al (zonder hardware, zonder migraties) — gebouwd 2026-09-05
+```bash
+npm run dev:mock                                   # = PILOT_MOCK=1 next dev -p 3005 (mock is uit in productie)
+npm run pilot:qr -- --code DEVICE-MOCK1            # sticker-QR (PNG + terminal) met het LAN-IP van je Mac
+npm run pilot:sim -- --token wgd_mock_1            # nepsensor: elke 10 s een meting naar /api/ingest
+```
+Scan de QR met je telefoon (zelfde WiFi) → `/start?code=DEVICE-MOCK1` → "Beginnen" → het
+WiFi-scherm wacht → start de nepsensor → het scherm springt op groen → tien vragen → klaar.
+Acht mock-apparaten: `DEVICE-MOCK1..8` met tokens `wgd_mock_1..8` (`lib/pilot/store.ts`).
+Met een echte Feather: `base_url = http://<ip-van-de-mac>:3005` en een mock-token, of na de
+migraties een echt token uit `npm run pilot:seed`.
+
+Wat er staat: `app/start` (wizard), `app/api/devices/status` + `profile`, `lib/houseProfile.ts`
+(de tien vragen + afleiding van isolatieklasse), `lib/pilot/store.ts` (mock/Supabase),
+migratie `20260905120000_pilot_house_profile.sql`, `scripts/pilot-{qr,sim,seed}.mts`.
+
 ## 5. Volgorde en wat het oplevert
 | Week | Doe | Resultaat |
 |---|---|---|

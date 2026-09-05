@@ -8,7 +8,11 @@
     "start": "next start",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "pilot:qr": "tsx scripts/pilot-qr.mts",
+    "pilot:sim": "tsx scripts/pilot-sim.mts",
+    "pilot:seed": "node --env-file=.env.local node_modules/.bin/tsx scripts/pilot-seed.mts",
+    "dev:mock": "PILOT_MOCK=1 next dev -p 3005"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",
@@ -26,6 +30,7 @@
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "tsx": "^4.23.13",
     "typescript": "^5",
     "vitest": "^4.1.10"
   }

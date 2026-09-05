@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { consume, LIMITS } from '@/lib/rateLimit'
 import { log, errText } from '@/lib/logger'
+import { pilotMockEnabled, pilotStore } from '@/lib/pilot/store'
 
 // Per-device sensor ingest — the pilot's write path (Feather S3). See docs/pilot-feather-s3-plan.md.
 //
@@ -39,8 +40,19 @@ export async function POST(req: NextRequest) {
   const humidity = num(body.humidity ?? body.rh)
   const voc_index = intOrNull(body.voc_index ?? body.voc)
   const nox_index = intOrNull(body.nox_index ?? body.nox)
+  // Optional device telemetry for the cockpit (docs/pilot-cockpit-plan.md §3, fase 1).
+  const rssi = intOrNull(body.rssi)
+  const fw = typeof body.fw === 'string' ? body.fw.slice(0, 32) : null
+  const bootCount = intOrNull(body.boot_count)
   if (co2 == null && temperature == null && humidity == null) {
     return NextResponse.json({ error: 'no_metrics' }, { status: 400 })
+  }
+
+  // Local UX testing without a database (PILOT_MOCK=1, never in production): a mock
+  // token marks the mock device as seen and stores nothing.
+  if (pilotMockEnabled()) {
+    const mock = pilotStore().mockIngest(token, { rssi, fw, boot_count: bootCount })
+    if (mock) return NextResponse.json({ ok: true, device_id: mock.id, claimed: false, mock: true })
   }
 
   let supabase
@@ -68,6 +80,16 @@ export async function POST(req: NextRequest) {
     co2, temperature, humidity, voc_index, nox_index,
   })
   if (insErr) { log.error('ingest', 'insert failed', { device_id: device.id, detail: insErr.message }); return NextResponse.json({ error: 'insert_failed' }, { status: 500 }) }
+
+  // Liveness bookkeeping on the device row (migration 20260905120000): cheap for the
+  // /start status poll and the cockpit. Best effort — never turn a stored reading into
+  // an error for the sensor, and tolerate the columns not existing yet.
+  const touch: Record<string, unknown> = { last_seen_at: new Date().toISOString() }
+  if (rssi != null) touch.last_rssi = rssi
+  if (fw) touch.fw_version = fw
+  if (bootCount != null) touch.boot_count = bootCount
+  const { error: touchErr } = await supabase.from('devices').update(touch).eq('id', device.id)
+  if (touchErr && !/column|schema cache/i.test(touchErr.message)) log.warn('ingest', 'last_seen update failed', { device_id: device.id, detail: touchErr.message })
 
   return NextResponse.json({ ok: true, device_id: device.id, claimed: device.user_id != null })
 }
