@@ -57,7 +57,7 @@ const mockStore: PilotStore = {
 }
 
 // ---------------------------------------------------------------- supabase
-const DEV_COLS = 'id, name, device_number, last_seen_at, last_boot_at, profile_completed_at'
+const DEV_COLS = 'id, name, device_number, last_seen_at, last_boot_at, profile_completed_at, active'
 async function shape(s: ReturnType<typeof createServiceClient>, dev: any): Promise<StartDevice> {
   // Devices that predate last_seen_at (the two existing sensors): fall back to newest reading.
   let lastSeen: string | null = dev.last_seen_at ?? null
@@ -74,12 +74,13 @@ const supabaseStore: PilotStore = {
     if (error) return /relation|does not exist|schema cache/i.test(error.message) ? 'not_deployed' : null
     const dev = (row as any)?.devices
     if (!dev || ((row as any).expires_at && new Date((row as any).expires_at) < new Date())) return null
+    if (dev.active === false) return null   // a retired sensor cannot be (re)registered
     return shape(s, dev)
   },
   async findById(id) {
     const s = createServiceClient()
     const { data: dev } = await s.from('devices').select(DEV_COLS).eq('id', id).maybeSingle()
-    return dev ? shape(s, dev) : null
+    return dev && dev.active !== false ? shape(s, dev) : null
   },
   async saveProfile(id, profile, termsVersion) {
     const s = createServiceClient()

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { consume, LIMITS } from '@/lib/rateLimit'
+import { consume, LIMITS, clientIp } from '@/lib/rateLimit'
 import { parseHouseProfile, deriveDeviceColumns } from '@/lib/houseProfile'
 import { pilotStore, bootedRecently, OVERWRITE_WINDOW_MIN } from '@/lib/pilot/store'
 import { verifySession } from '@/lib/pilot/session'
@@ -16,7 +16,7 @@ import { TERMS_VERSION } from '@/lib/pilot/terms'
 export const dynamic = 'force-dynamic'
 
 export async function POST(req: NextRequest) {
-  const ip = req.headers.get('x-forwarded-for')?.split(',')[0].trim() || 'local'
+  const ip = clientIp(req.headers)
   const rl = consume(`devprofile:${ip}`, LIMITS.deviceStart)
   if (!rl.ok) return NextResponse.json({ error: 'rate_limited' }, { status: 429, headers: { 'Retry-After': String(rl.retryAfterSec) } })
 

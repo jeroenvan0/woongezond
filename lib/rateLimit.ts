@@ -107,3 +107,15 @@ export function __resetAll() {
   buckets.clear()
   opsSinceSweep = 0
 }
+
+// The client address for per-IP limits. Behind nginx (prod) X-Real-IP is set from
+// $remote_addr and cannot be forged by the client; X-Forwarded-For is client-controlled
+// on its first entries ($proxy_add_x_forwarded_for appends the real address LAST), so a
+// forged header must never widen a limit. Locally there is no proxy at all.
+export function clientIp(headers: Headers): string {
+  const real = headers.get('x-real-ip')?.trim()
+  if (real) return real
+  const xff = headers.get('x-forwarded-for')
+  if (xff) { const parts = xff.split(',').map((s) => s.trim()).filter(Boolean); if (parts.length) return parts[parts.length - 1] }
+  return 'local'
+}
