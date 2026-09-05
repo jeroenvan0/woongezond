@@ -1,10 +1,19 @@
 // Nepsensor: doet wat de Feather-firmware straks doet — elke N seconden een meting POSTen
 // naar /api/ingest met zijn device-token (docs/pilot-feather-s3-plan.md §Firmware-contract).
 //   PILOT_MOCK=1 npm run dev                       # in een andere terminal
-//   npx tsx scripts/pilot-sim.mts --token wgd_mock_1 [--base http://localhost:3005] [--every 10] [--once]
-// Werkt ook tegen een echte server met een echt token uit /vloot/koppelen.
+//   npm run pilot:sim -- --number 3              # token van sensor 3 uit de database (via .env.local)
+//   npm run pilot:sim -- --token wgd_…           # of expliciet een token; wgd_mock_1..8 in de mockstand
+//   opties: [--base http://localhost:3005] [--every 10] [--once]
 const arg = (k: string) => { const i = process.argv.indexOf(k); return i > -1 ? process.argv[i + 1] : undefined }
-const token = arg('--token') ?? 'wgd_mock_1'
+let token = arg('--token') ?? ''
+if (!token && arg('--number')) {
+  const { createClient } = await import('@supabase/supabase-js')
+  const s = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, { auth: { persistSession: false } })
+  const { data, error } = await s.from('devices').select('ingest_token, name').eq('device_number', Number(arg('--number'))).maybeSingle()
+  if (error || !data?.ingest_token) { console.error('geen token gevonden voor sensor', arg('--number'), error?.message ?? ''); process.exit(1) }
+  token = data.ingest_token; console.log(`nepsensor voor ${data.name}`)
+}
+if (!token) token = 'wgd_mock_1'
 const base = (arg('--base') ?? 'http://localhost:3005').replace(/\/$/, '')
 const every = Number(arg('--every') ?? 10) * 1000
 const once = process.argv.includes('--once')
