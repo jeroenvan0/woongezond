@@ -17,7 +17,8 @@ import { Plug, Wifi, CheckCircle2, Home, ArrowRight, ArrowLeft, Loader2, PartyPo
 type Status = { session: string; device_number: number | null; name: string; ap_name: string; online: boolean; minutes_since: number | null; registered_at: string | null; recent_boot: boolean }
 const ERR: Record<string, string> = {
   code_invalid: 'Deze code klopt niet. Hij ziet eruit als DEVICE-7F3A2B.',
-  code_unknown: 'Deze code kennen we niet. Kijk of je hem goed hebt overgetypt.',
+  code_unknown: 'Deze code kennen we niet. Kijk of je hem goed hebt overgetypt, of scan de QR op de sensor opnieuw.',
+  mock_code: 'Dit is een test-QR (DEVICE-MOCK…). Gebruik de sticker van een echte sensor.',
   not_deployed: 'Deze server is nog niet klaar voor het registreren van sensoren.',
   unconfigured: 'De server is niet goed ingesteld. Probeer het later.',
   session_invalid: 'Je sessie is verlopen. Scan de QR-code opnieuw.',

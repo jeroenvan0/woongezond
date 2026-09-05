@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { consume, LIMITS } from '@/lib/rateLimit'
 import { CLAIM_CODE_RE, normalizeCode } from '@/lib/houseProfile'
-import { pilotStore, bootedRecently } from '@/lib/pilot/store'
+import { pilotStore, bootedRecently, pilotMockEnabled } from '@/lib/pilot/store'
 import { issueSession, verifySession } from '@/lib/pilot/session'
 
 // GET /api/devices/status?code=DEVICE-XXXXXX   — first call: exchanges the sticker code for
@@ -29,6 +29,9 @@ export async function GET(req: NextRequest) {
     } else {
       const code = normalizeCode(req.nextUrl.searchParams.get('code') ?? '')
       if (!CLAIM_CODE_RE.test(code)) return NextResponse.json({ error: 'code_invalid' }, { status: 400 })
+      // A test sticker (DEVICE-MOCK…) scanned against the real database: say so, instead of
+      // a generic "unknown" that sends people re-typing a code that can never work.
+      if (code.startsWith('DEVICE-MOCK') && !pilotMockEnabled()) return NextResponse.json({ error: 'mock_code' }, { status: 404 })
       const rlCode = consume(`devcode:${code}`, LIMITS.deviceCode)
       if (!rlCode.ok) return NextResponse.json({ error: 'rate_limited' }, { status: 429, headers: { 'Retry-After': String(rlCode.retryAfterSec) } })
       dev = await store.findByCode(code)
