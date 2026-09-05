@@ -1,0 +1,16 @@
+[Unit]
+Description=Woongezond React (Next.js) dashboard — dev (dev.woongezond.com/admin)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/www/woongezond-react-dev
+ExecStart=/usr/bin/npm start
+Restart=on-failure
+RestartSec=10
+Environment=NODE_ENV=production
+Environment=PORT=3002
+
+[Install]
+WantedBy=multi-user.target

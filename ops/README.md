@@ -69,3 +69,26 @@ curl -s -H "x-cron-secret: $SECRET" http://localhost:3001/api/health | jq   # pe
 **`degraded` returns HTTP 200 on purpose** — a stale sensor is a device problem, and a
 supervisor must not restart or roll back the app because a resident unplugged theirs.
 Point uptime monitoring at the status code; point a human at the `status` field.
+
+## VPS layout (`ops/vps/`)
+
+One VPS (`vostech`, 153.92.223.130, `ssh root@153.92.223.130`) hosts two copies of this app.
+Both use the same Supabase cloud project and `NEXT_PUBLIC_BASE_PATH=/admin`.
+
+| URL | Branch | Checkout | Unit | Port |
+|---|---|---|---|---|
+| https://woongezond.com/admin | `main` | `/var/www/woongezond-dev-react` (legacy name) | `woongezond-react` | 3001 |
+| https://dev.woongezond.com/admin | `dev` | `/var/www/woongezond-react-dev` | `woongezond-react-dev` | 3002 |
+
+Flow: feature branches → PR into `dev` → test on dev.woongezond.com → PR `dev` → `main`.
+
+```bash
+cd /var/www/woongezond-dev-react
+ops/vps/deploy.sh prod     # pull main, npm ci, build, restart, curl-check
+ops/vps/deploy.sh dev      # same for the dev checkout
+ops/vps/setup-dev.sh       # one-time: clone dev, unit, nginx site, certbot (needs the A record first)
+ops/vps/cleanup-vostech-urls.sh   # retire the old *.vostech.group URLs + Dash apps (done 2026-09)
+```
+
+The nightly cloud→local Supabase mirror (`sync_runs`) lives in `/opt/supabase-sync/sync.py`
+and is independent of the app.
