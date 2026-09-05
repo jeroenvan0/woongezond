@@ -23,8 +23,8 @@ if (!mem.data && !dry) { const r = await s.from('org_members').insert({ org_id: 
 
 const rows: string[] = []
 for (let n = 1; n <= count; n++) {
-  const ex = await s.from('devices').select('id,name,device_claim_codes(code,used_at)').eq('device_number', n).maybeSingle()
-  if (ex.data) { rows.push(`${String(n).padStart(2)}  ${ex.data.name.padEnd(14)} bestaat al   code ${(ex.data as any).device_claim_codes?.find((c: any) => !c.used_at)?.code ?? '-'}`); continue }
+  const ex = await s.from('devices').select('id,name,ingest_token,device_claim_codes(code,used_at)').eq('device_number', n).maybeSingle()
+  if (ex.data) { rows.push(`${String(n).padStart(2)}  ${ex.data.name.padEnd(18)} code ${(ex.data as any).device_claim_codes?.find((c: any) => !c.used_at)?.code ?? '-'}   token ${ex.data.ingest_token ?? '-'}`); continue }
   if (dry) { rows.push(`${String(n).padStart(2)}  zou aanmaken`); continue }
   const token = `wgd_${randomBytes(24).toString('hex')}`
   const dev = await s.from('devices').insert({ org_id: org.id, name: `Sensor ${n}`, device_number: n, insulation: 'poor', ingest_token: token, type: 'SCD41' }).select('id').single()
