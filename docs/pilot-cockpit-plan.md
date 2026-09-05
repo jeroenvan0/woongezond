@@ -144,9 +144,9 @@ op de sticker en in de database, **niet** in de firmware.
 - [ ] Seed: organisatie "Pilot", Jeroen als admin. Bestaande "Jeroen Sensor" aan de org hangen
       (`org_id`, `device_number = 1`, token minten) zodat die als eerste op het nieuwe pad gaat.
 
-### Fase 1 — firmware v2 (één image, ~1 dag, hardware nodig)
-Nieuwe sketch `firmware/woongezond-sensor/` **in deze repo** (nu leeft 'm alleen in
-`~/Documents/Arduino`, ongeversioneerd).
+### Fase 1 — firmware v2 (één image) — **geschreven 2026-09-05, compileert (arduino-cli, esp32 3.3.10), nog niet op hardware getest**
+Sketch `firmware/woongezond-sensor/` + README (bench-stappen, seriële commando's, LED-codes).
+Bewonershandleiding: `docs/handleiding-bewoner.{md,html}` (printkaart voor in het doosje).
 - [ ] `Preferences` namespace `wg`: `token`, `base_url`. Bij boot: geen token → **serial
       provisioning-modus**: op de USB-monitor `SET TOKEN wgd_…` en `SET URL https://dev.woongezond.com/admin`
       typen (of via `scripts/provision-device.mts`, zie fase 3). Geen recompile.
