@@ -33,7 +33,7 @@ async function callerOrgs(supabase: Awaited<ReturnType<typeof client>>) {
 function genCode(): string {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
   let s = ''
-  for (let i = 0; i < 4; i++) s += alphabet[Math.floor(Math.random() * alphabet.length)]
+  for (let i = 0; i < 6; i++) s += alphabet[Math.floor(Math.random() * alphabet.length)]
   return `DEVICE-${s}`
 }
 

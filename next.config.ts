@@ -19,6 +19,10 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // Let a phone on the LAN load the dev bundles (the /start wizard test via
+  // http://<mac-ip>:3005). Next 16 blocks cross-origin /_next/* requests in dev otherwise,
+  // which leaves a server-rendered page with no JavaScript. Dev-only setting.
+  allowedDevOrigins: ['192.168.*.*', '10.*.*.*', '172.16.*.*', '*.local'],
   basePath,
   async headers() {
     return [

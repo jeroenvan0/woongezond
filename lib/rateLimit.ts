@@ -50,6 +50,11 @@ export const LIMITS = {
   // Sensors write ~1/min. 4/min per device leaves headroom for a retry/burst without
   // letting a stuck device hammer the ingest endpoint.
   ingest: { max: 4, windowMs: 60 * 1000 },
+  // /start wizard (public, code-gated): a status poll every ~5s plus one profile POST.
+  deviceStart: { max: 120, windowMs: 5 * 60 * 1000 },
+  // Per sticker code (any IP): a code is looked up once per wizard run, so 20/hour is
+  // generous for people and hopeless for guessing the 32^6 code space.
+  deviceCode: { max: 20, windowMs: 60 * 60 * 1000 },
 } as const satisfies Record<string, Limit>
 
 export interface RateResult {
@@ -101,4 +106,16 @@ export function enforce(scope: string, userId: string, limit: Limit): NextRespon
 export function __resetAll() {
   buckets.clear()
   opsSinceSweep = 0
+}
+
+// The client address for per-IP limits. Behind nginx (prod) X-Real-IP is set from
+// $remote_addr and cannot be forged by the client; X-Forwarded-For is client-controlled
+// on its first entries ($proxy_add_x_forwarded_for appends the real address LAST), so a
+// forged header must never widen a limit. Locally there is no proxy at all.
+export function clientIp(headers: Headers): string {
+  const real = headers.get('x-real-ip')?.trim()
+  if (real) return real
+  const xff = headers.get('x-forwarded-for')
+  if (xff) { const parts = xff.split(',').map((s) => s.trim()).filter(Boolean); if (parts.length) return parts[parts.length - 1] }
+  return 'local'
 }
