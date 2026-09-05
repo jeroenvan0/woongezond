@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
     if (!bootedRecently(dev)) return NextResponse.json({ error: 'overwrite_locked', registered_at: dev.registered_at, window_min: OVERWRITE_WINDOW_MIN }, { status: 423 })
   }
 
-  const result = await store.saveProfile(dev.id, parsed.profile, TERMS_VERSION)
+  const result = await store.saveProfile(dev.id, parsed.profile, TERMS_VERSION, dev.registered_at != null)
   if (result !== 'ok') return NextResponse.json({ error: 'error' }, { status: 500 })
   return NextResponse.json({ ok: true, overwritten: dev.registered_at != null, derived: deriveDeviceColumns(parsed.profile) })
 }

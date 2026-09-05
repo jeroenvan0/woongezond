@@ -7,8 +7,12 @@
 //     "Woongezond-0N" met een captive portal (WiFiManager). Kies daar het thuisnetwerk.
 //   • Elke 60 s een meting naar <URL>/api/ingest met header x-device-token.
 //     Body: co2, temperature, humidity, rssi, fw, boot_count, uptime_s (docs/pilot-feather-s3-plan.md).
-//   • BOOT-knop 10 s ingedrukt → alleen de WiFi-gegevens wissen (token blijft). Sensor opent
-//     daarna weer het setup-netwerk. Handig bij een nieuwe router of verhuizing.
+//   • Stroom eraf/eraan: alles blijft (WiFi-gegevens én token staan in flash). De sensor
+//     verbindt na een herstart gewoon opnieuw en wist NOOIT uit zichzelf iets.
+//   • WiFi wijzigen (nieuw wachtwoord/router): BOOT-knop 10 s ingedrukt → alleen de WiFi-
+//     gegevens weg, token en nummer blijven, alle data blijft één reeks. Setup-netwerk opent.
+//   • Overdragen aan een nieuwe bewoner gebeurt op de website (QR opnieuw scannen), niet in
+//     de firmware: de sensor zelf hoeft daarvoor niets te vergeten.
 //   • Rode LED: 2× knipperen = geen WiFi / setup-modus, 3× = server weigert token (401),
 //     1 korte flits = meting verstuurd.
 //
@@ -103,8 +107,12 @@ bool ensureWiFi() {
   if (WiFi.status() == WL_CONNECTED) return true;
   if (millis() - lastWifiTry < WIFI_RETRY_MS && lastWifiTry != 0) return false;
   lastWifiTry = millis();
-  wm.setConfigPortalTimeout(300);          // 5 min portal, daarna opnieuw proberen met opgeslagen creds
-  wm.setConnectTimeout(20);
+  // Geduldig: eerst ruim proberen op het bekende netwerk (router die na een stroomstoring
+  // trager opkomt dan de sensor), pas dan het setup-netwerk. Opgeslagen creds worden nooit
+  // gewist; als het portal na 5 min sluit, proberen we het bekende netwerk gewoon opnieuw.
+  wm.setConnectTimeout(30);
+  wm.setConnectRetries(4);                 // 4 × 30 s ≈ 2 min voordat het portal opent
+  wm.setConfigPortalTimeout(300);
   wm.setTitle("Woongezond sensor");
   wm.setDarkMode(false);
   Serial.println("[wifi] verbinden… (geen creds → setup-netwerk " + apName() + ")");

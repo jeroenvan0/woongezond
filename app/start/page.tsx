@@ -5,7 +5,7 @@ import Logo from '@/components/Logo'
 import { withBase } from '@/lib/basePath'
 import { QUESTIONS, CLAIM_CODE_RE, normalizeCode, type HouseProfile } from '@/lib/houseProfile'
 import { TERMS_VERSION } from '@/lib/pilot/terms'
-import { Plug, Wifi, CheckCircle2, Home, ArrowRight, ArrowLeft, Loader2, PartyPopper, Check, RotateCcw, ShieldCheck, Pencil, Mail } from 'lucide-react'
+import { Plug, Wifi, CheckCircle2, Home, ArrowRight, ArrowLeft, Loader2, PartyPopper, Check, RotateCcw, ShieldCheck, Pencil, Mail, KeyRound, UserRoundPlus } from 'lucide-react'
 
 // Resident self-service: the QR on the sensor opens /start?code=DEVICE-XXXXXX.
 // No account (docs/pilot-cockpit-plan.md §2b):
@@ -43,10 +43,13 @@ function StartInner() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [overwrite, setOverwrite] = useState(false)
+  const [wifiOnly, setWifiOnly] = useState(false)
   const [locked, setLocked] = useState(false)
   const [contact, setContact] = useState({ name: '', email: '', address_note: '' })
   const [contactSaved, setContactSaved] = useState<boolean | null>(null)
   const sessionRef = useRef<string | null>(null)
+  const wifiDoneRef = useRef(false)
+  const wifiEnteredAt = useRef<number>(0)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const fetchStatus = useCallback(async (c: string) => {
@@ -57,17 +60,23 @@ function StartInner() {
       const r = await fetch(withBase(`/api/devices/status?${qs}`), { cache: 'no-store' })
       const d = await r.json()
       if (!r.ok) { setErr(ERR[d.error] ?? ERR.error); setStatus(null); return null }
-      sessionRef.current = d.session; setErr(null); setStatus(d); return d as Status
+      sessionRef.current = d.session
+      // Wi-Fi-change mode: the old connection may still be up; only a reading newer than the
+      // moment the resident started counts as "done".
+      if (d.last_seen && wifiEnteredAt.current && new Date(d.last_seen).getTime() > wifiEnteredAt.current) wifiDoneRef.current = true
+      setErr(null); setStatus(d); return d as Status
     } catch { setErr(ERR.error); return null }
   }, [])
 
   useEffect(() => { if (CLAIM_CODE_RE.test(code)) fetchStatus(code) }, [code, fetchStatus])
   useEffect(() => {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
-    const needPoll = (step === 1 && !(status?.online)) || (step === 3 && locked && !(status?.recent_boot))
+    if (step === 1 && wifiOnly && !wifiEnteredAt.current) { wifiEnteredAt.current = Date.now(); wifiDoneRef.current = false }
+    if (step !== 1) wifiEnteredAt.current = 0
+    const needPoll = (step === 1 && (!(status?.online) || (wifiOnly && !wifiDoneRef.current))) || (step === 3 && locked && !(status?.recent_boot))
     if (code && needPoll) pollRef.current = setInterval(() => fetchStatus(code), 5000)
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
-  }, [step, code, status?.online, status?.recent_boot, locked, fetchStatus])
+  }, [step, code, status?.online, status?.recent_boot, locked, wifiOnly, fetchStatus])
 
   async function submitProfile() {
     if (!terms) { setErr(ERR.terms_required); return }
@@ -133,11 +142,10 @@ function StartInner() {
             </Panel>
           )}
           {step === 0 && status && registeredChoice && (
-            <Panel icon={<RotateCcw />} title="Deze sensor is al geregistreerd" lead={`Op ${fmtDate(status.registered_at!)} zijn de vragen over dit huis al ingevuld.`}>
-              <P>Wil je die gegevens overschrijven, bijvoorbeeld omdat de sensor naar een ander huis of een andere kamer is verhuisd?</P>
-              <Primary onClick={() => { setOverwrite(true); setStep(1) }} icon={<ArrowRight size={17} />}>Ja, opnieuw registreren</Primary>
-              <Ghost onClick={() => setStep(1)}>Nee, alleen de WiFi instellen</Ghost>
-              <Note icon={<ShieldCheck size={16} />}>Overschrijven kan alleen als je de sensor in handen hebt. We vragen je straks de stekker er even uit en weer in te doen.</Note>
+            <Panel icon={<RotateCcw />} title="Deze sensor is al in gebruik" lead={`Geregistreerd op ${fmtDate(status.registered_at!)}. Wat wil je doen?`}>
+              <Choice icon={<KeyRound size={20} />} title="WiFi wijzigen" text="Nieuw wachtwoord of nieuwe router. Zelfde bewoner, alle metingen blijven bij elkaar." onClick={() => { setWifiOnly(true); setStep(1) }} />
+              <Choice icon={<UserRoundPlus size={20} />} title="Overdragen aan een nieuwe bewoner" text="De sensor gaat naar een ander huis of een andere kamer. De vragen worden opnieuw gesteld en de gegevens van de vorige bewoner worden losgekoppeld." onClick={() => { setOverwrite(true); setStep(1) }} />
+              <Note icon={<ShieldCheck size={16} />}>Overdragen kan alleen als je de sensor in handen hebt: we vragen je straks de stekker er even uit en weer in te doen.</Note>
             </Panel>
           )}
           {step === 0 && status && !registeredChoice && (
@@ -148,14 +156,19 @@ function StartInner() {
           )}
 
           {/* 1 · wifi */}
-          {step === 1 && status && (status.online ? (
+          {step === 1 && status && (status.online && !wifiOnly ? (
             <Panel icon={<CheckCircle2 />} tone="ok" title="De sensor is online!" lead={`We ontvangen metingen van sensor ${nr}. ${status.minutes_since ? `Laatste meting ${status.minutes_since} min geleden.` : 'Zojuist nog.'}`}>
               <Primary onClick={() => setStep(2)} icon={<ArrowRight size={17} />}>Naar de vragen</Primary>
               <Ghost onClick={() => setStep(0)} icon={<ArrowLeft size={15} />}>Terug</Ghost>
             </Panel>
+          ) : status.online && wifiOnly && wifiDoneRef.current ? (
+            <Panel icon={<CheckCircle2 />} tone="ok" title="WiFi bijgewerkt" lead={`Sensor ${nr} is weer online en meet gewoon door. Alle metingen blijven bij elkaar. Je hoeft verder niets te doen.`}>
+              <Ghost onClick={() => { setWifiOnly(false); setStep(0) }} icon={<ArrowLeft size={15} />}>Terug naar het begin</Ghost>
+            </Panel>
           ) : (
-            <Panel icon={<Wifi />} title="Zet de sensor op je WiFi" lead="Steek de sensor in het stopcontact. Na een halve minuut maakt hij een eigen WiFi-netwerkje, alleen om zich te laten instellen.">
+            <Panel icon={<Wifi />} title={wifiOnly ? 'WiFi van de sensor wijzigen' : 'Zet de sensor op je WiFi'} lead={wifiOnly ? 'De sensor vergeet alleen het oude WiFi, verder niets. Zo doe je dat:' : 'Steek de sensor in het stopcontact. Na een halve minuut maakt hij een eigen WiFi-netwerkje, alleen om zich te laten instellen.'}>
               <Steps items={[
+                ...(wifiOnly ? [<>Houd het knopje op de sensor <b>10 seconden</b> ingedrukt tot het lampje snel knippert. De sensor herstart.</>] : []),
                 <>Open op je telefoon <b>Instellingen → WiFi</b>.</>,
                 <>Kies het netwerk <Code>{status.ap_name}</Code>.</>,
                 <>Er opent vanzelf een pagina. Kies je eigen WiFi-netwerk en vul het wachtwoord in.</>,
@@ -164,8 +177,8 @@ function StartInner() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '18px 0 4px', padding: '11px 13px', borderRadius: 'var(--r-md)', background: 'var(--brand-fill)', color: 'var(--brand)', fontSize: 'var(--fs-md)', fontWeight: 600 }}>
                 <Loader2 size={16} style={{ animation: 'wg-spin 1.2s linear infinite', flex: '0 0 auto' }} /> Wachten op de eerste meting…
               </div>
-              <Primary onClick={() => setStep(2)} icon={<ArrowRight size={17} />} variant="soft">Eerst de vragen doen</Primary>
-              <Ghost onClick={() => setStep(0)} icon={<ArrowLeft size={15} />}>Terug</Ghost>
+              {!wifiOnly && <Primary onClick={() => setStep(2)} icon={<ArrowRight size={17} />} variant="soft">Eerst de vragen doen</Primary>}
+              <Ghost onClick={() => { setWifiOnly(false); setStep(0) }} icon={<ArrowLeft size={15} />}>Terug</Ghost>
               <Note>Lukt het niet? De sensor werkt alleen op 2,4 GHz WiFi. Brandt het lampje niet, probeer een ander stopcontact.</Note>
             </Panel>
           ))}
@@ -239,7 +252,7 @@ function StartInner() {
                   {status?.recent_boot ? ' De sensor is net opnieuw gestart — je kunt nu opslaan.' : ''}
                 </Note>
               )}
-              <Primary onClick={submitProfile} disabled={!allAnswered || !terms || saving} icon={saving ? <Loader2 size={17} style={{ animation: 'wg-spin 1.2s linear infinite' }} /> : <Check size={17} strokeWidth={3} />}>{saving ? 'Opslaan…' : overwrite ? 'Overschrijven en opslaan' : 'Opslaan'}</Primary>
+              <Primary onClick={submitProfile} disabled={!allAnswered || !terms || saving} icon={saving ? <Loader2 size={17} style={{ animation: 'wg-spin 1.2s linear infinite' }} /> : <Check size={17} strokeWidth={3} />}>{saving ? 'Opslaan…' : overwrite ? 'Overdragen en opslaan' : 'Opslaan'}</Primary>
               <Ghost onClick={() => { setQ(QUESTIONS.length - 1); setStep(2) }} icon={<ArrowLeft size={15} />}>Terug</Ghost>
             </Panel>
           )}
@@ -261,7 +274,7 @@ function StartInner() {
 
           {/* 5 · done */}
           {step === 5 && (
-            <Panel icon={<PartyPopper />} tone="ok" title="Klaar, bedankt!" lead={`${saved ? (overwrite ? 'De oude registratie is overschreven. ' : 'Je antwoorden zijn opgeslagen. ') : ''}${status?.online ? `Sensor ${nr} meet en stuurt zijn metingen door.` : `Zodra sensor ${nr} op WiFi zit, begint hij vanzelf met meten.`}`}>
+            <Panel icon={<PartyPopper />} tone="ok" title="Klaar, bedankt!" lead={`${saved ? (overwrite ? 'De sensor is overgedragen; de vorige bewoner is losgekoppeld. ' : 'Je antwoorden zijn opgeslagen. ') : ''}${status?.online ? `Sensor ${nr} meet en stuurt zijn metingen door.` : `Zodra sensor ${nr} op WiFi zit, begint hij vanzelf met meten.`}`}>
               {contactSaved && <P><b style={{ color: 'var(--text)' }}>Je krijgt het rapport per e-mail.</b></P>}
               <P>Je hoeft verder niets te doen. Wil je zelf zien hoe de lucht in je huis is? Dan kun je een account maken en de sensor aan jezelf koppelen. Dat is helemaal optioneel.</P>
               <a href={withBase(`/koppel?code=${encodeURIComponent(code)}`)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--brand)', fontWeight: 700, fontSize: 'var(--fs-md)', marginTop: 4 }}>Eigen account maken en koppelen <ArrowRight size={15} /></a>
@@ -321,6 +334,15 @@ function Steps({ items }: { items: React.ReactNode[] }) {
         </li>
       ))}
     </ol>
+  )
+}
+function Choice({ icon, title, text, onClick }: { icon: React.ReactNode; title: string; text: string; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} style={{ display: 'flex', gap: 14, alignItems: 'flex-start', width: '100%', textAlign: 'left', padding: '14px 14px', marginTop: 10, borderRadius: 'var(--r-md)', border: '1.5px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text)', fontFamily: 'inherit', cursor: 'pointer' }}>
+      <span style={{ flex: '0 0 40px', height: 40, borderRadius: 12, background: 'var(--brand-fill)', color: 'var(--brand)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{icon}</span>
+      <span><span style={{ display: 'block', fontSize: 'var(--fs-lg)', fontWeight: 700, marginBottom: 2 }}>{title}</span><span style={{ display: 'block', fontSize: 'var(--fs-sm)', color: 'var(--muted)', lineHeight: 1.5 }}>{text}</span></span>
+      <ArrowRight size={16} color="var(--subtle)" style={{ flex: '0 0 auto', alignSelf: 'center' }} />
+    </button>
   )
 }
 function Primary({ children, onClick, disabled, icon, variant = 'solid' }: { children: React.ReactNode; onClick: () => void; disabled?: boolean; icon?: React.ReactNode; variant?: 'solid' | 'soft' }) {
