@@ -106,6 +106,18 @@ op de sticker en in de database, **niet** in de firmware.
 - Overschrijven zonder recente herstart → 423 `overwrite_locked`; zonder `overwrite: true` →
   409 `already_registered`; zonder/verlopen sessie → 401.
 
+### Algemene voorwaarden (gebouwd 2026-09-05, tekst = concept)
+- Stap "Bevestig" toont alle antwoorden (tik = aanpassen) en een **verplicht vinkje**: "Ik ga
+  akkoord met de algemene voorwaarden en met het opslaan van de metingen". Zonder vinkje
+  weigert `/api/devices/profile` (400 `terms_required`).
+- Opgeslagen per apparaat: `devices.terms_accepted_at` + `terms_version` (`lib/pilot/terms.ts`,
+  nu `2026-09-concept`). Nieuwe versie → wizard vraagt opnieuw bij de eerstvolgende registratie.
+- Tekst staat op `/voorwaarden` (concept, gemarkeerd). **Te doen (Jeroen):** definitieve tekst
+  met juridische check; daarna `TERMS_VERSION` ophogen.
+- **Te doen (later):** ook bij het aanmaken van een account (/login → registreren) hetzelfde
+  vinkje, opgeslagen op `profiles.terms_accepted_at`, zodat bewoners die wél inloggen ook akkoord
+  zijn. Zit nu niet in de pilot-flow omdat die zonder account werkt.
+
 ### Valkuilen die we vooraf afdekken
 | Valkuil | Antwoord |
 |---|---|

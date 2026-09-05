@@ -21,7 +21,7 @@ export interface Telemetry { rssi?: number | null; fw?: string | null; boot_coun
 export interface PilotStore {
   findByCode(code: string): Promise<StartDevice | null | 'not_deployed'>
   findById(id: string): Promise<StartDevice | null>
-  saveProfile(deviceId: string, profile: HouseProfile): Promise<'ok' | 'error'>
+  saveProfile(deviceId: string, profile: HouseProfile, termsVersion: string): Promise<'ok' | 'error'>
   // Mock-only ingest: returns the device if the token belongs to a mock device, else null
   // (the real ingest path lives in app/api/ingest and never calls this).
   mockIngest(token: string, t: Telemetry): StartDevice | null
@@ -81,10 +81,11 @@ const supabaseStore: PilotStore = {
     const { data: dev } = await s.from('devices').select(DEV_COLS).eq('id', id).maybeSingle()
     return dev ? shape(s, dev) : null
   },
-  async saveProfile(id, profile) {
+  async saveProfile(id, profile, termsVersion) {
     const s = createServiceClient()
+    const now = new Date().toISOString()
     const { error } = await s.from('devices')
-      .update({ house_profile: profile, profile_completed_at: new Date().toISOString(), ...deriveDeviceColumns(profile), updated_at: new Date().toISOString() })
+      .update({ house_profile: profile, profile_completed_at: now, terms_accepted_at: now, terms_version: termsVersion, ...deriveDeviceColumns(profile), updated_at: now })
       .eq('id', id)
     return error ? 'error' : 'ok'
   },
