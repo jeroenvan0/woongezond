@@ -5,7 +5,7 @@ import Logo from '@/components/Logo'
 import { withBase } from '@/lib/basePath'
 import { QUESTIONS, CLAIM_CODE_RE, normalizeCode, type HouseProfile } from '@/lib/houseProfile'
 import { TERMS_VERSION } from '@/lib/pilot/terms'
-import { Plug, Wifi, CheckCircle2, Home, ArrowRight, ArrowLeft, Loader2, PartyPopper, Check, RotateCcw, ShieldCheck, Pencil } from 'lucide-react'
+import { Plug, Wifi, CheckCircle2, Home, ArrowRight, ArrowLeft, Loader2, PartyPopper, Check, RotateCcw, ShieldCheck, Pencil, Mail } from 'lucide-react'
 
 // Resident self-service: the QR on the sensor opens /start?code=DEVICE-XXXXXX.
 // No account (docs/pilot-cockpit-plan.md §2b):
@@ -27,7 +27,7 @@ const ERR: Record<string, string> = {
   error: 'Er ging iets mis. Probeer het opnieuw.',
 }
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })
-const STEPS = ['Start', 'WiFi', 'Je huis', 'Bevestig', 'Klaar']
+const STEPS = ['Start', 'WiFi', 'Je huis', 'Bevestig', 'Rapport', 'Klaar']
 const GRADIENT = 'linear-gradient(135deg, var(--brand-mark) 0%, var(--brand-700) 100%)'
 
 function StartInner() {
@@ -44,6 +44,8 @@ function StartInner() {
   const [saved, setSaved] = useState(false)
   const [overwrite, setOverwrite] = useState(false)
   const [locked, setLocked] = useState(false)
+  const [contact, setContact] = useState({ name: '', email: '', address_note: '' })
+  const [contactSaved, setContactSaved] = useState<boolean | null>(null)
   const sessionRef = useRef<string | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -76,6 +78,17 @@ function StartInner() {
       if (r.status === 423) { setLocked(true); await fetchStatus(code); return }
       if (!r.ok) { setErr(ERR[d.error] ?? ERR.error); return }
       setLocked(false); setSaved(true); setStep(4)
+    } catch { setErr(ERR.error) } finally { setSaving(false) }
+  }
+
+  async function submitContact(skip: boolean) {
+    if (skip || (!contact.name && !contact.email && !contact.address_note)) { setContactSaved(false); setStep(5); return }
+    setSaving(true); setErr(null)
+    try {
+      const r = await fetch(withBase('/api/devices/contact'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session: sessionRef.current, ...contact }) })
+      const d = await r.json()
+      if (!r.ok) { setErr(d.error === 'email_invalid' ? 'Dat e-mailadres klopt niet helemaal.' : ERR[d.error] ?? ERR.error); return }
+      setContactSaved(!!d.report_by_email); setStep(5)
     } catch { setErr(ERR.error) } finally { setSaving(false) }
   }
 
@@ -231,9 +244,25 @@ function StartInner() {
             </Panel>
           )}
 
-          {/* 4 · done */}
+          {/* 4 · contact for the household report (optional) */}
           {step === 4 && (
+            <Panel icon={<Mail />} title="Wil je een rapport over je eigen huis?" lead="Dan sturen we je af en toe een overzicht van de lucht in jouw kamer, met tips. Dit is optioneel.">
+              <label htmlFor="c-name" style={labelStyle}>Naam</label>
+              <input id="c-name" value={contact.name} onChange={(e) => setContact({ ...contact, name: e.target.value })} placeholder="bijv. Fam. Jansen" autoComplete="name" style={inputStyle} />
+              <label htmlFor="c-email" style={labelStyle}>E-mailadres voor het rapport</label>
+              <input id="c-email" type="email" value={contact.email} onChange={(e) => setContact({ ...contact, email: e.target.value })} placeholder="jouw@email.nl" autoComplete="email" inputMode="email" style={inputStyle} />
+              <label htmlFor="c-addr" style={labelStyle}>Adres of woning (voor de installateur)</label>
+              <input id="c-addr" value={contact.address_note} onChange={(e) => setContact({ ...contact, address_note: e.target.value })} placeholder="bijv. Kerkstraat 12, 3-hoog" autoComplete="street-address" style={inputStyle} />
+              <Note icon={<ShieldCheck size={16} />}>Deze gegevens staan los van de metingen en zijn alleen zichtbaar voor de beheerder van de pilot. Je kunt ze op elk moment laten verwijderen.</Note>
+              <Primary onClick={() => submitContact(false)} disabled={saving} icon={<ArrowRight size={17} />}>{saving ? 'Opslaan…' : 'Opslaan'}</Primary>
+              <Ghost onClick={() => submitContact(true)}>Overslaan</Ghost>
+            </Panel>
+          )}
+
+          {/* 5 · done */}
+          {step === 5 && (
             <Panel icon={<PartyPopper />} tone="ok" title="Klaar, bedankt!" lead={`${saved ? (overwrite ? 'De oude registratie is overschreven. ' : 'Je antwoorden zijn opgeslagen. ') : ''}${status?.online ? `Sensor ${nr} meet en stuurt zijn metingen door.` : `Zodra sensor ${nr} op WiFi zit, begint hij vanzelf met meten.`}`}>
+              {contactSaved && <P><b style={{ color: 'var(--text)' }}>Je krijgt het rapport per e-mail.</b></P>}
               <P>Je hoeft verder niets te doen. Wil je zelf zien hoe de lucht in je huis is? Dan kun je een account maken en de sensor aan jezelf koppelen. Dat is helemaal optioneel.</P>
               <a href={withBase(`/koppel?code=${encodeURIComponent(code)}`)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--brand)', fontWeight: 700, fontSize: 'var(--fs-md)', marginTop: 4 }}>Eigen account maken en koppelen <ArrowRight size={15} /></a>
             </Panel>
