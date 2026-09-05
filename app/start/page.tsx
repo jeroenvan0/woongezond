@@ -27,7 +27,7 @@ const ERR: Record<string, string> = {
   error: 'Er ging iets mis. Probeer het opnieuw.',
 }
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })
-const STEPS = ['Start', 'WiFi', 'Je huis', 'Bevestig', 'Rapport', 'Klaar']
+const STEPS = ['Start', 'WiFi', 'Huis', 'Check', 'Mail', 'Klaar']
 const GRADIENT = 'linear-gradient(135deg, var(--brand-mark) 0%, var(--brand-700) 100%)'
 
 function StartInner() {
