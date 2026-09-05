@@ -118,6 +118,13 @@ op de sticker en in de database, **niet** in de firmware.
   vinkje, opgeslagen op `profiles.terms_accepted_at`, zodat bewoners die wél inloggen ook akkoord
   zijn. Zit nu niet in de pilot-flow omdat die zonder account werkt.
 
+### Twee vervolgscenario's bij een tweede scan (gebouwd 2026-09-05)
+| Scenario | In de wizard | Effect |
+|---|---|---|
+| **WiFi wijzigen** (zelfde bewoner) | knop "WiFi wijzigen" → knopje 10 s → setup-netwerk → klaar | token, nummer, profiel, contact en de hele meetreeks blijven; alleen WiFi-creds vervangen |
+| **Overdragen** (nieuwe bewoner) | knop "Overdragen aan een nieuwe bewoner" → stekker-bewijs → vragen → voorwaarden → contact | `house_profile` + `profile_completed_at` nieuw, `device_contacts` van de vorige bewoner **gewist**; metingen blijven één reeks per device, het rapport telt vanaf de nieuwe `profile_completed_at` |
+| **Stroomstoring** | niets | firmware onthoudt WiFi + token in flash; wist nooit uit zichzelf; wacht ~2 min op de router voor het setup-netwerk opengaat |
+
 ### Valkuilen die we vooraf afdekken
 | Valkuil | Antwoord |
 |---|---|

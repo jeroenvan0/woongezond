@@ -22,7 +22,10 @@ export interface Telemetry { rssi?: number | null; fw?: string | null; boot_coun
 export interface PilotStore {
   findByCode(code: string): Promise<StartDevice | null | 'not_deployed'>
   findById(id: string): Promise<StartDevice | null>
-  saveProfile(deviceId: string, profile: HouseProfile, termsVersion: string): Promise<'ok' | 'error'>
+  // handover=true: a NEW household takes the sensor over — the previous contact row is
+  // removed so reports can never reach the wrong person. Measurements stay (one series per
+  // device); reports use profile_completed_at as the start of the current placement.
+  saveProfile(deviceId: string, profile: HouseProfile, termsVersion: string, handover?: boolean): Promise<'ok' | 'error'>
   saveContact(deviceId: string, contact: Contact): Promise<'ok' | 'error'>
   // Mock-only ingest: returns the device if the token belongs to a mock device, else null
   // (the real ingest path lives in app/api/ingest and never calls this).
@@ -85,9 +88,10 @@ const supabaseStore: PilotStore = {
     const { data: dev } = await s.from('devices').select(DEV_COLS).eq('id', id).maybeSingle()
     return dev && dev.active !== false ? shape(s, dev) : null
   },
-  async saveProfile(id, profile, termsVersion) {
+  async saveProfile(id, profile, termsVersion, handover) {
     const s = createServiceClient()
     const now = new Date().toISOString()
+    if (handover) { const { error: cErr } = await s.from('device_contacts').delete().eq('device_id', id); if (cErr && !/relation|schema cache/i.test(cErr.message)) return 'error' }
     const { error } = await s.from('devices')
       .update({ house_profile: profile, profile_completed_at: now, terms_accepted_at: now, terms_version: termsVersion, ...deriveDeviceColumns(profile), updated_at: now })
       .eq('id', id)

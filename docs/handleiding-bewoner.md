@@ -38,8 +38,11 @@ Eén tik per vraag. Controleer je antwoorden, vink de voorwaarden aan en druk op
 ## Vragen of problemen
 - **Werkt alleen op 2,4 GHz WiFi.** Zie je je netwerk niet in de lijst? Kijk of je router ook
   een 2,4 GHz-netwerk uitzendt (meestal wel; soms heet het "…-2.4G").
-- **Nieuwe router of verhuisd?** Houd het knopje op de sensor 10 seconden ingedrukt. De
-  sensor vergeet dan alleen de WiFi en doe je stap 3 opnieuw. Je antwoorden blijven bewaard.
+- **Stroom eraf geweest?** Niets doen. De sensor onthoudt alles en verbindt vanzelf opnieuw.
+- **Nieuw WiFi-wachtwoord of nieuwe router?** Scan de QR en kies "WiFi wijzigen", of houd het
+  knopje op de sensor 10 seconden ingedrukt en doe stap 3 opnieuw. Al je metingen blijven bij elkaar.
+- **Sensor gaat naar iemand anders?** De nieuwe bewoner scant de QR en kiest "Overdragen aan een
+  nieuwe bewoner". Jouw contactgegevens worden dan losgekoppeld.
 - **Verkeerde kamer ingevuld?** Scan de QR opnieuw en kies "opnieuw registreren". De sensor
   vraagt je dan de stekker er even uit en weer in te doen.
 - **Wil je je eigen metingen zien?** Maak een account via de link aan het einde van de

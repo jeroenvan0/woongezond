@@ -1,32 +1,55 @@
-<!doctype html><html lang="nl"><head><meta charset="utf-8"><title>Woongezond — je sensor instellen</title>
+<!doctype html><html lang="nl"><head><meta charset="utf-8"><title>Woongezond — sensor instellen</title>
 <style>
-@page{size:A4;margin:14mm} *{box-sizing:border-box} body{font-family:Inter,-apple-system,system-ui,sans-serif;color:#1A211E;margin:0;line-height:1.45;font-size:11.5pt}
-.head{background:linear-gradient(135deg,#12B886,#0B7A5C);color:#fff;border-radius:14px;padding:18px 22px;display:flex;align-items:center;gap:14px}
-.logo{width:40px;height:40px;background:#fff;border-radius:11px;display:flex;align-items:center;justify-content:center;font-size:22px}
-.head h1{font-size:20pt;margin:0;letter-spacing:-.02em} .head p{margin:2px 0 0;opacity:.92;font-size:10.5pt}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
-.step{border:1px solid rgba(26,33,30,.12);border-radius:12px;padding:14px 16px;background:#fff;break-inside:avoid}
-.step .n{display:inline-flex;width:28px;height:28px;border-radius:14px;background:linear-gradient(135deg,#12B886,#0B7A5C);color:#fff;font-weight:800;align-items:center;justify-content:center;margin-right:8px}
-.step h2{font-size:13.5pt;margin:0 0 6px;display:flex;align-items:center} .step p,.step ol{margin:4px 0;color:#2E3A35} .step ol{padding-left:18px} .step li{margin:2px 0}
-code{font-family:ui-monospace,Menlo,monospace;font-weight:700;background:#ECFDF6;color:#08402F;padding:1px 6px;border-radius:5px}
-.wide{grid-column:1/3} .foot{margin-top:12px;font-size:9.5pt;color:#4A5A53;display:flex;justify-content:space-between;gap:12px}
-table{border-collapse:collapse;width:100%;font-size:10.5pt} td{padding:4px 6px;border-bottom:1px solid rgba(26,33,30,.08)} td:first-child{font-weight:700;width:44%}
-.ok{color:#0B7A5C;font-weight:800}
+@page{size:A4;margin:22mm 24mm}
+body{font-family:Inter,-apple-system,"Helvetica Neue",Arial,sans-serif;color:#111;margin:0;font-size:11.5pt;line-height:1.5}
+.top{display:flex;align-items:center;gap:8px;font-size:10pt;color:#555;margin-bottom:26px}
+.mark{width:14px;height:14px;border-radius:4px;background:#0E9A73;display:inline-block}
+h1{font-size:19pt;font-weight:700;margin:0 0 4px;letter-spacing:-.01em}
+.lead{color:#555;margin:0 0 22px}
+h2{font-size:11.5pt;font-weight:700;margin:20px 0 4px}
+p{margin:0 0 8px}
+ol{margin:0 0 8px 0;padding-left:20px} ol li{margin:0 0 4px}
+ol.steps>li{margin:0 0 14px} ol.steps>li>b{display:block;margin-bottom:2px}
+ol.sub{margin:4px 0 0;padding-left:18px} ol.sub li{margin:0 0 2px}
+table{border-collapse:collapse;width:100%;margin-top:4px;font-size:10.5pt}
+td{padding:5px 8px 5px 0;vertical-align:top;border-top:1px solid #ddd} tr:first-child td{border-top:0}
+td:first-child{width:38%;font-weight:600}
+.small{font-size:9.5pt;color:#555;margin-top:24px;border-top:1px solid #ddd;padding-top:8px}
 </style></head><body>
-<div class="head"><div class="logo">🏠</div><div><h1>Je Woongezond-sensor instellen</h1><p>Vijf minuten · geen account nodig · de sensor meet CO₂, temperatuur en vocht. Geen microfoon, geen camera.</p></div></div>
-<div class="grid">
-<div class="step"><h2><span class="n">1</span>Scan de QR-code op de sensor</h2><p>Richt je telefooncamera op de sticker. Er opent een pagina met jouw sensornummer.</p><p>Lukt scannen niet? Ga naar <code>woongezond.com/admin/start</code> en typ de code van de sticker in.</p></div>
-<div class="step"><h2><span class="n">2</span>Stekker erin</h2><p>Zet de sensor in de kamer waar hij moet meten, liefst de slaapkamer, op ± 1,5 m hoogte, niet boven de verwarming.</p><p>Na een halve minuut knippert het rode lampje 2×: hij wacht op WiFi.</p></div>
-<div class="step"><h2><span class="n">3</span>Sensor op je WiFi zetten</h2><ol><li>Open <b>Instellingen → WiFi</b> op je telefoon.</li><li>Kies het netwerk <code>Woongezond-0N</code> (N = nummer op de sticker).</li><li>Er opent vanzelf een pagina: kies je eigen WiFi en vul het wachtwoord in.</li><li>De sensor herstart; je telefoon gaat terug naar je eigen WiFi.</li><li>Terug naar de pagina van stap 1: die springt op <span class="ok">groen</span> zodra de sensor meet.</li></ol></div>
-<div class="step"><h2><span class="n">4</span>Tien korte vragen over je huis</h2><p>Welke kamer, hoeveel mensen slapen er, wat voor glas, hoe wordt er geventileerd… Eén tik per vraag.</p><p>Controleer je antwoorden, vink de voorwaarden aan en druk op <b>Opslaan</b>.</p><p class="ok">Klaar. Je hoeft verder niets te doen.</p></div>
-<div class="step wide"><h2>Lampje &amp; problemen</h2><table>
+<div class="top"><span class="mark"></span>Woongezond</div>
+<h1>Je sensor instellen</h1>
+<p class="lead">Duurt ongeveer vijf minuten. Je hebt geen account nodig. De sensor meet CO₂, temperatuur en luchtvochtigheid. Geen microfoon, geen camera.</p>
+
+<ol class="steps">
+<li><b>Scan de QR-code op de sensor.</b>Richt de camera van je telefoon op de sticker. Er opent een webpagina met jouw sensornummer. Lukt scannen niet? Ga naar woongezond.com/admin/start en typ de code van de sticker in.</li>
+<li><b>Steek de sensor in het stopcontact.</b>In de kamer waar hij moet meten, bij voorkeur de slaapkamer. Ongeveer 1,5 meter hoog, niet boven de verwarming en niet naast een raam. Na een halve minuut knippert het rode lampje twee keer: de sensor wacht op WiFi.</li>
+<li><b>Zet de sensor op je WiFi.</b>
+  <ol class="sub">
+  <li>Open op je telefoon Instellingen → WiFi.</li>
+  <li>Kies het netwerk Woongezond-0N (N is het nummer op de sticker).</li>
+  <li>Er opent vanzelf een pagina. Kies daar je eigen WiFi-netwerk en vul het wachtwoord in.</li>
+  <li>De sensor herstart. Je telefoon gaat vanzelf terug naar je eigen WiFi.</li>
+  <li>Ga terug naar de webpagina van stap 1. Zodra de sensor meet, wordt het scherm groen.</li>
+  </ol></li>
+<li><b>Beantwoord tien korte vragen over je huis.</b>Welke kamer, hoeveel mensen slapen er, wat voor glas, hoe wordt er geventileerd. Eén tik per vraag. Controleer je antwoorden, vink de voorwaarden aan en druk op Opslaan. Wil je een rapport over je eigen huis, vul dan je e-mailadres in. Dat is optioneel.</li>
+</ol>
+<p>Klaar. Je hoeft verder niets te doen. De sensor meet elke minuut.</p>
+
+<h2>Het lampje</h2>
+<table>
 <tr><td>Elke minuut één korte flits</td><td>Alles werkt.</td></tr>
-<tr><td>Twee keer knipperen</td><td>Geen WiFi. Doe stap 3 (opnieuw). De sensor werkt alleen op 2,4 GHz WiFi.</td></tr>
+<tr><td>Twee keer knipperen</td><td>Geen WiFi. Doe stap 3 opnieuw. De sensor werkt alleen op 2,4 GHz WiFi.</td></tr>
 <tr><td>Drie keer knipperen</td><td>Neem contact op.</td></tr>
-<tr><td>Nieuwe router of verhuisd?</td><td>Houd het knopje op de sensor 10 seconden ingedrukt. Hij vergeet alleen de WiFi; doe daarna stap 3 opnieuw.</td></tr>
-<tr><td>Verkeerde kamer ingevuld?</td><td>Scan de QR opnieuw en kies "opnieuw registreren". Je wordt gevraagd de stekker er even uit en weer in te doen.</td></tr>
-<tr><td>Eigen metingen zien?</td><td>Maak een account via de link aan het einde van de registratie. Dat is optioneel.</td></tr>
-</table></div>
-</div>
-<div class="foot"><span>Woongezond · woongezond@vostech.group</span><span>Bewaar deze kaart bij de sensor.</span></div>
+</table>
+
+<h2>Veelgestelde vragen</h2>
+<table>
+<tr><td>Stroom eraf geweest?</td><td>Niets doen. De sensor onthoudt alles en verbindt vanzelf opnieuw.</td></tr>
+<tr><td>Nieuw WiFi-wachtwoord of nieuwe router?</td><td>Scan de QR en kies "WiFi wijzigen", of houd het knopje op de sensor 10 seconden ingedrukt en doe stap 3 opnieuw. Al je metingen blijven bij elkaar.</td></tr>
+<tr><td>Verkeerde kamer ingevuld?</td><td>Scan de QR opnieuw en kies "Overdragen aan een nieuwe bewoner". Je wordt gevraagd de stekker er even uit en weer in te doen.</td></tr>
+<tr><td>Sensor gaat naar iemand anders?</td><td>De nieuwe bewoner scant de QR en kiest "Overdragen aan een nieuwe bewoner". Jouw contactgegevens worden losgekoppeld.</td></tr>
+<tr><td>Eigen metingen bekijken?</td><td>Maak een account via de link aan het einde van de registratie. Dat is optioneel.</td></tr>
+</table>
+
+<p class="small">Vragen: woongezond@vostech.group · Bewaar deze kaart bij de sensor.</p>
 </body></html>
