@@ -42,6 +42,64 @@ eigen sensor is al drie dagen stil zonder dat iets dat meldt.
 6. **Anon-sync-policy uit** zodra de laatste sensor op een token draait
    (`air_quality_anon_sync_insert/select`).
 
+## 2b. Bewoner-zelfservice: één QR, WiFi instellen, huisvragen beantwoorden
+
+**Gewenst (Jeroen, 5 sep):** de bewoner scant zelf de QR op het apparaat, zet de WiFi en
+beantwoordt een paar vragen over het huis. Geen installateur, geen account nodig.
+
+### Waarom het twee werelden zijn, en hoe we ze aan elkaar knopen
+WiFi instellen kan **alleen via de sensor zelf** (de telefoon moet met het apparaat praten, en
+dat kan pas als het op WiFi zit — kip-ei, opgelost met een tijdelijk eigen netwerkje van de
+sensor). De huisvragen horen **op de server**. Eén QR moet dus beide werelden aansturen.
+De website is slim, de sensor is dom:
+
+```
+sticker-QR  →  woongezond.com/start?code=DEVICE-7K2P   (opent op mobiel internet)
+                 │
+                 ├─ stap 1  "Steek de sensor in het stopcontact."
+                 ├─ stap 2  "Ga naar WiFi-instellingen, kies  Woongezond-07 ."
+                 │            → captive portal van de sensor opent vanzelf:
+                 │              thuisnetwerk kiezen + wachtwoord → sensor test 'm →
+                 │              "Verbonden ✓, je kunt terug naar de website"
+                 │          de webpagina pollt intussen /api/devices/status?code=…
+                 │          en springt zelf op groen zodra de eerste meting binnenkomt
+                 ├─ stap 3  huisvragen (bouwjaar, woningtype, isolatie, kamer, hoeveel
+                 │          mensen slapen er, ventilatie/roosters, verwarming) → opgeslagen
+                 │          op het device via de code, zonder login
+                 └─ stap 4  (optioneel) "Wil je je eigen lucht zien? Maak een account" → claim
+```
+
+De code in de QR is het geheim: wie 'm heeft, mag het huisprofiel van *dat ene* apparaat
+invullen. Dat is hetzelfde vertrouwensmodel als de bestaande koppelcode. De code staat alleen
+op de sticker en in de database, **niet** in de firmware.
+
+### Wat dit verandert t.o.v. de rest van het plan
+- **Nieuw** `/start?code=…` — publieke, code-gegate wizard (mobiel-first). Hergebruikt de
+  vragen uit `/welkom` (onboarding B2) en de huisprofielvelden van `/vloot/koppelen`.
+- **Nieuw** `POST /api/devices/profile` (code + antwoorden, service-role, schrijft
+  `build_year/house_type/insulation/location/placement_note` + nieuwe kolommen
+  `occupants int`, `ventilation text`, `heating text`), en `GET /api/devices/status?code=…`
+  (alleen `online: bool, last_seen`) voor de groene vink.
+- **Firmware**: open AP `Woongezond-0N` (geen AP-wachtwoord — bestaat alleen tot de WiFi
+  staat, en je moet fysiek in huis zijn). Portal met netwerklijst, wachtwoord, **verificatie
+  vóór opslaan** ("wachtwoord klopt niet" i.p.v. stil herstarten), 5 GHz-melding. Standaard
+  `WiFiManager`-gedrag; de portal-tekst eindigt met "ga terug naar de website".
+- **Sticker**: één QR (URL) + het nummer + "WiFi: Woongezond-0N". Géén WiFi-join-QR meer
+  (iOS opent daar geen captive portal van, en twee QR's = de verkeerde scannen).
+- **Corporatie-provisioning blijft** voor jou als beheerder (`/vloot/koppelen` maakt device,
+  token, code, QR-sticker). De bewoner vult het huisprofiel; jij ziet en corrigeert het in
+  `/cockpit/[id]`.
+- Open vraag 1 (login voor bewoners?) is hiermee beantwoord: **niet nodig**, optioneel in stap 4.
+
+### Valkuilen die we vooraf afdekken
+| Valkuil | Antwoord |
+|---|---|
+| Telefoon verliest internet zodra hij op de sensor-AP zit | De wizardpagina is volledig client-side geladen; de poll pauzeert en hervat. |
+| iOS sluit het captive-portal-venster na verbinden | Prima: de webpagina meldt zelf "sensor online" via de poll. |
+| Bewoner vult de huisvragen in voordat de WiFi staat | Mag; stappen zijn onafhankelijk, de code is genoeg. |
+| Iemand raadt een code | 32^4 ≈ 1M combinaties + rate limit op `/start`-API's + code alleen geldig voor niet-ingevulde apparaten of met `expires_at`. |
+| Twee huizen delen een sensor-naam | AP-naam bevat het device-nummer; nummer staat ook op de sticker. |
+
 ## 3. Wat er gebouwd wordt
 
 ### Fase 0 — fundament (voorwaarde voor alles, ~1 dagdeel)
@@ -82,6 +140,7 @@ Nieuwe sketch `firmware/woongezond-sensor/` **in deze repo** (nu leeft 'm alleen
 - [ ] `/cockpit/[id]`: grafiek (hergebruik dashboard-componenten met `?device=`), 24u/7d/30d,
       huisprofiel bewerken, token + QR + koppelcode (bestaat al in `/vloot/koppelen`, hierheen
       verplaatsen), logboek (`device_events`) met vrije notitie, CSV-export van de ruwe reeks.
+- [ ] `/start?code=…` bewoner-wizard + `/api/devices/profile` + `/api/devices/status` (zie §2b).
 - [ ] `/cockpit/vergelijk`: alle 8 CO₂-lijnen in één grafiek (verschillen tussen huizen zien).
 - [ ] `/api/health`-detail gebruikt `last_seen_at` (goedkoop) i.p.v. 8 max()-queries; de
       notifications-timer meldt "sensor N is 2 uur stil" aan Jeroen (die timer staat nog niet
@@ -91,8 +150,8 @@ Nieuwe sketch `firmware/woongezond-sensor/` **in deze repo** (nu leeft 'm alleen
 - [ ] `scripts/provision-device.mts --number N --name "Fam. X — slaapkamer"`: maakt het device
       via de API, print token + koppelcode, schrijft token via serial naar het board, en doet een
       dry-run POST om te checken dat de server 'm herkent. Sticker: nummer + WiFi-QR van de AP.
-- [ ] Thuis: sensor inpluggen → telefoon op `Woongezond-0N` → thuis-WiFi kiezen → LED groen →
-      in de cockpit springt rij N op online. Logboekregel "geplaatst".
+- [ ] Thuis (bewoner zelf, §2b): QR scannen → `/start` → WiFi via portal → huisvragen → in de
+      cockpit springt rij N op online, huisprofiel ingevuld. Logboekregel "geplaatst" automatisch.
 - [ ] Na de achtste: anon-policy droppen.
 
 ## 4. Lokaal testen ("ik wil een localhost zien")
@@ -118,8 +177,7 @@ npm run dev            # http://localhost:3005  (lokaal géén /admin-prefix; ze
 | 4+ | Plaatsen bij de huizen, één per keer | Per huis een logboek, per sensor uptime en data |
 
 ## 6. Open vragen voor Jeroen
-1. Krijgen de bewoners in de pilot een eigen login (dan claimen ze via QR en geldt consent), of
-   kijk jij alleen (dan blijven ze ongeclaimd, zoals hierboven aangenomen)?
+1. ~~Login voor bewoners?~~ Beantwoord in §2b: niet nodig, optioneel als laatste stap.
 2. Heeft de behuizing een bereikbare BOOT-knop en een LED? (nodig voor WiFi-reset en status.)
 3. Arduino IDE blijven, of PlatformIO (reproduceerbare builds, versie in git)? Voorstel: PlatformIO
    in `firmware/`, met dezelfde libraries.
