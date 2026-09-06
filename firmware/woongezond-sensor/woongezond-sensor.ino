@@ -29,7 +29,7 @@
 #include <Preferences.h>
 #include <SensirionI2cScd4x.h>
 
-#define FW_VERSION "2.0.0"
+#define FW_VERSION "2.1.0"
 
 // ── pinnen (Feather ESP32-S3) ─────────────────────────
 static const int SDA_PIN    = 3;
@@ -45,6 +45,25 @@ static const unsigned long HTTP_TIMEOUT_MS = 10000;
 static const unsigned long WIFI_RETRY_MS   = 30000;
 static const unsigned long BUTTON_HOLD_MS  = 10000;
 static const int           HTTP_RETRIES    = 2;
+
+// ── captive portal in huisstijl ───────────────────────
+static const char PORTAL_CSS[] PROGMEM = R"CSS(
+<style>
+body{background:#FBFAF7;color:#1A211E;font-family:-apple-system,Inter,"Segoe UI",Roboto,sans-serif;margin:0;padding:18px 14px}
+.wrap{max-width:420px;margin:0 auto;background:#fff;border:1px solid rgba(26,33,30,.09);border-radius:18px;padding:22px 20px;box-shadow:0 8px 32px rgba(26,33,30,.10);text-align:left}
+h1{font-size:22px;letter-spacing:-.02em;margin:0 0 6px} h1:before{content:"";display:inline-block;width:14px;height:14px;border-radius:4px;background:#12B886;margin-right:9px}
+h2,h3{font-size:15px;margin:14px 0 6px} p,li,label,div{font-size:15px;line-height:1.5}
+button,input[type=submit]{display:block;width:100%;background:linear-gradient(135deg,#12B886,#0B7A5C);color:#fff;border:0;border-radius:12px;padding:13px;font-weight:700;font-size:16px;margin:10px 0;cursor:pointer}
+input[type=text],input[type=password]{display:block;width:100%;box-sizing:border-box;border:1px solid rgba(26,33,30,.18);border-radius:12px;padding:12px;font-size:16px;margin:4px 0 12px;background:#FAF9F5}
+a{color:#0B7A5C;font-weight:600;text-decoration:none} .q{color:#0B7A5C;font-weight:600}
+.msg{background:#ECFDF6;border:1px solid #A7EDD3;color:#0A6249;border-radius:12px;padding:10px 12px;margin:8px 0}
+.msg.D,.msg.P{background:#FDECEC;border-color:#F5B5B5;color:#B91C1C}
+.wg-help{color:#4A5A53;font-size:14px;margin:0 0 6px}
+</style>)CSS";
+static const char PORTAL_HOME[] PROGMEM = R"HTML(
+<p class="wg-help">Kies hieronder je eigen WiFi-netwerk en vul het wachtwoord in. De sensor onthoudt het en verbindt daarna zelf. Werkt alleen op 2,4 GHz.</p>
+<form action="/wifi" method="get"><button>WiFi instellen</button></form>
+<p class="wg-help" style="margin-top:14px">Klaar? Ga terug naar de Woongezond-pagina op je telefoon; die springt op groen zodra de sensor meet.</p>)HTML";
 
 Preferences      prefs;                       // namespace "wg"
 SensirionI2cScd4x scd4x;
@@ -115,8 +134,19 @@ bool ensureWiFi() {
   wm.setConnectTimeout(30);
   wm.setConnectRetries(4);                 // 4 × 30 s ≈ 2 min voordat het portal opent
   wm.setConfigPortalTimeout(300);
-  wm.setTitle("Woongezond sensor");
+  wm.setTitle("Woongezond");
   wm.setDarkMode(false);
+  // Portal in Woongezond-stijl: eigen CSS, alleen de WiFi-knop (geen Info/Update/Exit),
+  // Nederlandse uitleg op de startpagina. De velden op /wifi blijven Engels (SSID/Password).
+  wm.setCustomHeadElement(PORTAL_CSS);
+  std::vector<const char*> menu = {"custom"};
+  wm.setMenu(menu);
+  wm.setCustomMenuHTML(PORTAL_HOME);
+  wm.setShowInfoUpdate(false);
+  wm.setShowInfoErase(false);
+  wm.setShowStaticFields(false);
+  wm.setShowDnsFields(false);
+  wm.setScanDispPerc(true);
   Serial.println("[wifi] verbinden… (geen creds → setup-netwerk " + apName() + ")");
   blink(2);
   bool ok = wm.autoConnect(apName().c_str());   // blokkeert tot verbonden of portal-timeout
