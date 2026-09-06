@@ -146,7 +146,8 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 
 /* Mobile bottom bar */
 .wz-bottombar{position:fixed;left:0;right:0;bottom:0;z-index:45;display:flex;background:color-mix(in srgb,var(--surface) 92%,transparent);backdrop-filter:saturate(1.4) blur(8px);border-top:1px solid var(--border);padding-bottom:env(safe-area-inset-bottom)}
-.wz-bottombar a{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 2px 6px;font-size:var(--fs-2xs);font-weight:600;text-decoration:none;color:var(--subtle)}
+.wz-bottombar a{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 2px 6px;font-size:var(--fs-2xs);font-weight:600;text-decoration:none;color:var(--subtle);overflow:hidden}
+.wz-bottombar a>*:last-child{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .wz-bicon{display:flex;align-items:center;justify-content:center;width:34px;height:22px;border-radius:var(--r-sm);transition:background .15s}
 .wz-bicon svg{width:19px;height:19px;stroke-width:2}
 .wz-bottombar a.active{color:var(--brand)}
@@ -214,11 +215,6 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 @media (min-width:760px){.wz-two-col{grid-template-columns:minmax(280px,1fr) minmax(300px,1.2fr)}}
 
 /* Inbox (cockpit): sensorlijst naast de tijdlijn, gestapeld op een telefoon */
-.wz-inbox-cols{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start}
-@media (min-width:860px){
-  .wz-inbox-cols{grid-template-columns:250px minmax(0,1fr)}
-  .wz-inbox-side{position:sticky;top:26px;max-height:calc(100vh - 52px);overflow:auto}
-}
 
 /* Print (4.2): the report now lives inside AppShell, so when printing we strip the
    shell chrome and let the paper sheet fill the page — the printed output stays the
@@ -238,3 +234,14 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 .wz-weather .wx-lbl{color:var(--accent)}
 .wz-weather .wx-val{color:var(--text)}
 .wz-weather .wx-sub{color:var(--subtle)}
+
+/* Inbox (Outlook-achtige lijst): één regel per mail. Desktop: icoon · wie · onderwerp · tijd · stand.
+   Smal: twee regels — icoon + wie + tijd, daaronder onderwerp + stand. */
+.wz-inbox-row{display:grid;grid-template-columns:18px minmax(0,1fr) auto;grid-template-areas:"icon who when" "icon subj stand";column-gap:10px;row-gap:2px;align-items:center;padding:10px 14px}
+.wz-inbox-row:hover{background:var(--surface-2)}
+.wz-inbox-row:focus-visible{outline:none;box-shadow:inset var(--focus)}
+@media (min-width:900px){
+  .wz-inbox-row{grid-template-columns:18px 240px minmax(0,1fr) 56px 190px;grid-template-areas:"icon who subj when stand";padding:9px 14px}
+}
+@keyframes wz-spin{to{transform:rotate(360deg)}}
+.wz-spin{animation:wz-spin 1s linear infinite}

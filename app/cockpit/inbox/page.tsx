@@ -8,40 +8,31 @@ import SectionHeading from '@/components/ui/SectionHeading'
 import SegmentedControl from '@/components/ui/SegmentedControl'
 import Button from '@/components/ui/Button'
 import DataBanner, { DataError, describeError } from '@/components/DataBanner'
-import { MetricCardSkeleton } from '@/components/ui/Skeleton'
+import { Skeleton } from '@/components/ui/Skeleton'
 import { withBase } from '@/lib/basePath'
-import { Building2, ShieldAlert, Inbox, AlertTriangle, Mail, Check, X, Send, FileText, ChevronDown, ChevronUp, RotateCcw, Search, Bot, MailQuestion } from 'lucide-react'
+import { ShieldAlert, AlertTriangle, Check, X, Send, FileText, RotateCcw, Search, Bot, RefreshCw, Hand, Inbox } from 'lucide-react'
 
-// Inbox van de klantenservice voor org-ADMINS (docs/support-assistant.md). Leest
-// /api/cockpit/inbox: per sensor / bewoner / organisatie wat er binnenkwam (mails met het
-// voorstel of het verstuurde antwoord) en wat er is gestuurd (rapporten). Acties gaan via
-// POST /api/cockpit (support_send / support_close / support_reopen).
+// Inbox van de klantenservice voor org-ADMINS (docs/support-assistant.md, "Volgende stap").
+// Eén Outlook-achtige lijst: één regel per mail, nieuwste bovenaan, klik = uitklappen in
+// de lijst. Leest /api/cockpit/inbox; acties gaan via POST /api/cockpit
+// (support_send / support_hold / support_close / support_reopen).
 
-type MsgStatus = 'received' | 'draft' | 'stored' | 'error' | 'send_failed' | 'answered' | 'closed'
+type MsgStatus = 'received' | 'draft' | 'scheduled' | 'stored' | 'error' | 'send_failed' | 'answered' | 'closed'
 type Verdict = 'ok' | 'warning' | 'critical' | 'nodata'
 type StatusFilter = 'open' | 'done' | 'all'
-type SupportMode = 'draft' | 'auto' | 'off'
+type SupportMode = 'draft' | 'delayed' | 'auto' | 'off'
+type Action = 'support_send' | 'support_hold' | 'support_close' | 'support_reopen'
 /** 'all' · 'unknown' (mails zonder sensor, client-side) · een device-uuid. */
 type DeviceSel = string
 
 interface Org { id: string; name: string }
-interface Device {
-  id: string
-  device_number: number | null
-  name: string | null
-  active: boolean
-  room: string | null
-  contact_name: string | null
-  contact_email: string | null
-  report_consent: boolean
-  report_frequency: string
-}
+interface Device { id: string; device_number: number | null; room: string | null; contact_name: string | null; contact_email: string | null; active: boolean }
 interface Msg {
   id: number
   created_at: string
   handled_at: string | null
+  send_at: string | null
   from_addr: string
-  to_addr: string | null
   subject: string | null
   body: string | null
   reply: string | null
@@ -55,54 +46,84 @@ interface Msg {
   contact_name: string | null
   open: boolean
 }
-interface Report {
-  id: number
-  device_id: string
-  device_number: number | null
-  contact_name: string | null
-  sent_at: string
-  period_start: string
-  period_end: string
-  verdict: Verdict
-  status: string
-  trigger: string
-  readings: number | null
-}
+interface Report { id: number; device_id: string; device_number: number | null; sent_at: string; period_start: string; period_end: string; verdict: Verdict; status: string; trigger: string }
 interface Counts { open: number; escalated: number; total: number; per_device: Record<string, { open: number; total: number }> }
 interface Payload { orgs: Org[]; org: Org | null; devices: Device[]; messages: Msg[]; reports: Report[]; counts: Counts; support_mode: string }
+interface Note { ok: boolean; text: string }
 
 const UUID_RE = /^[0-9a-f-]{36}$/i
-const LONG_BODY = 320
-const STATUS_LABEL: Record<MsgStatus, string> = {
-  received: 'ontvangen', draft: 'voorstel', stored: 'opgeslagen', error: 'fout', send_failed: 'versturen mislukt', answered: 'beantwoord', closed: 'afgehandeld',
-}
-const STATUS_NOTE: Partial<Record<MsgStatus, string>> = {
-  error: 'De assistent kon niet antwoorden. Schrijf zelf een antwoord of handel de vraag af.',
-  send_failed: 'Versturen is mislukt. Probeer het nog eens.',
-  stored: 'Alleen opgeslagen (stand off): de bewoner heeft nog niets gekregen.',
-  received: 'Ontvangen; er is nog geen voorstel van de assistent.',
-}
+const TZ = 'Europe/Amsterdam'
+const PREVIEW_LEN = 80
+const REFRESH_MS = 60_000
+const REPORTS_MAX = 15
+const STATUS_OPTIONS: { label: string; value: StatusFilter }[] = [{ label: 'Open', value: 'open' }, { label: 'Afgehandeld', value: 'done' }, { label: 'Alles', value: 'all' }]
+const MODE_TEXT: Record<SupportMode, string> = { draft: 'voorstellen wachten op jou', delayed: 'gaat na 2 uur automatisch', auto: 'assistent antwoordt direct', off: 'alleen opslaan' }
 const VERDICT_LABEL: Record<Verdict, string> = { ok: 'In orde', warning: 'Aandachtspunten', critical: 'Actie', nodata: 'Geen metingen' }
 const VERDICT_COLOR: Record<Verdict, string> = { ok: 'var(--ok)', warning: 'var(--warn)', critical: 'var(--crit)', nodata: 'var(--muted)' }
-const SEND_LABEL: Record<string, string> = { sent: 'verstuurd', failed: 'mislukt', dry: 'niet verstuurd (proefstand)', duplicate: 'al verstuurd', inactive: 'sensor staat uit' }
-const MODE_SHORT: Record<SupportMode, string> = { draft: 'voorstellen gaan naar jou', auto: 'automatisch beantwoord, escalaties naar jou', off: 'alleen opgeslagen, niemand krijgt antwoord' }
-const STATUS_OPTIONS: { label: string; value: StatusFilter }[] = [{ label: 'Open', value: 'open' }, { label: 'Afgehandeld', value: 'done' }, { label: 'Alles', value: 'all' }]
+const OPEN_NOTE: Partial<Record<MsgStatus, { text: string; bad: boolean }>> = {
+  error: { text: 'De assistent kon niet antwoorden. Schrijf zelf een antwoord of handel de vraag af.', bad: true },
+  send_failed: { text: 'Versturen is mislukt. Probeer het nog eens.', bad: true },
+  stored: { text: 'Alleen opgeslagen (stand off): de bewoner heeft nog niets gekregen.', bad: false },
+  received: { text: 'Nog geen voorstel van de assistent.', bad: false },
+}
 
-const nr = (n: number | null) => (n == null ? '—' : String(n).padStart(2, '0'))
-const fmtDate = (s: string) => new Date(s).toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })
-const fmtDateTime = (s: string) => new Date(s).toLocaleString('nl-NL', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+// ── Tijd (Europe/Amsterdam) ──────────────────────────────────────────────────
+
+const dayKey = (d: Date) => d.toLocaleDateString('nl-NL', { timeZone: TZ, year: 'numeric', month: '2-digit', day: '2-digit' })
+const yearOf = (d: Date) => d.toLocaleDateString('nl-NL', { timeZone: TZ, year: 'numeric' })
+const fmtTime = (s: string) => new Date(s).toLocaleTimeString('nl-NL', { timeZone: TZ, hour: '2-digit', minute: '2-digit' })
+/** "3 sep" of, in een ander jaar, "3 sep 2025". */
+function fmtDay(s: string, now = new Date()): string {
+  const d = new Date(s)
+  return d.toLocaleDateString('nl-NL', { timeZone: TZ, day: 'numeric', month: 'short', ...(yearOf(d) === yearOf(now) ? {} : { year: 'numeric' }) }).replace(/\./g, '')
+}
+/** Vandaag "14:31", anders "3 sep" / "3 sep 2025". */
+const fmtWhen = (s: string, now = new Date()) => (dayKey(new Date(s)) === dayKey(now) ? fmtTime(s) : fmtDay(s, now))
+/** Vandaag "om 16:31", anders "7 sep 08:00". */
+const fmtMoment = (s: string, now = new Date()) => (dayKey(new Date(s)) === dayKey(now) ? `om ${fmtTime(s)}` : `${fmtDay(s, now)} ${fmtTime(s)}`)
+const fmtDateTime = (s: string) => `${fmtDay(s)} ${fmtTime(s)}`
+const ts = (s: string | null) => (s ? new Date(s).getTime() : 0)
+
 const ymd = (s: string) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d) }
 function fmtPeriod(start: string, end: string): string {
   const a = ymd(start), b = ymd(end)
-  if (a.getTime() === b.getTime()) return a.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })
-  const aStr = a.toLocaleDateString('nl-NL', a.getMonth() === b.getMonth() ? { day: 'numeric' } : { day: 'numeric', month: 'short' })
-  return `${aStr} – ${b.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' })}`
+  const short = (d: Date, o: Intl.DateTimeFormatOptions) => d.toLocaleDateString('nl-NL', o).replace(/\./g, '')
+  if (a.getTime() === b.getTime()) return short(a, { day: 'numeric', month: 'short' })
+  return `${short(a, a.getMonth() === b.getMonth() ? { day: 'numeric' } : { day: 'numeric', month: 'short' })} – ${short(b, { day: 'numeric', month: 'short' })}`
 }
 function reportKind(start: string, end: string): string {
   const days = Math.round((ymd(end).getTime() - ymd(start).getTime()) / 86400000) + 1
   return days <= 1 ? 'Dagrapport' : days <= 8 ? 'Weekrapport' : 'Maandrapport'
 }
-const ts = (s: string | null) => (s ? new Date(s).getTime() : 0)
+
+// ── Weergave per bericht ─────────────────────────────────────────────────────
+
+const nr = (n: number | null) => (n == null ? '—' : String(n).padStart(2, '0'))
+const sensorLabel = (m: { device_id: string | null; device_number: number | null; room: string | null }) => (m.device_id ? `sensor ${nr(m.device_number)}${m.room ? ` · ${m.room}` : ''}` : 'onbekend')
+const who = (m: Msg) => m.contact_name || m.from_addr
+const preview = (body: string | null) => { const t = (body ?? '').replace(/\s+/g, ' ').trim(); return t.length > PREVIEW_LEN ? t.slice(0, PREVIEW_LEN).trimEnd() + '…' : t }
+const failed = (m: Msg) => m.status === 'error' || m.status === 'send_failed'
+
+/** Status-icoon links in de regel. */
+function glyph(m: Msg): { char: string; color: string; label: string } {
+  if (failed(m)) return { char: '!', color: 'var(--crit)', label: 'fout' }
+  if (m.open && m.escalate) return { char: '⚠', color: 'var(--crit)', label: 'escalatie' }
+  if (m.status === 'scheduled') return { char: '⏳', color: 'var(--warn)', label: 'gepland' }
+  if (m.open) return { char: '●', color: 'var(--brand)', label: 'open' }
+  if (m.status === 'answered') return { char: '✓', color: 'var(--ok)', label: 'beantwoord' }
+  return { char: '✕', color: 'var(--muted)', label: 'afgehandeld' }
+}
+
+/** De stand rechts in de regel. */
+function stand(m: Msg, now: Date): { text: string; color: string } {
+  if (m.status === 'send_failed') return { text: 'versturen mislukt', color: 'var(--crit)' }
+  if (m.status === 'error') return { text: 'fout', color: 'var(--crit)' }
+  if (m.open && m.escalate) return { text: 'escalatie', color: 'var(--crit)' }
+  if (m.status === 'scheduled' && m.send_at) return { text: `gaat ${fmtMoment(m.send_at, now)} automatisch`, color: 'var(--warn)' }
+  if (m.open) return { text: 'wacht op jou', color: 'var(--text)' }
+  if (m.status === 'answered') return { text: `beantwoord${m.handled_at ? ` ${fmtWhen(m.handled_at, now)}` : ''}`, color: 'var(--ok)' }
+  return { text: 'afgehandeld', color: 'var(--muted)' }
+}
 
 // ── Data ─────────────────────────────────────────────────────────────────────
 
@@ -128,7 +149,7 @@ async function post(body: Record<string, unknown>): Promise<{ status: number; da
 export default function InboxPage() {
   // useSearchParams heeft in de app router een Suspense-grens nodig.
   return (
-    <Suspense fallback={<AppShell title="Inbox"><MetricCardSkeleton /></AppShell>}>
+    <Suspense fallback={<AppShell title="Inbox"><ListSkeleton /></AppShell>}>
       <InboxInner />
     </Suspense>
   )
@@ -148,8 +169,17 @@ function InboxInner() {
   const [q, setQ] = useState('')
   const [data, setData] = useState<Payload | null>(null)
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [forbidden, setForbidden] = useState(false)
   const [error, setError] = useState<DataError>(null)
+  // Uitgeklapte regel: nooit vanzelf — alleen door klikken of via ?open=<id>.
+  const [openId, setOpenId] = useState<number | null>(() => { const n = Number(params.get('open')); return Number.isInteger(n) && n > 0 ? n : null })
+  // Antwoordtekst per bericht-id, zodat verversen niets weggooit.
+  const [drafts, setDrafts] = useState<Record<number, string>>({})
+  const [busy, setBusy] = useState<{ id: number; action: Action } | null>(null)
+  const [flash, setFlash] = useState<(Note & { id: number }) | null>(null)
+  // Eerdere mails van hetzelfde adres (ook buiten het huidige filter), per adres.
+  const [history, setHistory] = useState<Record<string, Msg[]>>({})
   const seq = useRef(0)
 
   useEffect(() => {
@@ -164,8 +194,9 @@ function InboxInner() {
     return () => clearTimeout(t)
   }, [qInput])
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
     const my = ++seq.current
+    if (!opts?.silent) setRefreshing(true)
     try {
       const { status: code, data: d } = await fetchInbox({ org: orgId, device: UUID_RE.test(device) ? device : null, status, q })
       if (my !== seq.current) return
@@ -181,418 +212,378 @@ function InboxInner() {
       const st = (e as { status?: number })?.status
       setError(describeError(st, st == null))
     } finally {
-      if (my === seq.current) setLoading(false)
+      if (my === seq.current) { setLoading(false); setRefreshing(false) }
     }
   }, [orgId, device, status, q, router])
 
   useEffect(() => { load() }, [load])
 
+  // Elke 60 s stil verversen, alleen als het tabblad zichtbaar is; en meteen bij terugkeer.
+  useEffect(() => {
+    const tick = () => { if (document.visibilityState === 'visible') load({ silent: true }) }
+    const t = setInterval(tick, REFRESH_MS)
+    document.addEventListener('visibilitychange', tick)
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', tick) }
+  }, [load])
+
+  // Flash-melding na een actie verdwijnt vanzelf.
+  useEffect(() => {
+    if (!flash) return
+    const t = setTimeout(() => setFlash(null), 8000)
+    return () => clearTimeout(t)
+  }, [flash])
+
+  const syncUrl = useCallback((dev: DeviceSel, open: number | null) => {
+    const sp = new URLSearchParams()
+    if (dev !== 'all') sp.set('device', dev)
+    if (open != null) sp.set('open', String(open))
+    const qs = sp.toString()
+    router.replace(qs ? `/cockpit/inbox?${qs}` : '/cockpit/inbox', { scroll: false })
+  }, [router])
+
   function pickDevice(id: DeviceSel) {
     if (id === device) return
     setDevice(id)
-    setLoading(true)
-    router.replace(id === 'all' ? '/cockpit/inbox' : `/cockpit/inbox?device=${encodeURIComponent(id)}`, { scroll: false })
+    syncUrl(id, openId)
   }
   function pickOrg(id: string) {
     setOrgId(id)
     setDevice('all')
-    setLoading(true)
-    router.replace('/cockpit/inbox', { scroll: false })
+    setOpenId(null)
+    syncUrl('all', null)
   }
-  function pickStatus(s: StatusFilter) {
-    setStatus(s)
-    setLoading(true)
+  function toggleOpen(id: number) {
+    const next = openId === id ? null : id
+    setOpenId(next)
+    syncUrl(device, next)
   }
 
   const devices = data?.devices ?? []
   const orgs = data?.orgs ?? []
   const org = data?.org ?? null
   const counts = data?.counts ?? { open: 0, escalated: 0, total: 0, per_device: {} }
-  const mode: SupportMode = data?.support_mode === 'auto' || data?.support_mode === 'off' ? data.support_mode : 'draft'
-  const selected = useMemo(() => devices.find((d) => d.id === device) ?? null, [devices, device])
+  const mode: SupportMode = data?.support_mode === 'auto' || data?.support_mode === 'off' || data?.support_mode === 'delayed' ? data.support_mode : 'draft'
+  const roomOf = useMemo(() => new Map(devices.map((d) => [d.id, d.room])), [devices])
   const messages = useMemo(() => {
     const all = data?.messages ?? []
-    return device === 'unknown' ? all.filter((m) => !m.device_id) : all
+    const list = device === 'unknown' ? all.filter((m) => !m.device_id) : all
+    return [...list].sort((a, b) => ts(b.created_at) - ts(a.created_at))
   }, [data, device])
-  const reports = data?.reports ?? []
-  const threads = useMemo(() => buildThreads(messages, selected ? reports : [], selected), [messages, reports, selected])
-  const latestReports = useMemo(() => [...reports].sort((a, b) => ts(b.sent_at) - ts(a.sent_at)).slice(0, 10), [reports])
-  const unknown = counts.per_device.unknown ?? { open: 0, total: 0 }
+  const reports = useMemo(() => {
+    const all = data?.reports ?? []
+    const list = UUID_RE.test(device) ? all.filter((r) => r.device_id === device) : device === 'unknown' ? [] : all
+    return [...list].sort((a, b) => ts(b.sent_at) - ts(a.sent_at)).slice(0, REPORTS_MAX)
+  }, [data, device])
+  const openMsg = useMemo(() => messages.find((m) => m.id === openId) ?? null, [messages, openId])
 
-  let empty: string
-  if (q) empty = `Niets gevonden voor “${q}”.`
-  else if (status === 'open') empty = selected ? 'Geen open vragen van deze bewoner. Mooi zo.' : 'Geen open vragen. Mooi zo.'
-  else if (status === 'done') empty = 'Nog niets afgehandeld.'
-  else empty = 'Nog geen berichten. Alles wat op het hulpadres binnenkomt verschijnt hier.'
+  // Eerdere mails van dezelfde bewoner: het huidige filter laat afgehandelde mails vaak niet
+  // zien, dus bij uitklappen halen we het hele adres eenmalig op (q zoekt ook in from_addr).
+  useEffect(() => {
+    if (!openMsg) return
+    const addr = openMsg.from_addr.toLowerCase()
+    if (history[addr]) return
+    let alive = true
+    fetchInbox({ org: orgId, device: null, status: 'all', q: openMsg.from_addr }).then(({ data: d }) => {
+      if (!alive) return
+      const same = (d?.messages ?? []).filter((m) => m.from_addr.toLowerCase() === addr)
+      setHistory((h) => ({ ...h, [addr]: same }))
+    }).catch(() => { /* alleen de lijst zelf blijft dan over */ })
+    return () => { alive = false }
+  }, [openMsg, orgId, history])
+
+  function priorOf(m: Msg): Msg[] {
+    const addr = m.from_addr.toLowerCase()
+    const byId = new Map<number, Msg>()
+    for (const x of [...(history[addr] ?? []), ...messages]) if (x.from_addr.toLowerCase() === addr && x.id !== m.id) byId.set(x.id, x)
+    return [...byId.values()].sort((a, b) => ts(b.created_at) - ts(a.created_at))
+  }
+  function jumpTo(target: Msg) {
+    if (!messages.some((m) => m.id === target.id)) {
+      setStatus('all')
+      if (device === 'unknown' && target.device_id) setDevice('all')
+    }
+    setOpenId(target.id)
+    syncUrl(device, target.id)
+  }
+
+  async function act(m: Msg, action: Action) {
+    setBusy({ id: m.id, action })
+    setFlash(null)
+    const text = drafts[m.id] ?? m.reply ?? ''
+    const labels: Record<Action, [string, string]> = {
+      support_send: [`Verstuurd naar ${who(m)}.`, 'Versturen is mislukt. Probeer het nog eens.'],
+      support_hold: ['Tegengehouden; het voorstel wacht nu op jou.', 'Tegenhouden is mislukt.'],
+      support_close: ['Afgehandeld zonder antwoord.', 'Afhandelen is mislukt.'],
+      support_reopen: ['Heropend.', 'Heropenen is mislukt.'],
+    }
+    try {
+      const { status: code, data: d } = await post(action === 'support_send' ? { action, id: m.id, text } : { action, id: m.id })
+      if (code === 400 && d?.error === 'empty') setFlash({ id: m.id, ok: false, text: 'Het antwoord is leeg.' })
+      else if (code === 401) { router.push('/login'); return }
+      else if (code === 403) setFlash({ id: m.id, ok: false, text: 'Dit bericht hoort niet bij jouw organisatie.' })
+      else if (!d?.ok) setFlash({ id: m.id, ok: false, text: labels[action][1] })
+      else {
+        setFlash({ id: m.id, ok: true, text: labels[action][0] })
+        if (action === 'support_send') setDrafts((x) => { const { [m.id]: _gone, ...rest } = x; return rest })
+      }
+      // Ook na een mislukte verzending is de status server-side veranderd (send_failed).
+      setHistory((h) => { const { [m.from_addr.toLowerCase()]: _gone, ...rest } = h; return rest })
+      await load({ silent: true })
+    } catch {
+      setFlash({ id: m.id, ok: false, text: 'Geen verbinding met de server.' })
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const now = new Date()
+  const empty = q || status !== 'open' ? 'Niets gevonden.' : 'Geen open vragen. Mooi zo.'
+  const inputStyle: React.CSSProperties = { boxSizing: 'border-box', fontSize: 'var(--fs-sm)', fontFamily: 'inherit', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--surface)', color: 'var(--text)' }
 
   return (
     <AppShell title="Inbox">
-      {error && <DataBanner error={error} onRetry={load} />}
+      {error && <DataBanner error={error} onRetry={() => load()} />}
 
       {forbidden && (
         <Card style={{ display: 'flex', gap: 'var(--sp-3)', alignItems: 'flex-start' }}>
           <ShieldAlert style={{ color: 'var(--muted)', flexShrink: 0 }} />
           <div>
             <div style={{ fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>Alleen voor beheerders van de pilot</div>
-            <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--muted)' }}>
-              De inbox toont mails en contactgegevens van bewoners en is daarom alleen voor beheerders.
-            </div>
+            <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--muted)' }}>De inbox toont mails en contactgegevens van bewoners en is daarom alleen voor beheerders.</div>
           </div>
         </Card>
       )}
 
       {!forbidden && (
         <>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--sp-3)', flexWrap: 'wrap', marginBottom: 'var(--sp-4)' }}>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--sp-2)', fontSize: 'var(--fs-sm)', color: 'var(--muted)' }}>
-              <Building2 size={15} /> {org?.name ?? 'Pilot'} · {devices.length} sensor{devices.length === 1 ? '' : 'en'}
-            </span>
-            {orgs.length > 1 && org && (
+          {orgs.length > 1 && org && (
+            <div style={{ marginBottom: 'var(--sp-3)' }}>
               <SegmentedControl ariaLabel="Kies organisatie" value={org.id} onChange={(v) => pickOrg(String(v))} options={orgs.map((o) => ({ label: o.name, value: o.id }))} />
-            )}
-          </div>
+            </div>
+          )}
 
-          {/* Bovenbalk: status, zoeken, tegels. */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', flexWrap: 'wrap', marginBottom: 'var(--sp-3)' }}>
-            <SegmentedControl ariaLabel="Welke berichten" value={status} onChange={pickStatus} options={STATUS_OPTIONS} />
-            <label style={{ position: 'relative', flex: '1 1 200px', minWidth: 0 }}>
-              <span style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>Zoeken in berichten</span>
+          {/* Balk: filter, zoeken, sensor · tellers, stand, vernieuwen. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', flexWrap: 'wrap', marginBottom: 'var(--sp-3)' }}>
+            <SegmentedControl ariaLabel="Welke berichten" value={status} onChange={setStatus} options={STATUS_OPTIONS} />
+            <label style={{ position: 'relative', flex: '1 1 180px', minWidth: 0 }}>
+              <span className="wz-sr-only">Zoeken in berichten</span>
               <Search size={15} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)', pointerEvents: 'none' }} />
-              <input
-                type="search"
-                value={qInput}
-                onChange={(e) => setQInput(e.target.value)}
-                placeholder="Zoek op onderwerp, tekst of adres"
-                style={{ width: '100%', boxSizing: 'border-box', padding: '8px 12px 8px 32px', fontSize: 'var(--fs-sm)', fontFamily: 'inherit', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--surface)', color: 'var(--text)' }}
-              />
+              <input type="search" value={qInput} onChange={(e) => setQInput(e.target.value)} placeholder="Zoek op onderwerp, tekst of adres" style={{ ...inputStyle, width: '100%', padding: '8px 12px 8px 32px' }} />
             </label>
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 'var(--sp-3)', marginBottom: 'var(--sp-5)' }}>
-            <Tile Icon={Inbox} color={counts.open ? 'var(--warn)' : 'var(--ok)'} value={counts.open} label="open" />
-            <Tile Icon={AlertTriangle} color={counts.escalated ? 'var(--crit)' : 'var(--muted)'} value={counts.escalated} label="geëscaleerd" />
-            <Tile Icon={Mail} color="var(--muted)" value={counts.total} label="totaal" />
-            <Tile Icon={Bot} color="var(--brand)" value={mode} label={MODE_SHORT[mode]} />
+            <select aria-label="Welke sensor" value={device} onChange={(e) => pickDevice(e.target.value)} style={{ ...inputStyle, padding: '8px 10px', maxWidth: '100%', flex: '0 1 auto', minWidth: 0 }}>
+              <option value="all">Alle sensoren</option>
+              {devices.map((d) => (
+                <option key={d.id} value={d.id}>{nr(d.device_number)} · {d.room ?? 'kamer onbekend'} · {d.contact_name ?? 'geen contact'}{d.active ? '' : ' (uit)'}</option>
+              ))}
+              <option value="unknown">Onbekend adres</option>
+            </select>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--sp-2)', marginLeft: 'auto', fontSize: 'var(--fs-xs)', color: 'var(--muted)', flexWrap: 'wrap', minWidth: 0 }}>
+              <span>
+                <b style={{ color: counts.open ? 'var(--text)' : 'var(--muted)' }}>{counts.open} open</b>
+                {' · '}
+                <b style={{ color: counts.escalated ? 'var(--crit)' : 'var(--muted)' }}>{counts.escalated} escalatie{counts.escalated === 1 ? '' : 's'}</b>
+                {' · '}
+                <span title={`stand ${mode}`}><Bot size={12} style={{ verticalAlign: -2 }} /> {MODE_TEXT[mode]}</span>
+              </span>
+              <Button size="sm" variant="ghost" onClick={() => load()} disabled={refreshing} icon={<RefreshCw size={13} className={refreshing ? 'wz-spin' : undefined} />} aria-label="Vernieuwen">Vernieuwen</Button>
+            </span>
           </div>
 
-          <div className="wz-inbox-cols">
-            {/* Linkerkolom: per sensor. */}
-            <div className="wz-inbox-side">
-              <SectionHeading>Per sensor</SectionHeading>
-              <Card pad="var(--sp-2)">
-                <SideRow active={device === 'all'} onClick={() => pickDevice('all')} title="Alle sensoren" sub={`${devices.length} sensor${devices.length === 1 ? '' : 'en'}`} open={counts.open} total={counts.total} />
-                {devices.map((d) => {
-                  const c = counts.per_device[d.id] ?? { open: 0, total: 0 }
+          {flash && (
+            <div role={flash.ok ? 'status' : 'alert'} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 'var(--sp-3)', fontSize: 'var(--fs-sm)', fontWeight: 600, color: flash.ok ? 'var(--ok)' : 'var(--crit)' }}>
+              {flash.ok ? <Check size={14} /> : <AlertTriangle size={14} />} {flash.text}
+            </div>
+          )}
+
+          {/* De lijst. */}
+          {loading ? (
+            <ListSkeleton />
+          ) : messages.length === 0 ? (
+            <Card style={{ display: 'flex', gap: 'var(--sp-3)', alignItems: 'center' }}>
+              <Inbox style={{ color: 'var(--muted)', flexShrink: 0 }} />
+              <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--muted)' }}>{empty}</div>
+            </Card>
+          ) : (
+            <Card pad={0} style={{ overflow: 'hidden' }}>
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                {messages.map((m) => {
+                  const expanded = m.id === openId
                   return (
-                    <SideRow
-                      key={d.id}
-                      active={device === d.id}
-                      onClick={() => pickDevice(d.id)}
-                      number={nr(d.device_number)}
-                      title={d.room ?? d.name ?? 'kamer onbekend'}
-                      sub={d.contact_name ?? 'geen contact'}
-                      dim={!d.active}
-                      open={c.open}
-                      total={c.total}
-                    />
+                    <li key={m.id} style={{ borderTop: '1px solid var(--border-soft)' }}>
+                      <Row m={m} now={now} expanded={expanded} onClick={() => toggleOpen(m.id)} />
+                      {expanded && (
+                        <Expanded
+                          m={m}
+                          now={now}
+                          text={drafts[m.id] ?? m.reply ?? ''}
+                          onText={(v) => setDrafts((x) => ({ ...x, [m.id]: v }))}
+                          busy={busy?.id === m.id ? busy.action : null}
+                          note={flash?.id === m.id ? flash : null}
+                          prior={priorOf(m)}
+                          onAct={(a) => act(m, a)}
+                          onJump={jumpTo}
+                        />
+                      )}
+                    </li>
                   )
                 })}
-                <SideRow active={device === 'unknown'} onClick={() => pickDevice('unknown')} title="Onbekend adres" sub="mails zonder sensor" open={unknown.open} total={unknown.total} />
+              </ul>
+            </Card>
+          )}
+
+          {/* Rapporten. */}
+          {!loading && reports.length > 0 && (
+            <div style={{ marginTop: 'var(--sp-5)' }}>
+              <SectionHeading>Verstuurde rapporten</SectionHeading>
+              <Card pad="var(--sp-1) var(--sp-3)">
+                {reports.map((r) => {
+                  const bad = r.status !== 'sent'
+                  const color = bad ? 'var(--crit)' : VERDICT_COLOR[r.verdict] ?? 'var(--muted)'
+                  return (
+                    <div key={r.id} style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--sp-2)', padding: '6px 0', fontSize: 'var(--fs-xs)', color: 'var(--muted)', borderTop: '1px solid var(--border-soft)' }}>
+                      <FileText size={14} style={{ color, flexShrink: 0, marginTop: 1 }} />
+                      <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
+                        <span style={{ color: 'var(--text)' }}>{fmtDay(r.sent_at, now)}</span>
+                        {' · '}sensor {nr(r.device_number)}{roomOf.get(r.device_id) ? ` · ${roomOf.get(r.device_id)}` : ''}
+                        {' · '}<span style={{ color: bad ? 'var(--crit)' : 'var(--text)', fontWeight: 600 }}>{reportKind(r.period_start, r.period_end)} {fmtPeriod(r.period_start, r.period_end)}</span>
+                        {' · '}<span style={{ color, fontWeight: 600 }}>{bad ? 'versturen mislukt' : VERDICT_LABEL[r.verdict] ?? r.verdict}</span>
+                        {' · '}{r.trigger === 'manual' ? 'handmatig' : 'automatisch'}
+                      </span>
+                    </div>
+                  )
+                })}
               </Card>
             </div>
-
-            {/* Rechterkolom: tijdlijn. */}
-            <div style={{ minWidth: 0 }}>
-              <SectionHeading right={<span style={{ fontSize: 'var(--fs-xs)', color: 'var(--muted)', fontWeight: 600 }}>{selected ? `sensor ${nr(selected.device_number)}${selected.room ? ` · ${selected.room}` : ''}` : device === 'unknown' ? 'onbekend adres' : 'alle sensoren'}</span>}>
-                Tijdlijn
-              </SectionHeading>
-              {loading ? (
-                <div style={{ display: 'grid', gap: 'var(--sp-3)' }}>
-                  {[0, 1].map((i) => <MetricCardSkeleton key={i} />)}
-                </div>
-              ) : (
-                <>
-                  {messages.length === 0 && (
-                    <Card style={{ display: 'flex', gap: 'var(--sp-3)', alignItems: 'center', marginBottom: 'var(--sp-3)' }}>
-                      <MailQuestion style={{ color: 'var(--muted)', flexShrink: 0 }} />
-                      <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--muted)' }}>{empty}</div>
-                    </Card>
-                  )}
-                  {threads.length > 0 && (
-                    <div style={{ display: 'grid', gap: 'var(--sp-3)' }}>
-                      {threads.map((t) => (
-                        <ThreadView key={`${status}:${t.key}`} thread={t} defaultOpen={t.hasOpen || threads.length === 1} onChanged={load} />
-                      ))}
-                    </div>
-                  )}
-                  {!selected && device !== 'unknown' && latestReports.length > 0 && (
-                    <div style={{ marginTop: 'var(--sp-5)' }}>
-                      <SectionHeading>Laatste rapporten</SectionHeading>
-                      <Card pad="var(--sp-2) var(--sp-3)">
-                        <div style={{ display: 'grid' }}>
-                          {latestReports.map((r) => <ReportLine key={r.id} report={r} showDevice />)}
-                        </div>
-                      </Card>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
+          )}
         </>
       )}
     </AppShell>
   )
 }
 
-function Tile({ Icon, color, value, label }: { Icon: typeof Inbox; color: string; value: number | string; label: string }) {
+function ListSkeleton() {
   return (
-    <Card accent={color} pad="var(--sp-3)" style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', minWidth: 0 }}>
-      <Icon style={{ color, flexShrink: 0 }} />
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 'var(--fs-xl)', fontWeight: 700, color: 'var(--text)', lineHeight: 1.1 }}>{value}</div>
-        <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--muted)', overflowWrap: 'anywhere' }}>{label}</div>
-      </div>
+    <Card pad={0} style={{ overflow: 'hidden' }}>
+      {[0, 1, 2, 3, 4].map((i) => (
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', padding: '12px 14px', borderTop: i ? '1px solid var(--border-soft)' : 0 }}>
+          <Skeleton w={10} h={10} r={5} />
+          <Skeleton w={140} h={10} />
+          <Skeleton w="40%" h={10} />
+          <Skeleton w={40} h={10} style={{ marginLeft: 'auto' }} />
+        </div>
+      ))}
     </Card>
   )
 }
 
-// ── Linkerkolom ──────────────────────────────────────────────────────────────
+// ── Eén regel ────────────────────────────────────────────────────────────────
 
-function SideRow({ active, onClick, number, title, sub, dim, open, total }: { active: boolean; onClick: () => void; number?: string; title: string; sub: string; dim?: boolean; open: number; total: number }) {
+function Row({ m, now, expanded, onClick }: { m: Msg; now: Date; expanded: boolean; onClick: () => void }) {
+  const g = glyph(m)
+  const s = stand(m, now)
+  const summary = preview(m.body)
   return (
     <button
+      type="button"
+      className="wz-inbox-row"
       onClick={onClick}
-      aria-pressed={active}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', width: '100%', textAlign: 'left', padding: '7px 9px', border: 0, borderRadius: 'var(--r-sm)', cursor: 'pointer', fontFamily: 'inherit',
-        background: active ? 'var(--brand-fill)' : 'transparent', color: active ? 'var(--brand)' : 'var(--text)', opacity: dim ? 0.6 : 1,
-      }}
+      aria-expanded={expanded}
+      aria-controls={`inbox-msg-${m.id}`}
+      style={{ width: '100%', textAlign: 'left', background: expanded ? 'var(--surface-2)' : 'transparent', border: 0, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--text)', opacity: m.open ? 1 : 0.7 }}
     >
-      {number && <span style={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums', flexShrink: 0, width: 22 }}>{number}</span>}
-      <span style={{ minWidth: 0, flex: 1 }}>
-        <span style={{ display: 'block', fontSize: 'var(--fs-sm)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{title}</span>
-        <span style={{ display: 'block', fontSize: 'var(--fs-2xs)', color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{sub}</span>
+      <span aria-label={g.label} title={g.label} style={{ gridArea: 'icon', color: g.color, fontSize: 'var(--fs-md)', lineHeight: 1, textAlign: 'center' }}>{g.char}</span>
+      <span style={{ gridArea: 'who', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 'var(--fs-sm)' }}>
+        <span style={{ fontWeight: m.open ? 700 : 600 }}>{who(m)}</span>
+        <span style={{ color: 'var(--muted)', fontSize: 'var(--fs-xs)' }}> · {sensorLabel(m)}</span>
       </span>
-      <span style={{ display: 'inline-flex', gap: 4, flexShrink: 0, fontSize: 'var(--fs-2xs)', fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-        {open > 0 && <span title={`${open} open`} style={{ padding: '1px 7px', borderRadius: 'var(--r-pill)', background: 'var(--warn-fill)', color: 'var(--warn)' }}>{open}</span>}
-        <span title={`${total} in totaal`} style={{ padding: '1px 7px', borderRadius: 'var(--r-pill)', background: 'var(--surface-2)', color: 'var(--muted)' }}>{total}</span>
+      <span style={{ gridArea: 'subj', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 'var(--fs-sm)' }}>
+        <span style={{ fontWeight: 700 }}>{m.subject || '(geen onderwerp)'}</span>
+        {summary && <span style={{ color: 'var(--muted)' }}> — {summary}</span>}
       </span>
+      <span style={{ gridArea: 'when', fontSize: 'var(--fs-xs)', color: 'var(--muted)', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums', textAlign: 'right' }}>{fmtWhen(m.created_at, now)}</span>
+      <span style={{ gridArea: 'stand', fontSize: 'var(--fs-xs)', fontWeight: 600, color: s.color, whiteSpace: 'nowrap', textAlign: 'right' }}>{s.text}</span>
     </button>
   )
 }
 
-// ── Tijdlijn ─────────────────────────────────────────────────────────────────
+// ── Uitgeklapt ───────────────────────────────────────────────────────────────
 
-interface Thread {
-  key: string
-  addr: string
-  name: string | null
-  deviceNumber: number | null
-  room: string | null
-  msgs: Msg[]
-  reports: Report[]
-  last: number
-  hasOpen: boolean
+interface ExpandedProps {
+  m: Msg
+  now: Date
+  text: string
+  onText: (v: string) => void
+  busy: Action | null
+  note: Note | null
+  prior: Msg[]
+  onAct: (a: Action) => void
+  onJump: (m: Msg) => void
 }
 
-/** Gesprekken per afzenderadres; bij één gekozen sensor gaan de rapporten in de thread van het contactadres. */
-function buildThreads(messages: Msg[], reports: Report[], selected: Device | null): Thread[] {
-  const map = new Map<string, Thread>()
-  for (const m of messages) {
-    const key = m.from_addr.toLowerCase()
-    let t = map.get(key)
-    if (!t) {
-      t = { key, addr: m.from_addr, name: null, deviceNumber: null, room: null, msgs: [], reports: [], last: 0, hasOpen: false }
-      map.set(key, t)
-    }
-    t.msgs.push(m)
-    if (m.contact_name && !t.name) t.name = m.contact_name
-    if (m.device_number != null && t.deviceNumber == null) { t.deviceNumber = m.device_number; t.room = m.room }
-    t.last = Math.max(t.last, ts(m.created_at), ts(m.handled_at))
-    if (m.open) t.hasOpen = true
-  }
-  if (selected && reports.length) {
-    const key = selected.contact_email?.toLowerCase()
-    let t = key ? map.get(key) : undefined
-    if (!t) {
-      t = { key: 'reports', addr: selected.contact_email ?? '', name: selected.contact_name, deviceNumber: selected.device_number, room: selected.room, msgs: [], reports: [], last: 0, hasOpen: false }
-      map.set(t.key, t)
-    }
-    t.reports = reports.filter((r) => r.device_id === selected.id)
-    for (const r of t.reports) t.last = Math.max(t.last, ts(r.sent_at))
-  }
-  return [...map.values()].sort((a, b) => b.last - a.last)
-}
-
-function ThreadView({ thread: t, defaultOpen, onChanged }: { thread: Thread; defaultOpen: boolean; onChanged: () => void }) {
-  const [expanded, setExpanded] = useState(defaultOpen)
-  const entries = useMemo(() => {
-    const list: { at: number; msg?: Msg; rep?: Report }[] = [
-      ...t.msgs.map((m) => ({ at: ts(m.created_at), msg: m })),
-      ...t.reports.map((r) => ({ at: ts(r.sent_at), rep: r })),
-    ]
-    return list.sort((a, b) => a.at - b.at)
-  }, [t])
-  const openCount = t.msgs.filter((m) => m.open).length
-  const escalated = t.msgs.some((m) => m.open && m.escalate)
-  const accent = openCount ? (escalated ? 'var(--crit)' : 'var(--warn)') : 'var(--border)'
-  const sensor = t.deviceNumber != null ? `sensor ${nr(t.deviceNumber)}${t.room ? ` · ${t.room}` : ''}` : 'onbekend adres'
-  const count = [t.msgs.length ? `${t.msgs.length} bericht${t.msgs.length === 1 ? '' : 'en'}` : null, t.reports.length ? `${t.reports.length} rapport${t.reports.length === 1 ? '' : 'en'}` : null].filter(Boolean).join(' · ')
-
-  return (
-    <Card accent={accent} pad="var(--sp-3) var(--sp-4)">
-      <button
-        onClick={() => setExpanded((v) => !v)}
-        aria-expanded={expanded}
-        style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', width: '100%', textAlign: 'left', background: 'transparent', border: 0, padding: 0, cursor: 'pointer', fontFamily: 'inherit', color: 'var(--text)' }}
-      >
-        <div style={{ minWidth: 0, flex: 1 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
-            <span style={{ fontWeight: 700, overflowWrap: 'anywhere' }}>{t.name || t.addr || 'geen contact'}</span>
-            {openCount > 0 && (
-              <span style={{ fontSize: 'var(--fs-2xs)', fontWeight: 700, padding: '1px 7px', borderRadius: 'var(--r-pill)', background: escalated ? 'var(--crit-fill)' : 'var(--warn-fill)', color: escalated ? 'var(--crit)' : 'var(--warn)' }}>
-                {openCount} open{escalated ? ' · escalatie' : ''}
-              </span>
-            )}
-          </div>
-          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--muted)', marginTop: 2, overflowWrap: 'anywhere' }}>
-            {sensor}{t.name && t.addr ? ` · ${t.addr}` : ''}{count ? ` · ${count}` : ''}{t.last ? ` · laatst ${fmtDate(new Date(t.last).toISOString())}` : ''}
-          </div>
-        </div>
-        {expanded ? <ChevronUp size={16} style={{ color: 'var(--muted)', flexShrink: 0 }} /> : <ChevronDown size={16} style={{ color: 'var(--muted)', flexShrink: 0 }} />}
-      </button>
-
-      {expanded && (
-        <div style={{ display: 'grid', gap: 'var(--sp-3)', marginTop: 'var(--sp-3)' }}>
-          {entries.map((e) => (e.msg ? <MessageCard key={`m${e.msg.id}`} item={e.msg} onChanged={onChanged} /> : <ReportLine key={`r${e.rep!.id}`} report={e.rep!} />))}
-        </div>
-      )}
-    </Card>
-  )
-}
-
-function ReportLine({ report: r, showDevice }: { report: Report; showDevice?: boolean }) {
-  const failed = r.status !== 'sent'
-  const color = failed ? 'var(--crit)' : VERDICT_COLOR[r.verdict] ?? 'var(--muted)'
-  return (
-    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--sp-2)', padding: '6px 0', fontSize: 'var(--fs-xs)', color: 'var(--muted)', borderTop: showDevice ? '1px solid var(--border-soft)' : 0 }}>
-      <FileText size={14} style={{ color, flexShrink: 0, marginTop: 1 }} />
-      <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>
-        {showDevice && <span style={{ fontWeight: 700, color: 'var(--text)' }}>{nr(r.device_number)}{r.contact_name ? ` ${r.contact_name}` : ''} · </span>}
-        <span style={{ color: failed ? 'var(--crit)' : 'var(--text)', fontWeight: 600 }}>{reportKind(r.period_start, r.period_end)} {SEND_LABEL[r.status] ?? r.status}</span>
-        {' · '}{fmtPeriod(r.period_start, r.period_end)}
-        {' · '}<span style={{ color, fontWeight: 600 }}>{VERDICT_LABEL[r.verdict] ?? r.verdict}</span>
-        {' · '}{r.trigger === 'manual' ? 'handmatig' : 'automatisch'}
-        {' · '}{fmtDateTime(r.sent_at)}
-      </span>
-    </div>
-  )
-}
-
-function MessageCard({ item: m, onChanged }: { item: Msg; onChanged: () => void }) {
-  const open = m.open
-  const [text, setText] = useState(m.reply ?? '')
-  const [expanded, setExpanded] = useState(false)
-  const [busy, setBusy] = useState<'send' | 'close' | 'reopen' | null>(null)
-  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null)
-
-  const body = m.body ?? ''
-  const long = body.length > LONG_BODY
-  const shownBody = long && !expanded ? body.slice(0, LONG_BODY).trimEnd() + '…' : body
-  const failedStatus = m.status === 'error' || m.status === 'send_failed'
-  const statusColor = failedStatus ? 'var(--crit)' : open ? 'var(--warn)' : 'var(--muted)'
-
-  async function act(action: 'support_send' | 'support_close' | 'support_reopen') {
-    setBusy(action === 'support_send' ? 'send' : action === 'support_close' ? 'close' : 'reopen')
-    setNote(null)
-    try {
-      const payload = action === 'support_send' ? { action, id: m.id, text } : { action, id: m.id }
-      const { status, data } = await post(payload)
-      if (status === 400 && data?.error === 'empty') setNote({ ok: false, text: 'Het antwoord is leeg.' })
-      else if (status === 403) setNote({ ok: false, text: 'Dit bericht hoort niet bij jouw organisatie.' })
-      else if (!data?.ok) {
-        setNote({ ok: false, text: action === 'support_send' ? 'Versturen is mislukt. Probeer het nog eens.' : action === 'support_close' ? 'Afhandelen is mislukt.' : 'Heropenen is mislukt.' })
-        // Bij send_failed heeft de server de status al aangepast: label bijwerken, tekst blijft staan.
-        if (status === 200) onChanged()
-      } else {
-        setNote({ ok: true, text: action === 'support_send' ? 'Verstuurd.' : action === 'support_close' ? 'Afgehandeld.' : 'Heropend.' })
-        onChanged()
-      }
-    } catch {
-      setNote({ ok: false, text: 'Geen verbinding met de server.' })
-    } finally {
-      setBusy(null)
-    }
-  }
-
+function Expanded({ m, now, text, onText, busy, note, prior, onAct, onJump }: ExpandedProps) {
+  const openNote = m.open ? OPEN_NOTE[m.status] : undefined
+  const small: React.CSSProperties = { fontSize: 'var(--fs-xs)', fontWeight: 600 }
   const noteRow = note && (
-    <div role={note.ok ? 'status' : 'alert'} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 'var(--sp-2)', fontSize: 'var(--fs-xs)', fontWeight: 600, color: note.ok ? 'var(--ok)' : 'var(--crit)' }}>
+    <div role={note.ok ? 'status' : 'alert'} style={{ ...small, display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 'var(--sp-2)', color: note.ok ? 'var(--ok)' : 'var(--crit)' }}>
       {note.ok ? <Check size={13} /> : <AlertTriangle size={13} />} {note.text}
     </div>
   )
 
   return (
-    <div style={{ background: open ? 'var(--surface)' : 'var(--surface-2)', border: '1px solid var(--border-soft)', borderRadius: 'var(--r-md)', padding: 'var(--sp-3)', opacity: open ? 1 : 0.85 }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
-        <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--muted)' }}>{fmtDateTime(m.created_at)}</span>
-        <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 700, color: statusColor, whiteSpace: 'nowrap' }}>{STATUS_LABEL[m.status] ?? m.status}</span>
+    <div id={`inbox-msg-${m.id}`} style={{ padding: '0 var(--sp-4) var(--sp-4)', background: 'var(--surface-2)', borderTop: '1px solid var(--border-soft)' }}>
+      <div style={{ ...small, color: 'var(--muted)', padding: 'var(--sp-3) 0 var(--sp-2)', overflowWrap: 'anywhere' }}>
+        {who(m)}{m.contact_name ? ` · ${m.from_addr}` : ''} · {sensorLabel(m)} · {fmtDateTime(m.created_at)}
       </div>
-      <div style={{ fontWeight: 700, color: 'var(--text)', marginTop: 2, overflowWrap: 'anywhere' }}>{m.subject || '(geen onderwerp)'}</div>
 
-      {body && (
-        <div style={{ marginTop: 'var(--sp-2)', fontSize: 'var(--fs-sm)', color: 'var(--text)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-          {shownBody}
-          {long && (
-            <button onClick={() => setExpanded((v) => !v)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, marginLeft: 8, background: 'transparent', border: 0, padding: 0, color: 'var(--brand)', fontSize: 'var(--fs-xs)', fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
-              {expanded ? <><ChevronUp size={12} /> minder</> : <><ChevronDown size={12} /> meer</>}
-            </button>
+      {/* De vraag. */}
+      <div style={{ background: 'var(--surface)', border: '1px solid var(--border-soft)', borderRadius: 'var(--r-md)', padding: 'var(--sp-3)', fontSize: 'var(--fs-sm)', color: 'var(--text)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+        {m.body || <span style={{ color: 'var(--muted)' }}>(lege mail)</span>}
+      </div>
+
+      {/* Oordeel van de assistent. */}
+      <div style={{ ...small, display: 'flex', alignItems: 'flex-start', gap: 6, marginTop: 'var(--sp-2)', color: m.escalate == null ? 'var(--muted)' : m.escalate ? 'var(--crit)' : 'var(--ok)', overflowWrap: 'anywhere' }}>
+        {m.escalate == null ? <><Bot size={13} style={{ flexShrink: 0, marginTop: 1 }} /> <span>nog geen oordeel van de assistent</span></>
+          : m.escalate ? <><AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1 }} /> <span>escalatie{m.reason ? `: ${m.reason}` : ''}</span></>
+          : <><Check size={13} style={{ flexShrink: 0, marginTop: 1 }} /> <span>kan automatisch{m.reason ? ` — ${m.reason}` : ''}</span></>}
+      </div>
+
+      {/* Het antwoordblok. */}
+      {m.open ? (
+        <div style={{ marginTop: 'var(--sp-3)' }}>
+          {m.status === 'scheduled' && m.send_at && (
+            <div style={{ ...small, color: 'var(--warn)', marginBottom: 'var(--sp-2)' }}>⏳ Gaat {fmtMoment(m.send_at, now)} automatisch, tenzij je ingrijpt.</div>
           )}
-        </div>
-      )}
-
-      {m.escalate == null ? (
-        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 'var(--sp-2)', fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--muted)' }}>
-          <Bot size={13} style={{ flexShrink: 0 }} /> nog geen oordeel van de assistent
-        </div>
-      ) : (
-        <div style={{ display: 'inline-flex', alignItems: 'flex-start', gap: 6, marginTop: 'var(--sp-2)', fontSize: 'var(--fs-xs)', fontWeight: 600, color: m.escalate ? 'var(--crit)' : 'var(--ok)', overflowWrap: 'anywhere' }}>
-          {m.escalate ? <><AlertTriangle size={13} style={{ flexShrink: 0, marginTop: 1 }} /> <span>escaleren{m.reason ? `: ${m.reason}` : ''}</span></> : <><Check size={13} style={{ flexShrink: 0, marginTop: 1 }} /> <span>kan automatisch{m.reason ? ` — ${m.reason}` : ''}</span></>}
-        </div>
-      )}
-
-      {open && STATUS_NOTE[m.status] && (
-        <div role={failedStatus ? 'alert' : undefined} style={{ marginTop: 'var(--sp-2)', fontSize: 'var(--fs-xs)', fontWeight: 600, color: failedStatus ? 'var(--crit)' : 'var(--muted)' }}>
-          {STATUS_NOTE[m.status]}
-        </div>
-      )}
-
-      {open ? (
-        <>
-          <label htmlFor={`reply-${m.id}`} style={{ display: 'block', marginTop: 'var(--sp-3)', fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--muted)' }}>
+          {openNote && <div role={openNote.bad ? 'alert' : undefined} style={{ ...small, color: openNote.bad ? 'var(--crit)' : 'var(--muted)', marginBottom: 'var(--sp-2)' }}>{openNote.text}</div>}
+          <label htmlFor={`reply-${m.id}`} style={{ ...small, display: 'block', color: 'var(--muted)' }}>
             {m.reply ? `Voorgesteld antwoord${m.model ? ` (${m.model})` : ''}` : 'Jouw antwoord'}
           </label>
           <textarea
             id={`reply-${m.id}`}
             value={text}
-            onChange={(e) => setText(e.target.value)}
-            rows={Math.min(14, Math.max(5, text.split('\n').length + 1))}
+            onChange={(e) => onText(e.target.value)}
+            rows={Math.min(14, Math.max(4, text.split('\n').length + 1))}
             placeholder="Schrijf hier je antwoord aan de bewoner…"
             style={{ display: 'block', width: '100%', boxSizing: 'border-box', marginTop: 4, padding: '9px 12px', fontSize: 'var(--fs-sm)', lineHeight: 1.5, fontFamily: 'inherit', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--surface)', color: 'var(--text)', resize: 'vertical' }}
           />
           {noteRow}
           <div style={{ display: 'flex', gap: 'var(--sp-2)', flexWrap: 'wrap', marginTop: 'var(--sp-3)' }}>
-            <Button size="sm" variant="primary" icon={<Send size={13} />} onClick={() => act('support_send')} disabled={busy != null || !text.trim()}>
-              {busy === 'send' ? 'Bezig…' : 'Verstuur dit antwoord'}
+            <Button size="sm" variant="primary" icon={<Send size={13} />} onClick={() => onAct('support_send')} disabled={busy != null || !text.trim()}>
+              {busy === 'support_send' ? 'Bezig…' : 'Verstuur nu'}
             </Button>
-            <Button size="sm" variant="ghost" icon={<X size={13} />} onClick={() => act('support_close')} disabled={busy != null}>
-              {busy === 'close' ? 'Bezig…' : 'Afgehandeld zonder antwoord'}
+            {m.status === 'scheduled' && (
+              <Button size="sm" icon={<Hand size={13} />} onClick={() => onAct('support_hold')} disabled={busy != null}>
+                {busy === 'support_hold' ? 'Bezig…' : 'Tegenhouden'}
+              </Button>
+            )}
+            <Button size="sm" variant="ghost" icon={<X size={13} />} onClick={() => onAct('support_close')} disabled={busy != null}>
+              {busy === 'support_close' ? 'Bezig…' : 'Afgehandeld zonder antwoord'}
             </Button>
           </div>
-        </>
+        </div>
       ) : m.status === 'answered' ? (
         <div style={{ marginTop: 'var(--sp-3)', borderLeft: '3px solid var(--ok)', paddingLeft: 'var(--sp-3)' }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--muted)' }}>
-            <Send size={12} /> Antwoord verstuurd{m.handled_at ? ` op ${fmtDateTime(m.handled_at)}` : ''}
+          <div style={{ ...small, display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--muted)' }}>
+            <Send size={12} /> verstuurd{m.handled_at ? ` op ${fmtDateTime(m.handled_at)}` : ''}
           </div>
           <div style={{ marginTop: 4, fontSize: 'var(--fs-sm)', color: 'var(--text)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{m.reply}</div>
           {noteRow}
@@ -600,11 +591,9 @@ function MessageCard({ item: m, onChanged }: { item: Msg; onChanged: () => void 
       ) : (
         <div style={{ marginTop: 'var(--sp-3)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--muted)' }}>
-              Afgehandeld zonder antwoord{m.handled_at ? ` op ${fmtDateTime(m.handled_at)}` : ''}
-            </span>
-            <Button size="sm" variant="ghost" icon={<RotateCcw size={13} />} onClick={() => act('support_reopen')} disabled={busy != null}>
-              {busy === 'reopen' ? 'Bezig…' : 'Heropenen'}
+            <span style={{ ...small, color: 'var(--muted)' }}>afgehandeld zonder antwoord{m.handled_at ? ` op ${fmtDateTime(m.handled_at)}` : ''}</span>
+            <Button size="sm" variant="ghost" icon={<RotateCcw size={13} />} onClick={() => onAct('support_reopen')} disabled={busy != null}>
+              {busy === 'support_reopen' ? 'Bezig…' : 'Heropenen'}
             </Button>
           </div>
           {m.reply && (
@@ -614,6 +603,31 @@ function MessageCard({ item: m, onChanged }: { item: Msg; onChanged: () => void 
             </details>
           )}
           {noteRow}
+        </div>
+      )}
+
+      {/* Eerder van deze bewoner. */}
+      {prior.length > 0 && (
+        <div style={{ marginTop: 'var(--sp-4)' }}>
+          <div style={{ ...small, color: 'var(--muted)', marginBottom: 4 }}>Eerder van deze bewoner</div>
+          <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 2 }}>
+            {prior.map((p) => {
+              const s = stand(p, now)
+              return (
+                <li key={p.id}>
+                  <button
+                    type="button"
+                    onClick={() => onJump(p)}
+                    style={{ display: 'flex', gap: 6, alignItems: 'baseline', width: '100%', minWidth: 0, textAlign: 'left', background: 'transparent', border: 0, padding: '2px 0', cursor: 'pointer', fontFamily: 'inherit', fontSize: 'var(--fs-xs)', color: 'var(--muted)' }}
+                  >
+                    <span style={{ whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>{fmtDay(p.created_at, now)}</span>
+                    <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text)' }}>{p.subject || '(geen onderwerp)'}</span>
+                    <span style={{ whiteSpace: 'nowrap', marginLeft: 'auto', color: s.color === 'var(--text)' ? 'var(--muted)' : s.color }}>{s.text}</span>
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
         </div>
       )}
     </div>
