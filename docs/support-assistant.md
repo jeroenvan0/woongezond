@@ -111,3 +111,19 @@ Logs: `journalctl -u woongezond-react -o cat | jq 'select(.scope=="support")'`.
 4. [x] Gespreksgeheugen: de laatste 6 mails van hetzelfde adres (met het antwoord dat ging)
    gaan als eerdere beurten mee naar het model (`residentContext` → `history`). Getest: een
    vervolgvraag "is dat nu geregeld?" verwijst naar de eerdere afmelding.
+
+## Volgende stap (besproken 2026-09-06): Outlook-achtige lijst + automatisch na twee uur
+
+**Lijstweergave.** Eén lijst, één regel per mail, nieuwste bovenaan: status-icoon (● ongelezen,
+✓ beantwoord, ⚠ escalatie), bewoner, onderwerp, tijd, sensor, en de stand ("⏳ wacht op jou",
+"gaat om 15:45 automatisch", "✓ beantwoord 12:50"). Klik = openklappen: vraag, antwoord
+(verstuurd of voorstel, bewerkbaar), eerder gesprek in grijs. Desktop: leesvenster rechts;
+telefoon: in de rij. Sensor en bewoner zijn klikbare kolommen (filter), geen zijbalk. Afgehandeld
+zakt gedempt naar beneden. Geen tegels.
+
+**Stand `delayed`** naast `draft` en `auto`: elke mail krijgt direct een voorstel én een
+verzendmoment (`support_messages.send_at` = binnenkomst + 2 uur, buiten 22:00–08:00 opgeschoven
+naar 08:00). In dat venster kan de beheerder aanpassen, meteen versturen of tegenhouden. Een
+timer (elke 5 min, `POST /api/inbox/flush` met cron-secret) verstuurt alles waarvan `send_at`
+is verstreken. Escalaties gaan nooit automatisch en blijven op de beheerder wachten, met een
+mail. Geschat: een halve dag, inclusief de lijstweergave.
