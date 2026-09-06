@@ -4,10 +4,11 @@ import { weeklyReportSweep } from '@/lib/report/sweep'
 import { log, errText } from '@/lib/logger'
 
 // Weekrapport per sensor — de timer-ingang (docs/rapport-weekmail-plan.md).
-//   POST /api/report/weekly + x-cron-secret            alle contacten met toestemming, laatste volle week
+//   POST /api/report/weekly + x-cron-secret            elke ochtend; per contact volgens report_frequency
+//                                                      (dagelijks / maandag / de 1e), afgesloten periode
 //   ?dry=1                                             alleen tonen wat er zou gaan (geen mail, geen log)
 //   ?device=<uuid>&force=1                             één sensor, ook als deze week al verstuurd is
-//   ?rolling=1                                         afgelopen 7 dagen i.p.v. ma–zo
+//   ?rolling=1                                         lopende 1/7/30 dagen i.p.v. de afgesloten periode
 // Geen browser-ingang: bewoners krijgen hun rapport per mail, admins via /api/cockpit.
 
 export const dynamic = 'force-dynamic'
@@ -23,7 +24,7 @@ export async function POST(req: NextRequest) {
       dry: p.get('dry') === '1', force: p.get('force') === '1', rolling: p.get('rolling') === '1',
       deviceId: device ?? undefined, trigger: device ? 'manual' : 'timer',
     })
-    log.info('report', 'weekly sweep complete', { dry: p.get('dry') === '1', contacts: r.contacts, sent: r.sent, skipped: r.skipped, period: r.period.key })
+    log.info('report', 'report sweep complete', { dry: p.get('dry') === '1', contacts: r.contacts, sent: r.sent, skipped: r.skipped, today: r.today })
     return NextResponse.json({ ok: true, ...r })
   } catch (e) {
     log.error('report', 'weekly sweep failed', { detail: errText(e) })

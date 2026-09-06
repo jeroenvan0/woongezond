@@ -24,6 +24,8 @@ const nextConfig: NextConfig = {
   // which leaves a server-rendered page with no JavaScript. Dev-only setting.
   allowedDevOrigins: ['192.168.*.*', '10.*.*.*', '172.16.*.*', '*.local'],
   basePath,
+  // The floating Next.js badge in dev mode distracts residents during LAN tests of /start.
+  devIndicators: false,
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },

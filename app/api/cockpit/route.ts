@@ -5,13 +5,14 @@ import { weeklyReportSweep } from '@/lib/report/sweep'
 import { sendEmail } from '@/lib/email'
 import { QUESTIONS } from '@/lib/houseProfile'
 import { log, errText } from '@/lib/logger'
+import { isFrequency } from '@/lib/report/period'
 
 // Pilot-cockpit voor org-ADMINS (docs/pilot-cockpit-plan.md §2c, docs/support-assistant.md).
 //
 //   GET  /api/cockpit                      sensoren van de org + contact (laag B) + laatste
 //                                          rapport + klantenservice-inbox
-//   POST /api/cockpit {action, …}          send_report {device_id} · support_send {id, text?}
-//                                          · support_close {id}
+//   POST /api/cockpit {action, …}          send_report {device_id} · set_frequency {device_id, frequency}
+//                                          · support_send {id, text?} · support_close {id}
 //
 // De aanroeper wordt via zijn eigen sessie gecontroleerd (org_members.role = 'admin', RLS
 // laat alleen eigen lidmaatschappen zien); daarna leest de service-role de tabellen die
@@ -41,7 +42,7 @@ export async function GET(req: NextRequest) {
 
   const s = createServiceClient()
   const { data: devices, error } = await s.from('devices')
-    .select('id, name, device_number, location, house_profile, active, last_seen_at, fw_version, boot_count, last_rssi, profile_completed_at, device_contacts(name, email, address_note, report_consent_at)')
+    .select('id, name, device_number, location, house_profile, active, last_seen_at, fw_version, boot_count, last_rssi, profile_completed_at, device_contacts(name, email, address_note, report_consent_at, report_frequency)')
     .eq('org_id', org.id).order('device_number', { ascending: true, nullsFirst: false })
   if (error) return NextResponse.json({ error: 'query_failed' }, { status: 500 })
 
@@ -58,7 +59,7 @@ export async function GET(req: NextRequest) {
       id: d.id, device_number: d.device_number, name: d.name, active: d.active !== false,
       room: roomLabel(d.house_profile?.room) ?? d.location ?? null, registered_at: d.profile_completed_at,
       online: mins != null && mins < ONLINE_MIN, minutes_since: mins, fw_version: d.fw_version, boot_count: d.boot_count, rssi: d.last_rssi,
-      contact: c ? { name: c.name, email: c.email, address_note: c.address_note, report_consent: !!c.report_consent_at } : null,
+      contact: c ? { name: c.name, email: c.email, address_note: c.address_note, report_consent: !!c.report_consent_at, report_frequency: isFrequency(c.report_frequency) ? c.report_frequency : 'weekly' } : null,
       last_report: lastSend.get(d.id) ?? null,
     }
   })
@@ -91,6 +92,20 @@ export async function POST(req: NextRequest) {
       const item = r.items[0] ?? null
       if (!item) return NextResponse.json({ error: 'no_contact' }, { status: 409 })
       return NextResponse.json({ ok: item.status === 'sent', item })
+    }
+
+    if (action === 'set_frequency') {
+      const deviceId = String(body?.device_id ?? '')
+      const frequency = body?.frequency
+      if (!UUID_RE.test(deviceId)) return NextResponse.json({ error: 'bad_device' }, { status: 400 })
+      if (!isFrequency(frequency)) return NextResponse.json({ error: 'bad_frequency' }, { status: 400 })
+      const { data: d } = await s.from('devices').select('id, org_id').eq('id', deviceId).maybeSingle()
+      if (!d || !orgIds.includes(d.org_id)) return NextResponse.json({ error: 'forbidden' }, { status: 403 })
+      const { error, count } = await s.from('device_contacts').update({ report_frequency: frequency, updated_at: new Date().toISOString() }, { count: 'exact' }).eq('device_id', deviceId)
+      if (error) return NextResponse.json({ error: 'error' }, { status: 500 })
+      if (!count) return NextResponse.json({ error: 'no_contact' }, { status: 409 })
+      log.info('cockpit', 'report frequency set', { device_id: deviceId, frequency })
+      return NextResponse.json({ ok: true, frequency })
     }
 
     if (action === 'support_send' || action === 'support_close') {

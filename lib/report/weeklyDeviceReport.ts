@@ -24,7 +24,14 @@ export interface ReportLinks {
   report?: string                  // ondertekende link naar /rapport?t=… (later)
   unsubscribe?: string
 }
-export interface ReportPeriod { start: Date; end: Date }
+export type ReportKind = 'dag' | 'week' | 'maand'
+export interface ReportPeriod { start: Date; end: Date; kind?: ReportKind }   // kind bepaalt de bewoording; standaard 'week'
+const KIND = {
+  dag:   { rapport: 'dagrapport',   deze: 'Gisteren',   volgende: 'morgen',         tips: 'Tips voor vandaag' },
+  week:  { rapport: 'weekrapport',  deze: 'Deze week',  volgende: 'volgende week',  tips: 'Tips voor komende week' },
+  maand: { rapport: 'maandrapport', deze: 'Deze maand', volgende: 'volgende maand', tips: 'Tips voor komende maand' },
+} as const
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 export interface WeeklyDeviceReport {
   hasData: boolean
@@ -107,6 +114,8 @@ export function buildWeeklyDeviceReport(
   links: ReportLinks = {},
 ): WeeklyDeviceReport {
   const label = deviceLabel(device)
+  const k = KIND[period.kind ?? 'week']
+  const periodHours = Math.max(1, Math.round((period.end.getTime() - period.start.getTime()) / 3600000))
   const name = firstName(contact.name)
   const hello = name ? `Hoi ${name},` : 'Hallo,'
   const periodTxt = `${fmtDay(period.start)} – ${fmtDay(period.end)}`
@@ -115,7 +124,7 @@ export function buildWeeklyDeviceReport(
   const coverage = measurementCoverage(rows)
   const gaps = detectGaps(rows)
   // Uren met data: aantal metingen × mediane interval, afgetopt op de week.
-  const hoursCovered = s.times.length >= 2 ? Math.min(168, +((rows.length * medianIntervalMs(s.times)) / 3600000).toFixed(1)) : 0
+  const hoursCovered = s.times.length >= 2 ? Math.min(periodHours, +((rows.length * medianIntervalMs(s.times)) / 3600000).toFixed(1)) : 0
 
   const emptyStats: WeeklyDeviceReport['stats'] = {
     readings: rows.length, hoursCovered, avgCo2: null, maxCo2: null, pctCo2Over1000: null, nightCo2: null, avgRh: null, avgTemp: null, gaps: gaps.length,
@@ -124,24 +133,24 @@ export function buildWeeklyDeviceReport(
   if (s.times.length < 30) {
     const text = [
       hello, '',
-      `Deze week (${periodTxt}) zijn er ${rows.length === 0 ? 'geen' : 'te weinig'} metingen binnengekomen van ${label}, dus er is geen weekrapport te maken.`,
+      `${k.deze} (${periodTxt}) zijn er ${rows.length === 0 ? 'geen' : 'te weinig'} metingen binnengekomen van ${label}, dus er is geen ${k.rapport} te maken.`,
       '',
       'Meestal betekent dit dat de sensor geen stroom of geen wifi had. Check:',
       '• Brandt er een lampje op de sensor? Zo niet: zit de stekker erin?',
       '• Knippert het rode lampje 2× achter elkaar? Dan heeft hij geen wifi. Zie de handleiding, of houd de knop 10 seconden ingedrukt om het wifi opnieuw in te stellen.',
       '',
-      'Zodra de sensor weer meet, krijg je volgende week gewoon een rapport.',
+      `Zodra de sensor weer meet, krijg je ${k.volgende} gewoon een rapport.`,
       '', footerText(links),
     ].join('\n')
     return {
       hasData: false, verdict: 'nodata',
-      subject: `Weekrapport ${label}: geen metingen · Woongezond`,
-      text, html: wrapHtml(`Weekrapport · ${esc(label)}`, periodTxt, [
+      subject: `${cap(k.rapport)} ${label}: geen metingen · Woongezond`,
+      text, html: wrapHtml(`${cap(k.rapport)} · ${esc(label)}`, periodTxt, [
         `<p>${esc(hello)}</p>`,
-        `<p>Deze week zijn er ${rows.length === 0 ? 'geen' : 'te weinig'} metingen binnengekomen van <strong>${esc(label)}</strong>, dus er is geen weekrapport te maken.</p>`,
+        `<p>${k.deze} zijn er ${rows.length === 0 ? 'geen' : 'te weinig'} metingen binnengekomen van <strong>${esc(label)}</strong>, dus er is geen ${k.rapport} te maken.</p>`,
         `<p>Meestal betekent dit dat de sensor geen stroom of geen wifi had.</p>`,
         `<ul><li>Brandt er een lampje op de sensor? Zo niet: zit de stekker erin?</li><li>Knippert het rode lampje 2× achter elkaar? Dan heeft hij geen wifi. Houd de knop 10 seconden ingedrukt om het wifi opnieuw in te stellen.</li></ul>`,
-        `<p>Zodra de sensor weer meet, krijg je volgende week gewoon een rapport.</p>`,
+        `<p>Zodra de sensor weer meet, krijg je ${k.volgende} gewoon een rapport.</p>`,
       ].join(''), links, 'nodata'),
       stats: emptyStats, tips: [],
     }
@@ -185,19 +194,19 @@ export function buildWeeklyDeviceReport(
 
   // ── Meetdekking ──────────────────────────────────────────────
   const covLines: string[] = []
-  covLines.push(`${rows.length} metingen, ongeveer ${Math.round(hoursCovered)} van de 168 uur${coverage ? `, op ${coverage.days} ${coverage.days === 1 ? 'dag' : 'dagen'}` : ''}.`)
+  covLines.push(`${rows.length} metingen, ongeveer ${Math.round(hoursCovered)} van de ${periodHours} uur${coverage && periodHours > 24 ? `, op ${coverage.days} ${coverage.days === 1 ? 'dag' : 'dagen'}` : ''}.`)
   for (const g of gaps.slice(0, 3)) covLines.push(`Geen metingen van ${fmtDayTime(new Date(g.startMs))} tot ${fmtDayTime(new Date(g.endMs))} (${g.hours >= 24 ? `${(g.hours / 24).toFixed(1)} dagen` : `${Math.round(g.hours)} uur`}).`)
   if (gaps.length > 3) covLines.push(`… en nog ${gaps.length - 3} kortere onderbrekingen.`)
-  const lowCoverage = hoursCovered < 84
-  if (lowCoverage) covLines.push('Minder dan de helft van de week gemeten: de cijfers hierboven zeggen alleen iets over de uren mét data.')
+  const lowCoverage = hoursCovered < periodHours / 2
+  if (lowCoverage) covLines.push(`Minder dan de helft van de ${period.kind === 'dag' ? 'dag' : period.kind === 'maand' ? 'maand' : 'week'} gemeten: de cijfers hierboven zeggen alleen iets over de uren mét data.`)
 
   // ── Tekstversie ──────────────────────────────────────────────
   const text = [
     hello, '',
-    `Dit is je weekrapport voor ${label}, ${periodTxt}: ${headline}.`,
+    `Dit is je ${k.rapport} voor ${label}, ${periodTxt}: ${headline}.`,
     '', 'HOE GING HET',
     ...howLines.map((l) => `• ${l}`),
-    '', 'TIPS VOOR KOMENDE WEEK',
+    '', k.tips.toUpperCase(),
     ...shown.flatMap((t) => [`${sevMark(t.severity)} ${t.title}`, `  ${t.text}`, '']),
     'MEETDEKKING',
     ...covLines.map((l) => `• ${l}`),
@@ -210,7 +219,7 @@ export function buildWeeklyDeviceReport(
   const kpi = (v: string, k: string) => `<div style="display:inline-block;vertical-align:top;box-sizing:border-box;width:23%;min-width:120px;margin:0 1% 8px;padding:12px 8px;text-align:center;font-size:15px;border:1px solid #E2E8F0;border-radius:8px;background:#F8FAFC"><div style="font-size:22px;font-weight:700;color:#0F172A;white-space:nowrap">${v}</div><div style="font-size:12px;color:#64748B;margin-top:2px">${k}</div></div>`
   const body = [
     `<p style="margin:0 0 12px">${esc(hello)}</p>`,
-    `<p style="margin:0 0 18px">Dit is je weekrapport voor <strong>${esc(label)}</strong>: <strong>${esc(headline)}</strong>.</p>`,
+    `<p style="margin:0 0 18px">Dit is je ${k.rapport} voor <strong>${esc(label)}</strong>: <strong>${esc(headline)}</strong>.</p>`,
     `<div style="margin:0 -1% 12px;font-size:0">`,
     kpi(`${stats.avgCo2} <span style="font-size:12px;font-weight:400">ppm</span>`, 'CO₂ gemiddeld'),
     kpi(`${stats.maxCo2} <span style="font-size:12px;font-weight:400">ppm</span>`, 'CO₂ piek'),
@@ -218,14 +227,14 @@ export function buildWeeklyDeviceReport(
     kpi(`${stats.avgTemp}<span style="font-size:12px;font-weight:400"> °C</span>`, 'temperatuur'),
     `</div>`,
     section('Hoe ging het', `<ul style="margin:0;padding-left:18px">${howLines.map((l) => `<li style="margin:0 0 6px">${esc(l)}</li>`).join('')}</ul>`),
-    section('Tips voor komende week', shown.map((t) => `<div style="margin:0 0 14px;padding:12px 14px;border-left:4px solid ${sevColor(t.severity)};background:#F8FAFC;border-radius:0 8px 8px 0"><div style="font-weight:600;margin:0 0 4px">${esc(t.title)}</div><div style="color:#334155">${esc(t.text)}</div></div>`).join('')),
+    section(k.tips, shown.map((t) => `<div style="margin:0 0 14px;padding:12px 14px;border-left:4px solid ${sevColor(t.severity)};background:#F8FAFC;border-radius:0 8px 8px 0"><div style="font-weight:600;margin:0 0 4px">${esc(t.title)}</div><div style="color:#334155">${esc(t.text)}</div></div>`).join('')),
     section('Meetdekking', `<ul style="margin:0;padding-left:18px;color:${lowCoverage ? '#B45309' : '#475569'}">${covLines.map((l) => `<li style="margin:0 0 4px">${esc(l)}</li>`).join('')}</ul>`),
   ].join('')
 
   return {
     hasData: true, verdict,
-    subject: `Weekrapport ${label}: ${headline} · Woongezond`,
-    text, html: wrapHtml(`Weekrapport · ${esc(label)}`, periodTxt, body, links, verdict),
+    subject: `${cap(k.rapport)} ${label}: ${headline} · Woongezond`,
+    text, html: wrapHtml(`${cap(k.rapport)} · ${esc(label)}`, periodTxt, body, links, verdict),
     stats, tips: shown,
   }
 }
@@ -262,7 +271,7 @@ function section(title: string, inner: string): string {
 function footerText(links: ReportLinks): string {
   const l: string[] = []
   if (links.report) l.push(`Volledig rapport met grafieken: ${links.report}`)
-  l.push('Je krijgt deze mail omdat je bij het instellen van de sensor om een weekrapport hebt gevraagd. Alleen jij ontvangt de metingen van jouw sensor; de corporatie ziet uitsluitend cijfers zonder naam of adres.')
+  l.push('Je krijgt deze mail omdat je bij het instellen van de sensor om een rapport per e-mail hebt gevraagd. Alleen jij ontvangt de metingen van jouw sensor; de corporatie ziet uitsluitend cijfers zonder naam of adres.')
   if (links.unsubscribe) l.push(`Geen rapport meer ontvangen: ${links.unsubscribe}`)
   l.push('— Woongezond')
   return l.join('\n')
@@ -271,7 +280,7 @@ function footerText(links: ReportLinks): string {
 function wrapHtml(title: string, periodTxt: string, body: string, links: ReportLinks, verdict: WeeklyDeviceReport['verdict']): string {
   const foot = [
     links.report ? `<p style="margin:0 0 10px"><a href="${esc(links.report)}" style="display:inline-block;padding:10px 16px;background:#0B7A5C;color:#fff;text-decoration:none;border-radius:8px;font-weight:600">Bekijk het volledige rapport</a></p>` : '',
-    `<p style="margin:0 0 6px">Je krijgt deze mail omdat je bij het instellen van de sensor om een weekrapport hebt gevraagd. Alleen jij ontvangt de metingen van jouw sensor; de corporatie ziet uitsluitend cijfers zonder naam of adres.</p>`,
+    `<p style="margin:0 0 6px">Je krijgt deze mail omdat je bij het instellen van de sensor om een rapport per e-mail hebt gevraagd. Alleen jij ontvangt de metingen van jouw sensor; de corporatie ziet uitsluitend cijfers zonder naam of adres.</p>`,
     links.unsubscribe ? `<p style="margin:0"><a href="${esc(links.unsubscribe)}" style="color:#64748B">Geen rapport meer ontvangen</a></p>` : '',
   ].join('')
   return `<!doctype html><html lang="nl"><body style="margin:0;padding:0;background:#EEF2F5"><div style="max-width:600px;margin:0 auto;padding:24px 12px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.5;color:#0F172A">

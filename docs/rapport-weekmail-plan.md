@@ -83,6 +83,15 @@ duiding (elk cijfer krijgt een woord: "vaak te benauwd", "prima").
    "mechanische ventilatie" bij iemand met alleen een raam); buitenweer uit `city_weather`;
    maandrapport als PDF.
 
+### Frequentie per bewoner (2026-09-06, avond)
+`device_contacts.report_frequency` = `daily` | `weekly` (standaard) | `monthly`, instelbaar per
+sensor in de cockpit (dropdown "Rapport: elke dag / elke week / elke maand"). De timer draait
+nu **elke ochtend 08:00 Amsterdam**; `lib/report/period.ts` bepaalt per contact of het vandaag
+aan de beurt is (dagelijks altijd, wekelijks op maandag, maandelijks op de 1e) en welke
+afgesloten periode erbij hoort (gisteren / vorige week / vorige maand). De mail past zijn
+bewoording aan (dag-, week-, maandrapport; meetdekking t.o.v. de uren in de periode).
+`report_sends` blijft de idempotentie-sleutel (device, periodestart). Migratie 20260906140000.
+
 ### Uitrollen (VPS)
 `.env.local` op de VPS aanvullen met `RESEND_API_KEY`, `ALERT_FROM_ADDR`, `PUBLIC_BASE_URL`,
 `SUPPORT_*`, `RESEND_WEBHOOK_SECRET` (waarden: lokaal `.env.local`), branch uitrollen,

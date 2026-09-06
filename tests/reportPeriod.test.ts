@@ -54,3 +54,34 @@ describe('report token', () => {
     expect(verifyReportToken(undefined)).toBeNull()
   })
 })
+
+import { lastFullDay, lastFullMonth, periodFor, rollingFor, isDue } from '@/lib/report/period'
+
+describe('frequency periods', () => {
+  const tue = new Date('2026-09-08T06:00:00Z')   // dinsdag 8 sep 08:00 CEST
+  const mon = new Date('2026-09-07T06:00:00Z')   // maandag
+  const first = new Date('2026-10-01T06:00:00Z') // 1 oktober
+  it('daily = yesterday, due every day', () => {
+    const p = lastFullDay(tue)
+    expect(p.startKey).toBe('2026-09-07'); expect(p.endKey).toBe('2026-09-07')
+    expect(p.start.toISOString()).toBe('2026-09-06T22:00:00.000Z')
+    expect(isDue('daily', tue)).toBe(true)
+  })
+  it('weekly is due on Monday only', () => {
+    expect(isDue('weekly', mon)).toBe(true)
+    expect(isDue('weekly', tue)).toBe(false)
+    expect(periodFor('weekly', mon).startKey).toBe('2026-08-31')
+  })
+  it('monthly = previous calendar month, due on the 1st', () => {
+    const p = lastFullMonth(first)
+    expect(p.startKey).toBe('2026-09-01'); expect(p.endKey).toBe('2026-09-30')
+    expect(isDue('monthly', first)).toBe(true)
+    expect(isDue('monthly', tue)).toBe(false)
+    expect(lastFullMonth(new Date('2026-01-05T12:00:00Z')).startKey).toBe('2025-12-01')
+  })
+  it('rolling windows are 1 / 7 / 30 days', () => {
+    expect(rollingFor('daily', tue).startKey).toBe('2026-09-07')
+    expect(rollingFor('weekly', tue).startKey).toBe('2026-09-01')
+    expect(rollingFor('monthly', tue).startKey).toBe('2026-08-09')
+  })
+})

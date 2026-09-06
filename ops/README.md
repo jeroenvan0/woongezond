@@ -7,7 +7,7 @@ The app runs on a rented VPS under systemd, not Vercel. `woongezond-react.servic
 |---|---|---|
 | `woongezond-weather.{service,timer}` | hourly, `*:05` | Fetches OpenWeather per city that has an active device → `city_weather` |
 | `woongezond-notifications.{service,timer}` | every 15 min, `*:02,17,32,47` | Threshold + device-liveness alert sweep across all users |
-| `woongezond-digest.{service,timer}` | weekly, `Mon 08:00` | Weekly per-sensor report email to every consenting contact (`/api/report/weekly`, see docs/rapport-weekmail-plan.md) |
+| `woongezond-digest.{service,timer}` | daily, `08:00 Europe/Amsterdam` | Per-sensor report email; each contact's `report_frequency` (daily / weekly on Monday / monthly on the 1st) decides who is due (`/api/report/weekly`, see docs/rapport-weekmail-plan.md) |
 
 Both POST a localhost route guarded by the `x-cron-secret` header, read from
 `CRON_SECRET` in `/var/www/woongezond-dev-react/.env.local`.

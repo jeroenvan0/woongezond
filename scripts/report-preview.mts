@@ -33,7 +33,7 @@ for (let from = 0; ; from += 1000) {
 
 const contact = Array.isArray((dev as any).device_contacts) ? (dev as any).device_contacts[0] : (dev as any).device_contacts
 const profile = (dev as any).house_profile ?? null
-const report = buildWeeklyDeviceReport(rows, { number: dev.device_number, room: profile?.room ?? dev.location, profile }, { name: contact?.name ?? null }, { start, end })
+const report = buildWeeklyDeviceReport(rows, { number: dev.device_number, room: profile?.room ?? dev.location, profile }, { name: contact?.name ?? null }, { start, end, kind: days <= 1 ? 'dag' : days <= 7 ? 'week' : 'maand' })
 
 mkdirSync(out, { recursive: true })
 const base = join(out, `weekrapport-sensor-${String(number).padStart(2, '0')}`)

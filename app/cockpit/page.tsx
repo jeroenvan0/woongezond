@@ -16,7 +16,9 @@ import { Building2, ShieldAlert, Wifi, WifiOff, CircleDashed, Mail, Send, Check,
 // Leest /api/cockpit: sensoren van de org mét contact (laag B), laatste rapport en de
 // klantenservice-inbox. Viewers krijgen 403 en zien alleen /vloot (zonder namen).
 
-interface Contact { name: string | null; email: string | null; address_note: string | null; report_consent: boolean }
+type Frequency = 'daily' | 'weekly' | 'monthly'
+const FREQ_LABEL: Record<Frequency, string> = { daily: 'elke dag', weekly: 'elke week', monthly: 'elke maand' }
+interface Contact { name: string | null; email: string | null; address_note: string | null; report_consent: boolean; report_frequency: Frequency }
 type Verdict = 'ok' | 'warning' | 'critical' | 'nodata'
 interface LastReport { sent_at: string; period_start: string; period_end: string; verdict: Verdict; status: string; trigger: string }
 interface Device {
@@ -260,8 +262,24 @@ function DeviceRow({ device: d, onChanged }: { device: Device; onChanged: () => 
   const [asking, setAsking] = useState(false)
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null)
+  const [freqBusy, setFreqBusy] = useState(false)
   const p = presence(d)
   const canSend = !!d.contact?.report_consent
+
+  async function setFrequency(frequency: Frequency) {
+    setFreqBusy(true)
+    setResult(null)
+    try {
+      const { data } = await post({ action: 'set_frequency', device_id: d.id, frequency })
+      if (data?.ok) setResult({ ok: true, text: `Rapport nu ${FREQ_LABEL[frequency]}.` })
+      else setResult({ ok: false, text: 'Frequentie opslaan mislukt.' })
+    } catch {
+      setResult({ ok: false, text: 'Mislukt: geen verbinding.' })
+    } finally {
+      setFreqBusy(false)
+      onChanged()
+    }
+  }
   const rep = d.last_report
 
   let reportText: string
@@ -333,6 +351,18 @@ function DeviceRow({ device: d, onChanged }: { device: Device; onChanged: () => 
         </div>
         {canSend && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--fs-xs)', color: 'var(--muted)' }}>
+              Rapport
+              <select
+                aria-label="Hoe vaak een rapport"
+                value={d.contact?.report_frequency ?? 'weekly'}
+                disabled={freqBusy || busy}
+                onChange={(e) => setFrequency(e.target.value as Frequency)}
+                style={{ padding: '5px 8px', fontSize: 'var(--fs-xs)', border: '1px solid var(--border)', borderRadius: 'var(--r-sm)', background: 'var(--surface)', color: 'var(--text)' }}
+              >
+                {(Object.keys(FREQ_LABEL) as Frequency[]).map((f) => <option key={f} value={f}>{FREQ_LABEL[f]}</option>)}
+              </select>
+            </label>
             {asking ? (
               <>
                 <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--muted)' }}>Zeker?</span>
