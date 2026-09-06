@@ -41,6 +41,8 @@ Eén tik per vraag. Controleer je antwoorden, vink de voorwaarden aan en druk op
 - **Stroom eraf geweest?** Niets doen. De sensor onthoudt alles en verbindt vanzelf opnieuw.
 - **Nieuw WiFi-wachtwoord of nieuwe router?** Scan de QR en kies "WiFi wijzigen", of houd het
   knopje op de sensor 10 seconden ingedrukt en doe stap 3 opnieuw. Al je metingen blijven bij elkaar.
+- **Helemaal opnieuw beginnen?** Scan de QR en kies "Sensor resetten". Stekker er even uit en in,
+  bevestigen; de sensor vergeet zijn WiFi en je begint bij stap 2.
 - **Sensor gaat naar iemand anders?** De nieuwe bewoner scant de QR en kiest "Overdragen aan een
   nieuwe bewoner". Jouw contactgegevens worden dan losgekoppeld.
 - **Verkeerde kamer ingevuld?** Scan de QR opnieuw en kies "opnieuw registreren". De sensor
