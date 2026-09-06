@@ -123,6 +123,7 @@ op de sticker en in de database, **niet** in de firmware.
 |---|---|---|
 | **WiFi wijzigen** (zelfde bewoner) | knop "WiFi wijzigen" → knopje 10 s → setup-netwerk → klaar | token, nummer, profiel, contact en de hele meetreeks blijven; alleen WiFi-creds vervangen |
 | **Overdragen** (nieuwe bewoner) | knop "Overdragen aan een nieuwe bewoner" → stekker-bewijs → vragen → voorwaarden → contact | `house_profile` + `profile_completed_at` nieuw, `device_contacts` van de vorige bewoner **gewist**; metingen blijven één reeks per device, het rapport telt vanaf de nieuwe `profile_completed_at` |
+| **Sensor resetten** | knop "Sensor resetten" → stekker-bewijs → bevestigen | registratie, voorwaarden en contact gewist; server zet `pending_command='reset_wifi'`, de sensor krijgt dat in het antwoord op zijn volgende meting en opent het setup-netwerk. Token + metingen blijven. Opdracht vervalt na 24 u. |
 | **Stroomstoring** | niets | firmware onthoudt WiFi + token in flash; wist nooit uit zichzelf; wacht ~2 min op de router voor het setup-netwerk opengaat |
 
 ### Valkuilen die we vooraf afdekken

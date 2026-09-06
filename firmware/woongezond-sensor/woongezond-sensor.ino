@@ -11,8 +11,10 @@
 //     verbindt na een herstart gewoon opnieuw en wist NOOIT uit zichzelf iets.
 //   • WiFi wijzigen (nieuw wachtwoord/router): BOOT-knop 10 s ingedrukt → alleen de WiFi-
 //     gegevens weg, token en nummer blijven, alle data blijft één reeks. Setup-netwerk opent.
-//   • Overdragen aan een nieuwe bewoner gebeurt op de website (QR opnieuw scannen), niet in
-//     de firmware: de sensor zelf hoeft daarvoor niets te vergeten.
+//   • Overdragen aan een nieuwe bewoner gebeurt op de website (QR opnieuw scannen).
+//   • "Sensor resetten" op de website: de server geeft in het antwoord op de volgende meting
+//     {"cmd":"reset_wifi"} mee → sensor wist alleen WiFi en opent het setup-netwerk.
+//     Het token wordt nooit op afstand gewist.
 //   • Rode LED: 2× knipperen = geen WiFi / setup-modus, 3× = server weigert token (401),
 //     1 korte flits = meting verstuurd.
 //
@@ -161,7 +163,17 @@ int postReading(uint16_t co2, float temp, float rh) {
     code = http.POST(body);
     String resp = code > 0 ? http.getString() : String();
     http.end();
-    if (code > 0) { Serial.printf("[http] %d %s\n", code, resp.substring(0, 120).c_str()); return code; }
+    if (code > 0) {
+      Serial.printf("[http] %d %s\n", code, resp.substring(0, 120).c_str());
+      // Eenmalige opdracht van de server (uit "Sensor resetten" op de website).
+      if (code == 200 && resp.indexOf("\"cmd\":\"reset_wifi\"") >= 0) {
+        Serial.println("[cmd] reset_wifi ontvangen → wifi wissen, herstart naar setup-netwerk");
+        blink(5, 60, 60); wm.resetSettings(); delay(300); ESP.restart();
+      } else if (code == 200 && resp.indexOf("\"cmd\":\"restart\"") >= 0) {
+        Serial.println("[cmd] restart ontvangen"); delay(300); ESP.restart();
+      }
+      return code;
+    }
     Serial.printf("[http] verbindingsfout (%d), poging %d/%d\n", code, attempt, HTTP_RETRIES);
     delay(1500);
   }

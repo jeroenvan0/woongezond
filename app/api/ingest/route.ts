@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
   // token marks the mock device as seen and stores nothing.
   if (pilotMockEnabled()) {
     const mock = pilotStore().mockIngest(token, { rssi, fw, boot_count: bootCount, uptime_s: uptimeS })
-    if (mock) return NextResponse.json({ ok: true, device_id: mock.id, claimed: false, mock: true })
+    if (mock) { const cmd = await pilotStore().takeCommand(mock.id); return NextResponse.json({ ok: true, device_id: mock.id, claimed: false, mock: true, ...(cmd ? { cmd } : {}) }) }
   }
 
   let supabase
@@ -94,5 +94,10 @@ export async function POST(req: NextRequest) {
   const { error: touchErr } = await supabase.from('devices').update(touch).eq('id', device.id)
   if (touchErr && !/column|schema cache/i.test(touchErr.message)) log.warn('ingest', 'last_seen update failed', { device_id: device.id, detail: touchErr.message })
 
-  return NextResponse.json({ ok: true, device_id: device.id, claimed: device.user_id != null })
+  // One-shot command for the sensor (e.g. 'reset_wifi' from "Sensor resetten" in /start).
+  // Delivered here because the sensor only ever talks to us, never the other way round.
+  let cmd: string | null = null
+  try { cmd = await pilotStore().takeCommand(device.id) } catch { cmd = null }
+
+  return NextResponse.json({ ok: true, device_id: device.id, claimed: device.user_id != null, ...(cmd ? { cmd } : {}) })
 }

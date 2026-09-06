@@ -27,6 +27,10 @@ export interface PilotStore {
   // device); reports use profile_completed_at as the start of the current placement.
   saveProfile(deviceId: string, profile: HouseProfile, termsVersion: string, handover?: boolean): Promise<'ok' | 'error'>
   saveContact(deviceId: string, contact: Contact): Promise<'ok' | 'error'>
+  // Clear registration + contact and queue 'reset_wifi' for the device (see /api/devices/reset).
+  resetDevice(deviceId: string): Promise<'ok' | 'error'>
+  // Pop the pending one-shot command for a device (called by /api/ingest); null if none.
+  takeCommand(deviceId: string): Promise<string | null>
   // Mock-only ingest: returns the device if the token belongs to a mock device, else null
   // (the real ingest path lives in app/api/ingest and never calls this).
   mockIngest(token: string, t: Telemetry): StartDevice | null
@@ -52,6 +56,8 @@ const mockStore: PilotStore = {
   async findById(id) { for (const r of mockRows().values()) if (r.id === id) return pub(r); return null },
   async saveProfile(id, profile) { for (const r of mockRows().values()) if (r.id === id) { r.profile = profile; r.registered_at = new Date().toISOString(); return 'ok' } return 'error' },
   async saveContact(id) { for (const r of mockRows().values()) if (r.id === id) return 'ok'; return 'error' },
+  async resetDevice(id) { for (const r of mockRows().values()) if (r.id === id) { r.profile = null; r.registered_at = null; (r as any).cmd = 'reset_wifi'; return 'ok' } return 'error' },
+  async takeCommand(id) { for (const r of mockRows().values()) if (r.id === id) { const c = (r as any).cmd ?? null; (r as any).cmd = null; return c } return null },
   mockIngest(token, t) {
     for (const r of mockRows().values()) if (r.token === token) {
       r.last_seen_at = new Date().toISOString()
@@ -105,6 +111,29 @@ const supabaseStore: PilotStore = {
       { onConflict: 'device_id' },
     )
     return error ? 'error' : 'ok'
+  },
+  async resetDevice(id) {
+    const s = createServiceClient()
+    const now = new Date().toISOString()
+    const { error: cErr } = await s.from('device_contacts').delete().eq('device_id', id)
+    if (cErr && !/relation|schema cache/i.test(cErr.message)) return 'error'
+    const { error } = await s.from('devices').update({
+      house_profile: null, profile_completed_at: null, terms_accepted_at: null, terms_version: null,
+      location: null, house_type: null, build_year: null, placement_note: null,
+      pending_command: 'reset_wifi', command_issued_at: now, updated_at: now,
+    }).eq('id', id)
+    return error ? 'error' : 'ok'
+  },
+  async takeCommand(id) {
+    const s = createServiceClient()
+    const { data } = await s.from('devices').select('pending_command, command_issued_at').eq('id', id).maybeSingle()
+    const cmd = data?.pending_command ?? null
+    if (!cmd) return null
+    // Commands expire: a reset queued a day ago for a sensor that only now comes back
+    // online would surprise whoever plugged it in.
+    const fresh = data?.command_issued_at && Date.now() - new Date(data.command_issued_at).getTime() < 24 * 3600 * 1000
+    await s.from('devices').update({ pending_command: null, command_issued_at: null }).eq('id', id)
+    return fresh ? cmd : null
   },
   mockIngest() { return null },
 }

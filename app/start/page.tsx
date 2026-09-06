@@ -5,7 +5,7 @@ import Logo from '@/components/Logo'
 import { withBase } from '@/lib/basePath'
 import { QUESTIONS, CLAIM_CODE_RE, normalizeCode, type HouseProfile } from '@/lib/houseProfile'
 import { TERMS_VERSION } from '@/lib/pilot/terms'
-import { Plug, Wifi, CheckCircle2, Home, ArrowRight, ArrowLeft, Loader2, PartyPopper, Check, RotateCcw, ShieldCheck, Pencil, Mail, KeyRound, UserRoundPlus } from 'lucide-react'
+import { Plug, Wifi, CheckCircle2, Home, ArrowRight, ArrowLeft, Loader2, PartyPopper, Check, RotateCcw, ShieldCheck, Pencil, Mail, KeyRound, UserRoundPlus, Eraser } from 'lucide-react'
 
 // Resident self-service: the QR on the sensor opens /start?code=DEVICE-XXXXXX.
 // No account (docs/pilot-cockpit-plan.md §2b):
@@ -44,6 +44,7 @@ function StartInner() {
   const [saved, setSaved] = useState(false)
   const [overwrite, setOverwrite] = useState(false)
   const [wifiOnly, setWifiOnly] = useState(false)
+  const [resetMode, setResetMode] = useState<'ask' | 'done' | null>(null)
   const [locked, setLocked] = useState(false)
   const [contact, setContact] = useState({ name: '', email: '', address_note: '' })
   const [contactSaved, setContactSaved] = useState<boolean | null>(null)
@@ -73,10 +74,10 @@ function StartInner() {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
     if (step === 1 && wifiOnly && !wifiEnteredAt.current) { wifiEnteredAt.current = Date.now(); wifiDoneRef.current = false }
     if (step !== 1) wifiEnteredAt.current = 0
-    const needPoll = (step === 1 && (!(status?.online) || (wifiOnly && !wifiDoneRef.current))) || (step === 3 && locked && !(status?.recent_boot))
+    const needPoll = (step === 1 && (!(status?.online) || (wifiOnly && !wifiDoneRef.current))) || (step === 3 && locked && !(status?.recent_boot)) || (resetMode === 'ask' && !(status?.recent_boot))
     if (code && needPoll) pollRef.current = setInterval(() => fetchStatus(code), 5000)
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
-  }, [step, code, status?.online, status?.recent_boot, locked, wifiOnly, fetchStatus])
+  }, [step, code, status?.online, status?.recent_boot, locked, wifiOnly, resetMode, fetchStatus])
 
   async function submitProfile() {
     if (!terms) { setErr(ERR.terms_required); return }
@@ -101,10 +102,21 @@ function StartInner() {
     } catch { setErr(ERR.error) } finally { setSaving(false) }
   }
 
+  async function submitReset() {
+    setSaving(true); setErr(null)
+    try {
+      const r = await fetch(withBase('/api/devices/reset'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session: sessionRef.current }) })
+      const d = await r.json()
+      if (r.status === 423) { setErr('De sensor is nog niet opnieuw gestart. Haal de stekker eruit en steek hem er weer in.'); await fetchStatus(code); return }
+      if (!r.ok) { setErr(ERR[d.error] ?? ERR.error); return }
+      setResetMode('done')
+    } catch { setErr(ERR.error) } finally { setSaving(false) }
+  }
+
   const question = QUESTIONS[q]
   const allAnswered = QUESTIONS.every((x) => answers[x.key])
   const nr = status?.device_number ? String(status.device_number).padStart(2, '0') : null
-  const registeredChoice = step === 0 && !!status?.registered_at && !overwrite
+  const registeredChoice = step === 0 && !!status?.registered_at && !overwrite && !resetMode
 
   return (
     <div style={{ minHeight: '100dvh', background: 'var(--bg)' }}>
@@ -145,10 +157,34 @@ function StartInner() {
             <Panel icon={<RotateCcw />} title="Deze sensor is al in gebruik" lead={`Geregistreerd op ${fmtDate(status.registered_at!)}. Wat wil je doen?`}>
               <Choice icon={<KeyRound size={20} />} title="WiFi wijzigen" text="Nieuw wachtwoord of nieuwe router. Zelfde bewoner, alle metingen blijven bij elkaar." onClick={() => { setWifiOnly(true); setStep(1) }} />
               <Choice icon={<UserRoundPlus size={20} />} title="Overdragen aan een nieuwe bewoner" text="De sensor gaat naar een ander huis of een andere kamer. De vragen worden opnieuw gesteld en de gegevens van de vorige bewoner worden losgekoppeld." onClick={() => { setOverwrite(true); setStep(1) }} />
-              <Note icon={<ShieldCheck size={16} />}>Overdragen kan alleen als je de sensor in handen hebt: we vragen je straks de stekker er even uit en weer in te doen.</Note>
+              <Choice icon={<Eraser size={20} />} title="Sensor resetten" text="Registratie en contactgegevens wissen én de sensor zijn WiFi laten vergeten. Hij begint daarna helemaal opnieuw met het setup-netwerk. De metingen blijven bewaard." onClick={() => setResetMode('ask')} />
+              <Note icon={<ShieldCheck size={16} />}>Overdragen en resetten kan alleen als je de sensor in handen hebt: we vragen je de stekker er even uit en weer in te doen.</Note>
             </Panel>
           )}
-          {step === 0 && status && !registeredChoice && (
+          {step === 0 && status && resetMode === 'ask' && (
+            <Panel icon={<Eraser />} title="Sensor resetten" lead="Dit wist de registratie en de contactgegevens, en de sensor vergeet zijn WiFi. De metingen en het sensornummer blijven.">
+              <Steps items={[
+                <>Haal de stekker van de sensor eruit en steek hem er weer in. Wacht tot het lampje brandt.</>,
+                <>Zodra we de herstart zien, verschijnt hieronder de knop.</>,
+              ]} />
+              {status.recent_boot ? (
+                <Primary onClick={submitReset} disabled={saving} icon={<Eraser size={17} />}>{saving ? 'Bezig…' : 'Ja, reset deze sensor'}</Primary>
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '18px 0 4px', padding: '11px 13px', borderRadius: 'var(--r-md)', background: 'var(--brand-fill)', color: 'var(--brand)', fontSize: 'var(--fs-md)', fontWeight: 600 }}>
+                  <Loader2 size={16} style={{ animation: 'wg-spin 1.2s linear infinite', flex: '0 0 auto' }} /> Wachten op de herstart van de sensor…
+                </div>
+              )}
+              <Ghost onClick={() => setResetMode(null)} icon={<ArrowLeft size={15} />}>Annuleren</Ghost>
+              <Note>Staat de sensor ergens zonder stroom of WiFi? Houd dan het knopje op de sensor 10 seconden ingedrukt: hij vergeet dan zelf zijn WiFi. Scan daarna de QR opnieuw.</Note>
+            </Panel>
+          )}
+          {step === 0 && status && resetMode === 'done' && (
+            <Panel icon={<CheckCircle2 />} tone="ok" title="Sensor gereset" lead={`De registratie is gewist. Sensor ${nr} vergeet binnen een minuut zijn WiFi en opent dan het setup-netwerk ${status.ap_name}.`}>
+              <P>Wil je hem meteen opnieuw instellen? Scan de QR nog een keer, of druk hieronder.</P>
+              <Primary onClick={() => { setResetMode(null); setOverwrite(false); setWifiOnly(false); sessionRef.current = null; setStatus(null); fetchStatus(code) }} icon={<ArrowRight size={17} />}>Opnieuw beginnen</Primary>
+            </Panel>
+          )}
+          {step === 0 && status && !registeredChoice && !resetMode && (
             <Panel icon={<Plug />} title={`Welkom! Dit is sensor ${nr}.`} lead="In een paar minuten meet deze sensor de lucht in je huis. Je hebt geen account nodig.">
               <Steps items={['Sensor in het stopcontact', 'Sensor op je WiFi zetten', 'Tien korte vragen over je huis']} />
               <Primary onClick={() => setStep(1)} icon={<ArrowRight size={17} />}>Beginnen</Primary>
