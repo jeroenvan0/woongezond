@@ -14,6 +14,7 @@ import {
   FlaskConical,
   FileText,
   Building2,
+  Gauge,
   Share2,
   Moon,
   Sun,
@@ -40,6 +41,8 @@ const NAV = [
 // Fleet (C1) is only shown to corporation members. Appended to NAV once the
 // membership check resolves, so residents never see it.
 const FLEET_NAV = { href: '/vloot', label: 'Vloot', Icon: Building2 }
+// Cockpit (pilot, §2c) shows resident contact details — org ADMINS only.
+const COCKPIT_NAV = { href: '/cockpit', label: 'Cockpit', Icon: Gauge }
 
 interface Props {
   title?: string
@@ -55,20 +58,24 @@ export default function AppShell({ title, actions, children }: Props) {
   const [collapsed, setCollapsed] = useState(false)
   const [email, setEmail] = useState('')
   const [isOrgMember, setIsOrgMember] = useState(false)
+  const [isOrgAdmin, setIsOrgAdmin] = useState(false)
 
   useEffect(() => {
     const stored = localStorage.getItem('theme')
     setTheme(stored === 'light' || stored === 'dark' ? stored : 'system')
     setCollapsed(localStorage.getItem('wz-sidebar-collapsed') === '1')
     supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? ''))
-    // Show the Vloot nav only for corporation members. A single count query; if the
-    // org tables aren't deployed yet it errors and we simply keep the item hidden.
-    supabase.from('org_members').select('id', { count: 'exact', head: true }).then(({ count }) => {
-      if ((count ?? 0) > 0) setIsOrgMember(true)
+    // Show the Vloot nav only for corporation members and the Cockpit only for org
+    // admins. One query (RLS returns only the caller's own memberships); if the org
+    // tables aren't deployed yet it errors and both items simply stay hidden.
+    supabase.from('org_members').select('role').then(({ data }) => {
+      const rows = data ?? []
+      if (rows.length > 0) setIsOrgMember(true)
+      if (rows.some((r: { role: string | null }) => r.role === 'admin')) setIsOrgAdmin(true)
     })
   }, [supabase])
 
-  const nav = isOrgMember ? [...NAV, FLEET_NAV] : NAV
+  const nav = [...NAV, ...(isOrgMember ? [FLEET_NAV] : []), ...(isOrgAdmin ? [COCKPIT_NAV] : [])]
 
   // While on "system", follow OS changes live (D8 — the toggle is no longer a
   // one-way door out of system).

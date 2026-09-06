@@ -54,6 +54,8 @@ tests/          vitest suite over the calculation layer
 | | |
 |---|---|
 | [docs/STATUS.md](docs/STATUS.md) | **Start here when resuming** — what's done, blocked, and on whom |
+| [docs/rapport-weekmail-plan.md](docs/rapport-weekmail-plan.md) | Weekly per-sensor report email: design, steps, `npm run report:preview` |
+| [docs/support-assistant.md](docs/support-assistant.md) | E-mail support assistant: Resend Receiving → `/api/inbox` → OpenRouter, Strato MX steps |
 | [ROADMAP.md](ROADMAP.md) | Milestones to a 10-device pilot |
 | [docs/known-issues.md](docs/known-issues.md) | Diagnosed-but-unfixed defects, with root causes |
 | [docs/firmware-provisioning.md](docs/firmware-provisioning.md) | One image per fleet, per-device identity, resident Wi-Fi setup |
@@ -64,7 +66,10 @@ tests/          vitest suite over the calculation layer
 
 Required: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`,
 `SUPABASE_SERVICE_ROLE_KEY`, `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENWEATHER_API_KEY`.
-Optional: `RESEND_API_KEY`, `ALERT_FROM_ADDR` (email alerts — no-op when unset);
+Optional: `RESEND_API_KEY`, `ALERT_FROM_ADDR` (email alerts + weekly reports — no-op when unset);
+`PUBLIC_BASE_URL` (absolute base for links in e-mails, e.g. `https://woongezond.com/admin`);
+`SUPPORT_MODE`, `SUPPORT_ADMIN_ADDR`, `SUPPORT_FROM_ADDR`, `SUPPORT_REPLY_TO`, `RESEND_WEBHOOK_SECRET` (inbound
+support assistant on `/api/inbox` — see [docs/support-assistant.md](docs/support-assistant.md));
 `CRON_SECRET` (guards the weather-ingest and alert-sweep routes, and unlocks the
 per-device detail in `/api/health` — the repo's `.env.local` leaves it blank, the VPS
 sets it);

@@ -218,7 +218,7 @@ Bewonershandleiding: `docs/handleiding-bewoner.{md,html}` (printkaart voor in he
       huisprofiel bewerken, token + QR + koppelcode (bestaat al in `/vloot/koppelen`, hierheen
       verplaatsen), logboek (`device_events`) met vrije notitie, CSV-export van de ruwe reeks.
 - [x] `/start?code=…` bewoner-wizard + `/api/devices/profile` + `/api/devices/status` + `/api/devices/contact` (§2b, §2c) — live op dev.woongezond.com.
-- [ ] Rapport per device + maandmail met ondertekende link (§2c).
+- [x] Rapport per device + weekmail met ondertekende link (§2c) — zie docs/rapport-weekmail-plan.md; cockpit `/cockpit` met contact/rapportstatus/inbox (2026-09-06).
 - [ ] `/cockpit/vergelijk`: alle 8 CO₂-lijnen in één grafiek (verschillen tussen huizen zien).
 - [ ] `/api/health`-detail gebruikt `last_seen_at` (goedkoop) i.p.v. 8 max()-queries; de
       notifications-timer meldt "sensor N is 2 uur stil" aan Jeroen (die timer staat nog niet
