@@ -2,9 +2,9 @@
 Description=Send the Woongezond weekly summary every Monday morning
 
 [Timer]
-# Monday 08:00 local time — a calm start-of-week moment, offset from the alert sweep
+# Monday 08:00 Amsterdam time (the VPS clock is UTC, hence the explicit zone) — a calm start-of-week moment, offset from the alert sweep
 # (:02/:17/:32/:47) and the hourly weather ingest (:05).
-OnCalendar=Mon *-*-* 08:00:00
+OnCalendar=Mon *-*-* 08:00:00 Europe/Amsterdam
 # Persistent so a reboot over the weekend doesn't skip the week's send.
 Persistent=true
 RandomizedDelaySec=120
