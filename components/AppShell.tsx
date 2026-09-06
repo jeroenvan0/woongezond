@@ -15,6 +15,7 @@ import {
   FileText,
   Building2,
   Gauge,
+  Inbox,
   Share2,
   Moon,
   Sun,
@@ -43,6 +44,8 @@ const NAV = [
 const FLEET_NAV = { href: '/vloot', label: 'Vloot', Icon: Building2 }
 // Cockpit (pilot, §2c) shows resident contact details — org ADMINS only.
 const COCKPIT_NAV = { href: '/cockpit', label: 'Cockpit', Icon: Gauge }
+// Klantenservice-inbox (docs/support-assistant.md) — same audience as the cockpit.
+const INBOX_NAV = { href: '/cockpit/inbox', label: 'Inbox', Icon: Inbox }
 
 interface Props {
   title?: string
@@ -75,7 +78,7 @@ export default function AppShell({ title, actions, children }: Props) {
     })
   }, [supabase])
 
-  const nav = [...NAV, ...(isOrgMember ? [FLEET_NAV] : []), ...(isOrgAdmin ? [COCKPIT_NAV] : [])]
+  const nav = [...NAV, ...(isOrgMember ? [FLEET_NAV] : []), ...(isOrgAdmin ? [COCKPIT_NAV, INBOX_NAV] : [])]
 
   // While on "system", follow OS changes live (D8 — the toggle is no longer a
   // one-way door out of system).

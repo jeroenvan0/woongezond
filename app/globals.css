@@ -213,6 +213,13 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 .wz-two-col{display:grid;grid-template-columns:1fr;gap:16px}
 @media (min-width:760px){.wz-two-col{grid-template-columns:minmax(280px,1fr) minmax(300px,1.2fr)}}
 
+/* Inbox (cockpit): sensorlijst naast de tijdlijn, gestapeld op een telefoon */
+.wz-inbox-cols{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start}
+@media (min-width:860px){
+  .wz-inbox-cols{grid-template-columns:250px minmax(0,1fr)}
+  .wz-inbox-side{position:sticky;top:26px;max-height:calc(100vh - 52px);overflow:auto}
+}
+
 /* Print (4.2): the report now lives inside AppShell, so when printing we strip the
    shell chrome and let the paper sheet fill the page — the printed output stays the
    plain white document it was before it moved into the shell. */

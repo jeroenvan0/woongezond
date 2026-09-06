@@ -1,18 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
 import { createServiceClient } from '@/lib/supabase/service'
 import { weeklyReportSweep } from '@/lib/report/sweep'
 import { sendEmail } from '@/lib/email'
 import { QUESTIONS } from '@/lib/houseProfile'
 import { log, errText } from '@/lib/logger'
 import { isFrequency } from '@/lib/report/period'
+import { adminOrgs } from '@/lib/cockpit/auth'
 
 // Pilot-cockpit voor org-ADMINS (docs/pilot-cockpit-plan.md §2c, docs/support-assistant.md).
 //
 //   GET  /api/cockpit                      sensoren van de org + contact (laag B) + laatste
 //                                          rapport + klantenservice-inbox
 //   POST /api/cockpit {action, …}          send_report {device_id} · set_frequency {device_id, frequency}
-//                                          · support_send {id, text?} · support_close {id}
+//                                          · support_send {id, text?} · support_close {id} · support_reopen {id}
 //
 // De aanroeper wordt via zijn eigen sessie gecontroleerd (org_members.role = 'admin', RLS
 // laat alleen eigen lidmaatschappen zien); daarna leest de service-role de tabellen die
@@ -22,14 +22,6 @@ import { isFrequency } from '@/lib/report/period'
 export const dynamic = 'force-dynamic'
 const UUID_RE = /^[0-9a-f-]{36}$/i
 const ONLINE_MIN = 15
-
-async function adminOrgs(): Promise<{ id: string; name: string }[] | 'unauthenticated'> {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return 'unauthenticated'
-  const { data } = await supabase.from('org_members').select('org_id, role, organizations(name)').eq('role', 'admin')
-  return (data ?? []).map((m: any) => ({ id: m.org_id, name: m.organizations?.name ?? 'Organisatie' }))
-}
 
 const roomLabel = (v: string | null | undefined) => (v ? QUESTIONS.find((q) => q.key === 'room')?.options.find((o) => o.value === v)?.label ?? v : null)
 
@@ -108,7 +100,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, frequency })
     }
 
-    if (action === 'support_send' || action === 'support_close') {
+    if (action === 'support_send' || action === 'support_close' || action === 'support_reopen') {
       const id = Number(body?.id)
       if (!Number.isFinite(id)) return NextResponse.json({ error: 'bad_id' }, { status: 400 })
       const { data: m } = await s.from('support_messages').select('id, from_addr, subject, message_id, reply, device_id, status').eq('id', id).maybeSingle()
@@ -117,8 +109,8 @@ export async function POST(req: NextRequest) {
         const { data: d } = await s.from('devices').select('org_id').eq('id', m.device_id).maybeSingle()
         if (!d || !orgIds.includes(d.org_id)) return NextResponse.json({ error: 'forbidden' }, { status: 403 })
       }
-      if (action === 'support_close') {
-        await s.from('support_messages').update({ status: 'closed', handled_at: new Date().toISOString() }).eq('id', id)
+      if (action === 'support_close' || action === 'support_reopen') {
+        await s.from('support_messages').update({ status: action === 'support_close' ? 'closed' : 'draft', handled_at: new Date().toISOString() }).eq('id', id)
         return NextResponse.json({ ok: true })
       }
       const text = typeof body?.text === 'string' && body.text.trim() ? body.text.trim().slice(0, 6000) : m.reply

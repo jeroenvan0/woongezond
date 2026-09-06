@@ -25,6 +25,8 @@ bewoner ──mail──▶ hulp@woongezond.com
 | | |
 |---|---|
 | `app/api/inbox/route.ts` | De webhook. Idempotent op `resend_email_id`; antwoordt 200 zodra de mail is opgeslagen |
+| `app/cockpit/inbox/page.tsx` + `app/api/cockpit/inbox/route.ts` | De inbox voor beheerders: filter per sensor / bewoner / org, open vs. afgehandeld, zoeken; gesprekken per adres; verstuurde rapporten in dezelfde tijdlijn; acties verstuur / afhandelen / heropenen |
+| `lib/cockpit/auth.ts` | Gedeelde admin-check (org_members.role = admin) |
 | `lib/support/resendInbound.ts` | Svix-handtekening, mail ophalen, quotes/HTML strippen |
 | `lib/support/context.ts` | E-mailadres → sensor, status, huisprofiel, weekcijfers (hergebruikt het weekrapport) |
 | `lib/support/assistant.ts` | Systeemprompt met handleiding + regels, OpenRouter-call, JSON-antwoord |
