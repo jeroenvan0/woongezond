@@ -13,6 +13,7 @@ import { adminOrgs } from '@/lib/cockpit/auth'
 //                                          rapport + klantenservice-inbox
 //   POST /api/cockpit {action, …}          send_report {device_id} · set_frequency {device_id, frequency}
 //                                          · support_send {id, text?} · support_close {id} · support_reopen {id}
+//                                          · support_hold {id} (geplande verzending tegenhouden)
 //
 // De aanroeper wordt via zijn eigen sessie gecontroleerd (org_members.role = 'admin', RLS
 // laat alleen eigen lidmaatschappen zien); daarna leest de service-role de tabellen die
@@ -57,7 +58,7 @@ export async function GET(req: NextRequest) {
   })
 
   const { data: inbox } = await s.from('support_messages')
-    .select('id, created_at, handled_at, from_addr, subject, body, reply, escalate, reason, status, model, device_id')
+    .select('id, created_at, handled_at, send_at, from_addr, subject, body, reply, escalate, reason, status, model, device_id')
     .neq('status', 'ignored').order('created_at', { ascending: false }).limit(50)
   const numberOf = new Map(out.map((d) => [d.id, d.device_number]))
   const inboxOut = (inbox ?? []).filter((m: any) => !m.device_id || numberOf.has(m.device_id)).map((m: any) => ({ ...m, device_number: m.device_id ? numberOf.get(m.device_id) ?? null : null }))
@@ -100,7 +101,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, frequency })
     }
 
-    if (action === 'support_send' || action === 'support_close' || action === 'support_reopen') {
+    if (action === 'support_send' || action === 'support_close' || action === 'support_reopen' || action === 'support_hold') {
       const id = Number(body?.id)
       if (!Number.isFinite(id)) return NextResponse.json({ error: 'bad_id' }, { status: 400 })
       const { data: m } = await s.from('support_messages').select('id, from_addr, subject, message_id, reply, device_id, status').eq('id', id).maybeSingle()
@@ -109,8 +110,9 @@ export async function POST(req: NextRequest) {
         const { data: d } = await s.from('devices').select('org_id').eq('id', m.device_id).maybeSingle()
         if (!d || !orgIds.includes(d.org_id)) return NextResponse.json({ error: 'forbidden' }, { status: 403 })
       }
-      if (action === 'support_close' || action === 'support_reopen') {
-        await s.from('support_messages').update({ status: action === 'support_close' ? 'closed' : 'draft', handled_at: new Date().toISOString() }).eq('id', id)
+      if (action === 'support_close' || action === 'support_reopen' || action === 'support_hold') {
+        // hold: geplande automatische verzending annuleren → gewoon een voorstel dat op de beheerder wacht
+        await s.from('support_messages').update({ status: action === 'support_close' ? 'closed' : 'draft', send_at: null, handled_at: new Date().toISOString() }).eq('id', id)
         return NextResponse.json({ ok: true })
       }
       const text = typeof body?.text === 'string' && body.text.trim() ? body.text.trim().slice(0, 6000) : m.reply
@@ -120,7 +122,7 @@ export async function POST(req: NextRequest) {
         subject: /^re:/i.test(m.subject ?? '') ? m.subject : `Re: ${m.subject ?? 'je vraag'}`, text,
         headers: m.message_id ? { 'In-Reply-To': m.message_id, References: m.message_id } : undefined,
       })
-      await s.from('support_messages').update({ reply: text, status: ok ? 'answered' : 'send_failed', handled_at: new Date().toISOString() }).eq('id', id)
+      await s.from('support_messages').update({ reply: text, status: ok ? 'answered' : 'send_failed', send_at: null, handled_at: new Date().toISOString() }).eq('id', id)
       return NextResponse.json({ ok })
     }
 

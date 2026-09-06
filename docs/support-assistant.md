@@ -36,7 +36,8 @@ bewoner ──mail──▶ hulp@woongezond.com
 ## Omgevingsvariabelen
 
 ```
-SUPPORT_MODE=draft                # draft | auto | off
+SUPPORT_MODE=draft                # draft | delayed | auto | off
+SUPPORT_DELAY_MIN=120             # bij delayed: minuten tot automatische verzending (niet tussen 22:00 en 08:00)
 SUPPORT_ADMIN_ADDR=jij@…          # ontvangt voorstellen, escalaties en fouten
 SUPPORT_FROM_ADDR="Woongezond <hulp@woongezond.com>"
 SUPPORT_REPLY_TO=help@woongezond.com   # ontvangstadres op het Resend-subdomein; ook Reply-To van het weekrapport
@@ -112,7 +113,23 @@ Logs: `journalctl -u woongezond-react -o cat | jq 'select(.scope=="support")'`.
    gaan als eerdere beurten mee naar het model (`residentContext` → `history`). Getest: een
    vervolgvraag "is dat nu geregeld?" verwijst naar de eerdere afmelding.
 
-## Volgende stap (besproken 2026-09-06): Outlook-achtige lijst + automatisch na twee uur
+## Stand `delayed` (gebouwd 2026-09-06, avond)
+
+Zet `SUPPORT_MODE=delayed` en installeer de flush-timer; verder verandert er niets:
+
+```bash
+sudo cp ops/systemd/woongezond-support-flush.* /etc/systemd/system/
+sudo systemctl daemon-reload && sudo systemctl enable --now woongezond-support-flush.timer
+# dry-run: welke antwoorden staan klaar?
+curl -fsS -X POST -H "x-cron-secret: $SECRET" 'http://localhost:3002/admin/api/inbox/flush?dry=1'
+```
+
+Elke niet-geëscaleerde mail krijgt status `scheduled` met `send_at` (`lib/support/schedule.ts`,
+getest). De beheerder kan in de inbox tot die tijd: bewerken + "Verstuur nu", "Tegenhouden"
+(wordt weer een gewoon voorstel), of afhandelen. `/api/inbox/flush` (elke 5 min) verstuurt wat
+verlopen is, met de beheerder in bcc. Escalaties krijgen nooit een `send_at`.
+
+## Ontwerp (besproken 2026-09-06): Outlook-achtige lijst + automatisch na twee uur
 
 **Lijstweergave.** Eén lijst, één regel per mail, nieuwste bovenaan: status-icoon (● ongelezen,
 ✓ beantwoord, ⚠ escalatie), bewoner, onderwerp, tijd, sensor, en de stand ("⏳ wacht op jou",

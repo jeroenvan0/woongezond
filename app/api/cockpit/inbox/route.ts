@@ -15,7 +15,7 @@ import { QUESTIONS } from '@/lib/houseProfile'
 
 export const dynamic = 'force-dynamic'
 const UUID_RE = /^[0-9a-f-]{36}$/i
-const OPEN = ['received', 'draft', 'stored', 'error', 'send_failed']
+const OPEN = ['received', 'draft', 'scheduled', 'stored', 'error', 'send_failed']
 const roomLabel = (v: string | null | undefined) => (v ? QUESTIONS.find((q) => q.key === 'room')?.options.find((o) => o.value === v)?.label ?? v : null)
 
 export async function GET(req: NextRequest) {
@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
   const ids = devOut.map((d) => d.id)
 
   // Mails: van sensoren in deze org, plus (bij één org) de mails zonder sensor.
-  let mq = s.from('support_messages').select('id, created_at, handled_at, from_addr, to_addr, subject, body, reply, escalate, reason, status, model, device_id').order('created_at', { ascending: false }).limit(limit)
+  let mq = s.from('support_messages').select('id, created_at, handled_at, send_at, from_addr, to_addr, subject, body, reply, escalate, reason, status, model, device_id').order('created_at', { ascending: false }).limit(limit)
   if (device) mq = mq.eq('device_id', device)
   else if (orgs.length === 1) mq = ids.length ? mq.or(`device_id.in.(${ids.join(',')}),device_id.is.null`) : mq.is('device_id', null)
   else mq = ids.length ? mq.in('device_id', ids) : mq.eq('id', -1)

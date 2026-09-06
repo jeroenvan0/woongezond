@@ -5,12 +5,16 @@ import { log, errText } from '@/lib/logger'
 import { verifyResendWebhook, fetchReceivedEmail, plainBody, bareAddress, ReceivedEmailEvent } from '@/lib/support/resendInbound'
 import { composeSupportReply } from '@/lib/support/assistant'
 import { residentContext } from '@/lib/support/context'
+import { scheduledSendAt } from '@/lib/support/schedule'
 
 // Klantenservice-inbox: Resend Receiving → webhook `email.received` → assistent → antwoord.
 // docs/support-assistant.md beschrijft de opzet en de DNS-stappen.
 //
-// Drie standen via SUPPORT_MODE:
+// Vier standen via SUPPORT_MODE:
 //   draft (standaard)  het voorstel gaat naar SUPPORT_ADMIN_ADDR, de bewoner krijgt niets
+//   delayed            het voorstel krijgt een verzendmoment (SUPPORT_DELAY_MIN, standaard 2 uur,
+//                      niet 's nachts) en gaat dan vanzelf via /api/inbox/flush, tenzij de
+//                      beheerder het eerder verstuurt of tegenhoudt; escalaties wachten altijd
 //   auto               de bewoner krijgt het antwoord in dezelfde thread, admin in bcc;
 //                      behalve als de assistent escaleert → dan alleen naar de admin
 //   off                alleen opslaan, niets versturen
@@ -21,7 +25,7 @@ import { residentContext } from '@/lib/support/context'
 
 export const dynamic = 'force-dynamic'
 
-const MODE = () => (process.env.SUPPORT_MODE ?? 'draft') as 'draft' | 'auto' | 'off'
+const MODE = () => (process.env.SUPPORT_MODE ?? 'draft') as 'draft' | 'delayed' | 'auto' | 'off'
 const FROM = () => process.env.SUPPORT_FROM_ADDR || process.env.ALERT_FROM_ADDR || 'Woongezond <hulp@woongezond.com>'
 const ADMIN = () => process.env.SUPPORT_ADMIN_ADDR || ''
 
@@ -65,13 +69,15 @@ export async function POST(req: NextRequest) {
     const answer = await composeSupportReply({ from: mail.from, subject: mail.subject, body }, ctx)
     const mode = MODE()
     const toResident = mode === 'auto' && !answer.escalate
-    let status: string = mode === 'off' ? 'stored' : toResident ? 'answered' : 'draft'
+    const scheduled = mode === 'delayed' && !answer.escalate
+    const sendAt = scheduled ? scheduledSendAt(new Date()) : null
+    let status: string = mode === 'off' ? 'stored' : toResident ? 'answered' : scheduled ? 'scheduled' : 'draft'
 
     if (mode !== 'off') {
       const adminNote = [
         `Van: ${mail.from}`, `Onderwerp: ${mail.subject}`, `Sensor: ${ctx.known ? `${ctx.deviceNumber ?? '?'} (${ctx.online ? 'online' : 'offline'})` : 'onbekend adres'}`,
         `Oordeel assistent: ${answer.escalate ? 'ESCALEREN' : 'kan automatisch'} — ${answer.reason}`, '',
-        toResident ? '— Dit antwoord is naar de bewoner gestuurd —' : '— Voorstel (NIET verstuurd naar de bewoner) —', '', answer.reply, '',
+        toResident ? '— Dit antwoord is naar de bewoner gestuurd —' : scheduled ? `— Gaat automatisch om ${sendAt!.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' })}, tenzij je het in de inbox aanpast of tegenhoudt —` : '— Voorstel (NIET verstuurd naar de bewoner) —', '', answer.reply, '',
         '— Oorspronkelijke mail —', '', body,
       ].join('\n')
       if (toResident) {
@@ -81,12 +87,12 @@ export async function POST(req: NextRequest) {
         })
         if (!sent) status = 'send_failed'
       } else if (ADMIN()) {
-        const sent = await sendEmail({ from: FROM(), to: ADMIN(), subject: `[${answer.escalate ? 'ESCALATIE' : 'concept'}] ${mail.subject}`, text: adminNote })
+        const sent = await sendEmail({ from: FROM(), to: ADMIN(), subject: `[${answer.escalate ? 'ESCALATIE' : scheduled ? 'gaat automatisch' : 'concept'}] ${mail.subject}`, text: adminNote })
         if (!sent) status = 'send_failed'
       }
     }
 
-    await s.from('support_messages').update({ device_id: ctx.deviceId, reply: answer.reply, escalate: answer.escalate, reason: answer.reason, model: answer.model, status, handled_at: new Date().toISOString() }).eq('id', rowId)
+    await s.from('support_messages').update({ device_id: ctx.deviceId, reply: answer.reply, escalate: answer.escalate, reason: answer.reason, model: answer.model, status, send_at: sendAt ? sendAt.toISOString() : null, handled_at: new Date().toISOString() }).eq('id', rowId)
     log.info('support', 'inbound handled', { row: rowId, known: ctx.known, escalate: answer.escalate, status })
     return NextResponse.json({ ok: true, status })
   } catch (e) {

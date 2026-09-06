@@ -68,14 +68,31 @@ export default function AppShell({ title, actions, children }: Props) {
     setTheme(stored === 'light' || stored === 'dark' ? stored : 'system')
     setCollapsed(localStorage.getItem('wz-sidebar-collapsed') === '1')
     supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? ''))
-    // Show the Vloot nav only for corporation members and the Cockpit only for org
-    // admins. One query (RLS returns only the caller's own memberships); if the org
-    // tables aren't deployed yet it errors and both items simply stay hidden.
-    supabase.from('org_members').select('role').then(({ data }) => {
+    // Show the Vloot nav only for corporation members and the Cockpit/Inbox only for org
+    // admins. Last known answer comes from localStorage so a hard reload paints the full
+    // menu at once; then re-check AFTER the session is loaded (on a cold reload the first
+    // PostgREST call could go out before the token was restored, RLS returned nothing, and
+    // the two admin items stayed hidden until the next navigation). Re-run on auth changes.
+    try {
+      const cached = localStorage.getItem('wz-org-role')
+      if (cached === 'admin' || cached === 'member') setIsOrgMember(true)
+      if (cached === 'admin') setIsOrgAdmin(true)
+    } catch {}
+    let cancelled = false
+    async function checkRole() {
+      const { data: sess } = await supabase.auth.getSession()
+      if (!sess.session) { try { localStorage.removeItem('wz-org-role') } catch {}; if (!cancelled) { setIsOrgMember(false); setIsOrgAdmin(false) } return }
+      const { data, error } = await supabase.from('org_members').select('role')
+      if (cancelled || error) return          // org tables not deployed → keep whatever we had
       const rows = data ?? []
-      if (rows.length > 0) setIsOrgMember(true)
-      if (rows.some((r: { role: string | null }) => r.role === 'admin')) setIsOrgAdmin(true)
-    })
+      const admin = rows.some((r: { role: string | null }) => r.role === 'admin')
+      setIsOrgMember(rows.length > 0)
+      setIsOrgAdmin(admin)
+      try { if (rows.length) localStorage.setItem('wz-org-role', admin ? 'admin' : 'member'); else localStorage.removeItem('wz-org-role') } catch {}
+    }
+    checkRole()
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => { if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'SIGNED_OUT') checkRole() })
+    return () => { cancelled = true; sub.subscription.unsubscribe() }
   }, [supabase])
 
   const nav = [...NAV, ...(isOrgMember ? [FLEET_NAV] : []), ...(isOrgAdmin ? [COCKPIT_NAV, INBOX_NAV] : [])]
@@ -109,6 +126,7 @@ export default function AppShell({ title, actions, children }: Props) {
   }
 
   async function logout() {
+    try { localStorage.removeItem('wz-org-role') } catch {}
     await supabase.auth.signOut()
     router.push('/login')
     router.refresh()
