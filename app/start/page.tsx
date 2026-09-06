@@ -58,8 +58,15 @@ function StartInner() {
       // First call exchanges the sticker code for a 30-min session; every later call (the
       // poll, the profile save) uses the session and never resends the code.
       const qs = sessionRef.current ? `session=${encodeURIComponent(sessionRef.current)}` : `code=${encodeURIComponent(c)}`
-      const r = await fetch(withBase(`/api/devices/status?${qs}`), { cache: 'no-store' })
-      const d = await r.json()
+      let r = await fetch(withBase(`/api/devices/status?${qs}`), { cache: 'no-store' })
+      let d = await r.json()
+      // A page left open for more than 30 min has an expired session; the sticker code is
+      // still on the URL, so quietly exchange it for a fresh session instead of erroring.
+      if (r.status === 401 && sessionRef.current && CLAIM_CODE_RE.test(c)) {
+        sessionRef.current = null
+        r = await fetch(withBase(`/api/devices/status?code=${encodeURIComponent(c)}`), { cache: 'no-store' })
+        d = await r.json()
+      }
       if (!r.ok) { setErr(ERR[d.error] ?? ERR.error); setStatus(null); return null }
       sessionRef.current = d.session
       // Wi-Fi-change mode: the old connection may still be up; only a reading newer than the
@@ -86,6 +93,7 @@ function StartInner() {
       const r = await fetch(withBase('/api/devices/profile'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session: sessionRef.current, answers, overwrite, terms_accepted: terms, terms_version: TERMS_VERSION }) })
       const d = await r.json()
       if (r.status === 423) { setLocked(true); await fetchStatus(code); return }
+      if (r.status === 401) { await fetchStatus(code); setErr('Even opnieuw verbonden. Druk nog een keer op Opslaan.'); return }
       if (!r.ok) { setErr(ERR[d.error] ?? ERR.error); return }
       setLocked(false); setSaved(true); setStep(4)
     } catch { setErr(ERR.error) } finally { setSaving(false) }
@@ -108,6 +116,7 @@ function StartInner() {
       const r = await fetch(withBase('/api/devices/reset'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session: sessionRef.current }) })
       const d = await r.json()
       if (r.status === 423) { setErr('De sensor is nog niet opnieuw gestart. Haal de stekker eruit en steek hem er weer in.'); await fetchStatus(code); return }
+      if (r.status === 401) { await fetchStatus(code); setErr('Even opnieuw verbonden. Druk nog een keer op de knop.'); return }
       if (!r.ok) { setErr(ERR[d.error] ?? ERR.error); return }
       setResetMode('done')
     } catch { setErr(ERR.error) } finally { setSaving(false) }
