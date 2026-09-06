@@ -13,7 +13,9 @@
     "pilot:sim": "node --env-file=.env.local node_modules/.bin/tsx scripts/pilot-sim.mts",
     "pilot:seed": "node --env-file=.env.local node_modules/.bin/tsx scripts/pilot-seed.mts",
     "dev:mock": "PILOT_MOCK=1 next dev -p 3005",
-    "pilot:stickers": "node --env-file=.env.local node_modules/.bin/tsx scripts/pilot-stickers.mts"
+    "pilot:stickers": "node --env-file=.env.local node_modules/.bin/tsx scripts/pilot-stickers.mts",
+    "report:preview": "node --env-file=.env.local node_modules/.bin/tsx scripts/report-preview.mts",
+    "support:sim": "node --env-file=.env.local node_modules/.bin/tsx scripts/support-sim.mts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",

@@ -11,7 +11,7 @@ import { createHmac, timingSafeEqual } from 'crypto'
 
 const TTL_S = 30 * 60
 
-function key(): string {
+export function pilotKey(): string {
   const k = process.env.PILOT_SESSION_SECRET || process.env.CRON_SECRET
   if (k) return k
   const srk = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -19,7 +19,7 @@ function key(): string {
   return createHmac('sha256', srk).update('pilot-session').digest('hex')
 }
 function sign(payload: string): string {
-  return createHmac('sha256', key()).update(payload).digest('base64url')
+  return createHmac('sha256', pilotKey()).update(payload).digest('base64url')
 }
 
 export function issueSession(deviceId: string, now = Date.now()): { token: string; expires_at: string } {
