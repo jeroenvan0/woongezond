@@ -37,7 +37,7 @@ bewoner ──mail──▶ hulp@woongezond.com
 SUPPORT_MODE=draft                # draft | auto | off
 SUPPORT_ADMIN_ADDR=jij@…          # ontvangt voorstellen, escalaties en fouten
 SUPPORT_FROM_ADDR="Woongezond <hulp@woongezond.com>"
-SUPPORT_REPLY_TO=hulp@hulp.woongezond.com   # ontvangstadres op het Resend-subdomein; ook Reply-To van het weekrapport
+SUPPORT_REPLY_TO=help@woongezond.com   # ontvangstadres op het Resend-subdomein; ook Reply-To van het weekrapport
 RESEND_WEBHOOK_SECRET=whsec_…     # signing secret van de webhook in Resend
 ```
 Plus de bestaande `RESEND_API_KEY`, `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`.
@@ -53,12 +53,14 @@ Plus de bestaande `RESEND_API_KEY`, `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`.
   verhuurder, boosheid, verwijderverzoek, afmelden. Dan gaat er in `auto`-stand niets naar
   de bewoner, alleen naar jou.
 
-## Nu al werkend zonder DNS: het resend.app-adres
+## Ontvangstadres: help@woongezond.com
 
-Elk Resend-account heeft een vast ontvangstadres: **hulp@hlodepe.resend.app** (elke naam vóór
-de @ werkt). Daar is geen MX-record voor nodig. Getest op 2026-09-06: mail vanuit Gmail →
+Sinds 2026-09-06 wijst het MX-record van woongezond.com naar Resend
+(`inbound-smtp.eu-west-1.amazonaws.com`, prio 10). De Strato-domeinbundel had geen mailpakket,
+dus er ging niets verloren. Elke naam vóór de @ komt nu bij de assistent; **help@woongezond.com**
+is het adres voor bewoners. Het resend.app-testadres (hulp@hlodepe.resend.app) werkt ook nog. Getest op 2026-09-06: mail vanuit Gmail →
 Resend → `npm run support:sim -- --inbox --send` → antwoord in dezelfde thread. Voor de pilot
-is dit genoeg; `SUPPORT_REPLY_TO=hulp@hlodepe.resend.app` staat daarom nu in `.env.local`,
+is dit genoeg; `SUPPORT_REPLY_TO=help@woongezond.com` staat daarom nu in `.env.local`,
 zodat antwoorden op het weekrapport hier binnenkomen. Het eigen subdomein hieronder is de
 nettere versie voor later.
 
@@ -71,8 +73,8 @@ lokaal in `.env.local` en moet nog op de VPS.
 
 Waarom een subdomein: `woongezond.com` heeft al een MX-record naar Strato (`smtp.rzone.de`).
 Het laagste prioriteitsgetal wint, dus een Resend-record ernaast breekt de bestaande mail.
-Bewoners mailen daarom naar **hulp@hulp.woongezond.com**. De app verstuurt vanaf
-`hulp@woongezond.com` (al geverifieerd) met `Reply-To: hulp@hulp.woongezond.com`, zodat elk
+Bewoners mailen daarom naar **help@woongezond.com**. De app verstuurt vanaf
+`hulp@woongezond.com` (al geverifieerd) met `Reply-To: help@woongezond.com`, zodat elk
 antwoord van een bewoner bij de assistent binnenkomt (`SUPPORT_REPLY_TO`, ook op het weekrapport).
 
 **Eén record is genoeg** (de SPF/DKIM-records die Resend voor het subdomein toont zijn alleen
@@ -93,12 +95,12 @@ Controle na 5 min tot enkele uren: `dig +short MX hulp.woongezond.com` moet
 Daarna op de VPS in `.env.local`: `RESEND_WEBHOOK_SECRET`, `SUPPORT_MODE=draft`,
 `SUPPORT_ADMIN_ADDR`, `SUPPORT_FROM_ADDR`, `SUPPORT_REPLY_TO` (waarden: zie lokaal
 `.env.local`), deze branch uitrollen, `systemctl restart woongezond-react`. Test: mail vanaf
-je Gmail naar hulp@hulp.woongezond.com; in `draft` komt het voorstel op `SUPPORT_ADMIN_ADDR`.
+je Gmail naar help@woongezond.com; in `draft` komt het voorstel op `SUPPORT_ADMIN_ADDR`.
 Logs: `journalctl -u woongezond-react -o cat | jq 'select(.scope=="support")'`.
 
 ## Stappen naar productie — stand 2026-09-06
 
-1. [x] Ontvangst via hulp@hlodepe.resend.app + webhook aangemaakt (subdomein-MX is optioneel, later).
+1. [x] Ontvangst via help@woongezond.com + webhook aangemaakt (subdomein-MX is optioneel, later).
    [ ] Branch uitrollen + env op de VPS; een week in `draft` meedraaien.
 2. [x] Cockpit `/cockpit` sectie "Inbox klantenservice": voorstel bewerken, *Verstuur dit
    antwoord* (in dezelfde thread), *Afgehandeld zonder antwoord*. Handmatig verstuurde
