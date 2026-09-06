@@ -370,71 +370,10 @@ export default function ReportPage() {
               GGD-richtlijn (RV 40–60%). Dit rapport is een geautomatiseerde indicatie op basis van sensordata en vervangt
               geen bouwkundig onderzoek.
             </p>
-
-            {/* Complaint letter — screen only; copy into your own letter/e-mail */}
-            <ComplaintLetter diag={model.diag} kpi={kpi} s={model.s} email={email} generatedAt={generatedAt} />
           </>
         )}
       </div>
     </AppShell>
-  )
-}
-
-const fmtDateShort = (d: Date) => d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })
-
-function buildLetter(diag: any, kpi: any, s: any, email: string, generatedAt: Date): string {
-  const period = `${fmtDateShort(s.times[0])} t/m ${fmtDateShort(s.times[s.times.length - 1])}`
-  const findings = diag.findings.length ? diag.findings.map((f: any) => `• ${f.text}`).join('\n') : '• Geen structurele afwijkingen vastgesteld.'
-  const achLine = diag.ach ? `\n• Geschatte ventilatie (ACH) ${diag.ach.achGem} per uur (richtlijn ≥ 0,9).` : ''
-  return `Betreft: Melding van een gebrek aan de huurwoning – vocht en ventilatie
-
-Geachte verhuurder,
-
-Met deze brief meld ik formeel een mogelijk gebrek aan de door mij gehuurde woning, betreffende de luchtkwaliteit en de vochthuishouding. Op basis van continue sensormetingen over de periode ${period} (${s.co2.length} metingen) is het volgende vastgesteld:
-
-${findings}
-
-Conclusie: ${diag.conclusieTxt}.
-
-Kerncijfers:
-• CO₂ gemiddeld ${kpi.co2Avg} ppm; ${kpi.pct1000.toFixed(0)}% van de tijd boven de Bouwbesluit-norm van 1000 ppm.
-• Relatieve luchtvochtigheid gemiddeld ${kpi.rhAvg.toFixed(0)}%.
-• Schimmelrisico-indicatie ${kpi.pctMr60.toFixed(0)}% van de tijd verhoogd.${achLine}
-
-Op grond van artikel 7:206 van het Burgerlijk Wetboek verzoek ik u dit gebrek binnen een redelijke termijn — uiterlijk zes weken na dagtekening — te (laten) onderzoeken en te verhelpen. Het bijgevoegde luchtkwaliteitsrapport onderbouwt deze melding met grafieken en de gebruikte meetmethodiek.
-
-Graag ontvang ik binnen veertien dagen een schriftelijke ontvangstbevestiging en een voorstel voor de vervolgstappen.
-
-Hoogachtend,
-
-${email || '[uw naam]'}
-${fmtDateShort(generatedAt)}`
-}
-
-function ComplaintLetter({ diag, kpi, s, email, generatedAt }: { diag: any; kpi: any; s: any; email: string; generatedAt: Date | null }) {
-  const [copied, setCopied] = useState(false)
-  if (!generatedAt) return null
-  const letter = buildLetter(diag, kpi, s, email, generatedAt)
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(letter)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch {}
-  }
-  return (
-    <div className="no-print" style={{ marginTop: 20, border: '1px solid #E2E8F0', borderRadius: 14, overflow: 'hidden' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '12px 16px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>Klachtbrief voor de verhuurder</div>
-          <div style={{ fontSize: 11.5, color: MUTED, marginTop: 1 }}>Automatisch opgesteld uit de bevindingen — kopieer en stuur als begeleidende brief bij dit rapport.</div>
-        </div>
-        <button onClick={copy} style={{ padding: '8px 14px', background: copied ? GREEN : PRIMARY, color: '#fff', border: 'none', borderRadius: 8, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-          {copied ? 'Gekopieerd ✓' : 'Kopieer tekst'}
-        </button>
-      </div>
-      <pre style={{ margin: 0, padding: '16px 18px', fontSize: 12.5, lineHeight: 1.65, color: TEXT, whiteSpace: 'pre-wrap', fontFamily: 'Inter, system-ui, sans-serif', background: '#fff' }}>{letter}</pre>
-    </div>
   )
 }
 

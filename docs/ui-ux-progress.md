@@ -14,7 +14,7 @@ migration to the `air_quality_bucketed` RPC).
 
 ## Decisions taken (Part 4)
 - **D-1 Remove** Tailwind + swr — idiom stays inline styles + CSS-variable tokens.
-- **D-2 Diagnosis** — the report keeps its evidentiary/diagnostic tone (complaint letter, "gebrek").
+- **D-2 Diagnosis** — the report keeps its evidentiary/diagnostic tone ("gebrek"). The auto-generated complaint letter to the landlord was removed on 2026-09-06: the focus shifted to working *with* VvE's and housing corporations rather than against a landlord.
 - **D-3** Implement 6.1 + 6.2 now; defer 6.3–6.5.
 - **D-4 Yes** — logo rebranded green→teal.
 
