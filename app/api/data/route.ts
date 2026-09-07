@@ -89,10 +89,12 @@ export async function GET(req: NextRequest) {
   const MAX_ROWS = 600000
   const all: any[] = []
   for (let offset = 0; offset < MAX_ROWS; offset += PAGE) {
-    const { data, error } = await supabase
+    let q = supabase
       .from('air_quality')
       .select('created_at,co2,temperature,humidity')
       .gte('created_at', since)
+    if (deviceId) q = q.eq('device_id', deviceId)   // nooit sensoren mengen, ook niet in de fallback
+    const { data, error } = await q
       .order('created_at', { ascending: true })
       .range(offset, offset + PAGE - 1)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })

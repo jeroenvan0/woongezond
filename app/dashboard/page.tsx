@@ -143,6 +143,13 @@ export default function DashboardPage() {
         .order('created_at', { ascending: false })
         .limit(1)
       if (selectedDevice) q = q.eq('device_id', selectedDevice)
+      else {
+        // "Alle sensoren" = de eigen sensoren, net als de serie-RPC zonder device. Een
+        // org-admin mag sinds 2026-09-07 ook de rijen van org-sensoren lezen; zonder dit
+        // filter zou de kaart de nieuwste meting van een ANDER huishouden tonen.
+        const { data: u } = await supabase.auth.getUser()
+        if (u.user) q = q.eq('user_id', u.user.id)
+      }
       const { data } = await q
       if (cancelled) return
       const rows = (data ?? []) as SensorRow[]

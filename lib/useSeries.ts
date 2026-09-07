@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { withBase } from '@/lib/basePath'
 import { DataError, describeError } from '@/components/DataBanner'
 
@@ -74,18 +74,26 @@ export function useSeries(minutes: number, opts: Options = {}) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<DataError>(null)
 
+  // Stale-guard: elke (minutes, device)-combinatie krijgt een nieuw ticket; een antwoord van
+  // een oudere combinatie wordt genegeerd. Zonder dit kon het "alle sensoren"-antwoord van de
+  // eerste render (device nog null vóór hydration) of van de vorige periode NA het juiste
+  // antwoord binnenkomen en de grafiek van sensor X met de data van sensor Y overschrijven.
+  const ticket = useRef(0)
   const run = useCallback(
     async (force = false) => {
       if (!enabled) return
+      const mine = ++ticket.current
       try {
         const d = await getSeries(minutes, force, device)
+        if (mine !== ticket.current) return
         setData(d)
         setError(null)
       } catch (e) {
+        if (mine !== ticket.current) return
         const status = (e as { status?: number })?.status
         setError(describeError(status, status == null))
       } finally {
-        setLoading(false)
+        if (mine === ticket.current) setLoading(false)
       }
     },
     [minutes, enabled, device],
@@ -94,6 +102,7 @@ export function useSeries(minutes: number, opts: Options = {}) {
   useEffect(() => {
     if (!enabled) return
     setLoading(true)
+    setData({ rows: [], bucketMinutes: 1 })   // nooit de reeks van de vorige sensor/periode laten staan
     run()
     if (!poll) return
     let id: ReturnType<typeof setInterval> | null = null
