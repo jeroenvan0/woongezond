@@ -37,7 +37,7 @@ export async function residentContext(s: SupabaseClient, fromHeader: string, opt
   const firstName = name && !/^fam\.?\s/i.test(name) ? name.split(/\s+/)[0] : null
 
   const profileSummary = p
-    ? [label('house_type', p.house_type), label('build_period', p.build_period), p.glazing && `${label('glazing', p.glazing)} glas`, p.ventilation && `ventilatie: ${label('ventilation', p.ventilation)}`, p.occupants && `${p.occupants} slaper(s) in de kamer`, p.moisture && `vochtklachten: ${label('moisture', p.moisture)}`]
+    ? [label('house_type', p.house_type), p.floor && `verdieping: ${label('floor', p.floor)}`, label('build_period', p.build_period), p.glazing && `${label('glazing', p.glazing)} glas`, p.ventilation && `ventilatie: ${label('ventilation', p.ventilation)}`, p.occupants && `${p.occupants} slaper(s) in de kamer`, p.moisture && `vochtklachten: ${label('moisture', p.moisture)}`]
         .filter(Boolean).join(', ')
     : null
 

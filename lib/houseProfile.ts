@@ -17,6 +17,7 @@ export interface HouseProfile {
   room: string            // where the sensor hangs
   occupants: string       // people usually in that room at night → CO₂ source strength
   house_type: string
+  floor?: string          // storey of the room: ground contact / crawl space vs. top floor changes the moisture picture (added 2026-09-07, older profiles lack it)
   build_period: string    // insulation era (1975 cavity walls, 1992 Bouwbesluit, 2006 EPC)
   glazing: string         // strongest single proxy for insulation class
   ventilation: string
@@ -49,6 +50,15 @@ export const QUESTIONS: Question[] = [
       { value: 'appartement', label: 'Appartement / portiek' }, { value: 'tussenwoning', label: 'Tussenwoning' },
       { value: 'hoekwoning', label: 'Hoekwoning' }, { value: 'twee_onder_een_kap', label: '2-onder-1-kap' },
       { value: 'vrijstaand', label: 'Vrijstaand' },
+    ],
+  },
+  {
+    key: 'floor', title: 'Op welke verdieping is die kamer?',
+    help: 'Begane grond en souterrain zijn vaak vochtiger (kruipruimte, koude vloer); een bovenste verdieping juist warmer en droger.',
+    options: [
+      { value: 'souterrain', label: 'Souterrain / kelder' }, { value: 'begane_grond', label: 'Begane grond' },
+      { value: '1', label: '1e verdieping' }, { value: '2', label: '2e verdieping' },
+      { value: '3+', label: '3e verdieping of hoger' },
     ],
   },
   {
@@ -108,6 +118,10 @@ export const QUESTIONS: Question[] = [
   },
 ]
 
+// Questions added after the first residents filled the wizard; not required so an older
+// profile still validates. The wizard itself asks them like any other question.
+const OPTIONAL_KEYS = new Set<keyof HouseProfile>(['floor'])
+
 // Validate a raw body into a HouseProfile. Unknown keys are dropped, unknown values
 // rejected, so the JSON column only ever holds values from QUESTIONS.
 export function parseHouseProfile(raw: unknown): { ok: true; profile: HouseProfile } | { ok: false; missing: string[] } {
@@ -117,7 +131,7 @@ export function parseHouseProfile(raw: unknown): { ok: true; profile: HouseProfi
   for (const q of QUESTIONS) {
     const v = src[q.key]
     if (typeof v === 'string' && q.options.some((o) => o.value === v)) out[q.key] = v
-    else missing.push(q.key)
+    else if (!OPTIONAL_KEYS.has(q.key)) missing.push(q.key)
   }
   return missing.length ? { ok: false, missing } : { ok: true, profile: out as HouseProfile }
 }
