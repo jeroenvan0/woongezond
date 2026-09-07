@@ -4,6 +4,9 @@ Eén image voor alle sensoren. Per apparaat alleen data (token, URL, nummer) via
 monitor; WiFi stelt de bewoner zelf in via het setup-netwerk. Vervangt de sketch met
 hardcoded WiFi/anon-key uit `~/Documents/Arduino/Jannouk`.
 
+> Stapsgewijze handleiding voor alle 8 pilotsensoren (iCloud-valkuil, tokens ophalen, per sensor
+> flashen, testen, bij de bewoner): **docs/flashen-sensoren.md**.
+
 ## Eenmalig: Arduino IDE klaarzetten
 1. Board: **Adafruit Feather ESP32-S3** (esp32-core 3.x, staat al geïnstalleerd).
 2. Library Manager → installeer **WiFiManager** (tzapu) en **Sensirion I2C SCD4x** (staat al).
