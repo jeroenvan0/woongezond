@@ -5,7 +5,7 @@ import { log, errText } from '@/lib/logger'
 
 // Weekrapport per sensor — de timer-ingang (docs/rapport-weekmail-plan.md).
 //   POST /api/report/weekly + x-cron-secret            elke ochtend; per contact volgens report_frequency
-//                                                      (dagelijks / maandag / de 1e), afgesloten periode
+//                                                      (dagelijks / vrijdag / de 1e), afgesloten periode
 //   ?dry=1                                             alleen tonen wat er zou gaan (geen mail, geen log)
 //   ?device=<uuid>&force=1                             één sensor, ook als deze week al verstuurd is
 //   ?rolling=1                                         lopende 1/7/30 dagen i.p.v. de afgesloten periode

@@ -29,7 +29,7 @@
 #include <Preferences.h>
 #include <SensirionI2cScd4x.h>
 
-#define FW_VERSION "2.1.0"
+#define FW_VERSION "2.1.1"
 
 // ── pinnen (Feather ESP32-S3) ─────────────────────────
 static const int SDA_PIN    = 3;
@@ -227,9 +227,12 @@ void setup() {
   scd41Ok = scd4x.startPeriodicMeasurement() == 0;
   Serial.println(scd41Ok ? "[scd41] gestart" : "[scd41] FOUT — check bedrading SDA=3 SCL=4");
 
+  // Nog geen token/url (aan het bureau): NIET het setup-netwerk openen — autoConnect blokkeert
+  // tot 5 min en dan zijn SET-commando's doof. WiFi komt vanzelf zodra de config er staat.
   if (!configured()) {
     Serial.println("[cfg] geen token/url. Typ in de seriële monitor:");
     Serial.println("      SET TOKEN wgd_…    SET URL https://woongezond.com/admin    SET NUMBER 3");
+    return;
   }
   ensureWiFi();
 }

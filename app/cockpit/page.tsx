@@ -37,6 +37,7 @@ interface Device {
   rssi: number | null
   contact: Contact | null
   last_report: LastReport | null
+  profile: { q: string; a: string }[]
 }
 type InboxStatus = 'received' | 'draft' | 'answered' | 'closed' | 'send_failed' | 'error' | 'stored'
 interface InboxItem {
@@ -386,6 +387,21 @@ function DeviceRow({ device: d, messages, onChanged }: { device: Device; message
           </div>
         )}
       </div>
+      {d.profile?.length > 0 && (
+        <details style={{ marginTop: 'var(--sp-3)', fontSize: 'var(--fs-xs)' }}>
+          <summary style={{ cursor: 'pointer', color: 'var(--muted)', fontWeight: 600 }}>
+            Vragenlijst bewoner · {d.profile.length} antwoorden{d.registered_at ? ` · ingevuld ${fmtDate(d.registered_at)}` : ''}
+          </summary>
+          <dl style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: '4px var(--sp-3)', margin: 'var(--sp-2) 0 0' }}>
+            {d.profile.map((row) => (
+              <div key={row.q} style={{ display: 'contents' }}>
+                <dt style={{ color: 'var(--muted)', overflowWrap: 'anywhere' }}>{row.q}</dt>
+                <dd style={{ margin: 0, color: 'var(--text)', fontWeight: 600, textAlign: 'right', whiteSpace: 'nowrap' }}>{row.a}</dd>
+              </div>
+            ))}
+          </dl>
+        </details>
+      )}
     </Card>
   )
 }

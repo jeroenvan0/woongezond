@@ -25,6 +25,9 @@ const UUID_RE = /^[0-9a-f-]{36}$/i
 const ONLINE_MIN = 15
 
 const roomLabel = (v: string | null | undefined) => (v ? QUESTIONS.find((q) => q.key === 'room')?.options.find((o) => o.value === v)?.label ?? v : null)
+// De ingevulde vragenlijst van de bewoner (devices.house_profile) als leesbare vraag/antwoord-lijst.
+const profileQA = (hp: Record<string, unknown> | null | undefined) =>
+  hp ? QUESTIONS.flatMap((q) => { const v = hp[q.key]; if (v == null || v === '') return []; const a = q.options.find((o) => o.value === String(v))?.label ?? String(v); return [{ q: q.title, a }] }) : []
 
 export async function GET(req: NextRequest) {
   const orgs = await adminOrgs()
@@ -51,6 +54,7 @@ export async function GET(req: NextRequest) {
     return {
       id: d.id, device_number: d.device_number, name: d.name, active: d.active !== false,
       room: roomLabel(d.house_profile?.room) ?? d.location ?? null, registered_at: d.profile_completed_at,
+      profile: profileQA(d.house_profile),
       online: mins != null && mins < ONLINE_MIN, minutes_since: mins, fw_version: d.fw_version, boot_count: d.boot_count, rssi: d.last_rssi,
       contact: c ? { name: c.name, email: c.email, address_note: c.address_note, report_consent: !!c.report_consent_at, report_frequency: isFrequency(c.report_frequency) ? c.report_frequency : 'weekly' } : null,
       last_report: lastSend.get(d.id) ?? null,

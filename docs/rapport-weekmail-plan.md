@@ -35,7 +35,7 @@ Niet per account (B5) — de pilot-sensoren hebben geen account, en een corporat
 nooit het rapport van een bewoner in zijn mailbox krijgen. Sensoren zonder contact worden
 stil overgeslagen (dat is de privacy-default: geen toestemming, geen mail).
 
-**Wanneer.** Maandag 08:00 Europe/Amsterdam, periode = vorige maandag 00:00 t/m zondag
+**Wanneer.** Vrijdag 08:00 Europe/Amsterdam (sinds 2026-09-07; was maandag), periode = vorige vrijdag 00:00 t/m donderdag
 24:00. De bestaande `woongezond-digest.timer` staat al op `Mon 08:00`; die gaat het nieuwe
 endpoint aanroepen en B5 vervalt (of blijft bestaan voor accounts zonder pilot-device, keuze
 in stap 3).
@@ -87,7 +87,7 @@ duiding (elk cijfer krijgt een woord: "vaak te benauwd", "prima").
 `device_contacts.report_frequency` = `daily` | `weekly` (standaard) | `monthly`, instelbaar per
 sensor in de cockpit (dropdown "Rapport: elke dag / elke week / elke maand"). De timer draait
 nu **elke ochtend 08:00 Amsterdam**; `lib/report/period.ts` bepaalt per contact of het vandaag
-aan de beurt is (dagelijks altijd, wekelijks op maandag, maandelijks op de 1e) en welke
+aan de beurt is (dagelijks altijd, wekelijks op vrijdag, maandelijks op de 1e) en welke
 afgesloten periode erbij hoort (gisteren / vorige week / vorige maand). De mail past zijn
 bewoording aan (dag-, week-, maandrapport; meetdekking t.o.v. de uren in de periode).
 `report_sends` blijft de idempotentie-sleutel (device, periodestart). Migratie 20260906140000.
@@ -103,6 +103,6 @@ bewoording aan (dag-, week-, maandrapport; meetdekking t.o.v. de uren in de peri
 - Sensor met 0 metingen → "geen metingen"-mail (niet stil overslaan: de bewoner moet weten
   dat de sensor uit staat).
 - Contact zonder `report_consent_at` → geen mail, wel geteld als overgeslagen.
-- Twee keer draaien op dezelfde maandag → tweede keer 0 verstuurd.
+- Twee keer draaien op dezelfde vrijdag → tweede keer 0 verstuurd.
 - Mail bekeken in Gmail (web + telefoon) en Apple Mail; de HTML gebruikt alleen inline
   styles en tabellen, geen externe afbeeldingen.

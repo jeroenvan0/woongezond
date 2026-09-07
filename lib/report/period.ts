@@ -1,8 +1,12 @@
-// Weekgrenzen in Europe/Amsterdam. De timer draait maandagochtend en rapporteert de
-// afgelopen volle week: [vorige maandag 00:00, deze maandag 00:00). Pure functies, getest
-// rond de zomer-/wintertijdwissel (tests/reportPeriod.test.ts).
+// Weekgrenzen in Europe/Amsterdam. De timer draait elke ochtend; het weekrapport gaat op
+// VRIJDAG en beslaat de afgelopen zeven volle dagen: [vorige vrijdag 00:00, deze vrijdag
+// 00:00), dus vr t/m do. Pure functies, getest rond de zomer-/wintertijdwissel
+// (tests/reportPeriod.test.ts).
 
 const TZ = 'Europe/Amsterdam'
+/** Weekdag waarop het weekrapport uitgaat (0=zo … 6=za). Vrijdag: de bewoner leest het
+ *  in het weekend en kan er de week erna wat mee. */
+export const REPORT_WEEKDAY = 5
 
 interface Ymd { y: number; m: number; d: number }
 
@@ -33,13 +37,14 @@ export const ymdKey = ({ y, m, d }: Ymd) => `${y}-${String(m).padStart(2, '0')}-
 
 export interface WeekPeriod { start: Date; end: Date; startKey: string; endKey: string }
 
-/** De laatste volle week (ma t/m zo) vóór `now`, in Europe/Amsterdam. */
+/** De laatste volle rapportweek vóór `now`: zeven dagen die eindigen op de meest recente
+ *  REPORT_WEEKDAY-middernacht (vrijdag → vr t/m do), in Europe/Amsterdam. */
 export function lastFullWeek(now = new Date(), tz = TZ): WeekPeriod {
   const today = zonedDate(now, tz)
-  const daysSinceMonday = (today.weekday + 6) % 7          // ma=0 … zo=6
-  const thisMonday = addDays(today, -daysSinceMonday)
-  const prevMonday = addDays(thisMonday, -7)
-  return { start: zonedMidnight(prevMonday, tz), end: zonedMidnight(thisMonday, tz), startKey: ymdKey(prevMonday), endKey: ymdKey(addDays(thisMonday, -1)) }
+  const daysSinceAnchor = (today.weekday - REPORT_WEEKDAY + 7) % 7   // vr=0 … do=6
+  const thisAnchor = addDays(today, -daysSinceAnchor)
+  const prevAnchor = addDays(thisAnchor, -7)
+  return { start: zonedMidnight(prevAnchor, tz), end: zonedMidnight(thisAnchor, tz), startKey: ymdKey(prevAnchor), endKey: ymdKey(addDays(thisAnchor, -1)) }
 }
 
 /** Gisteren, 00:00 → 00:00. */
@@ -83,8 +88,8 @@ export function rollingFor(freq: Frequency, now = new Date(), tz = TZ): WeekPeri
   return rollingDays(freq === 'daily' ? 1 : freq === 'monthly' ? 30 : 7, now, tz)
 }
 /** Is dit contact vandaag aan de beurt? De timer draait elke ochtend; dagelijks = altijd,
- *  wekelijks = maandag, maandelijks = de 1e. */
+ *  wekelijks = vrijdag (REPORT_WEEKDAY), maandelijks = de 1e. */
 export function isDue(freq: Frequency, now = new Date(), tz = TZ): boolean {
   const t = zonedDate(now, tz)
-  return freq === 'daily' || (freq === 'weekly' && t.weekday === 1) || (freq === 'monthly' && t.d === 1)
+  return freq === 'daily' || (freq === 'weekly' && t.weekday === REPORT_WEEKDAY) || (freq === 'monthly' && t.d === 1)
 }
