@@ -16,6 +16,7 @@ import {
   Building2,
   Gauge,
   Inbox,
+  Wrench,
   Share2,
   Moon,
   Sun,
@@ -46,6 +47,8 @@ const FLEET_NAV = { href: '/vloot', label: 'Vloot', Icon: Building2 }
 const COCKPIT_NAV = { href: '/cockpit', label: 'Cockpit', Icon: Gauge }
 // Klantenservice-inbox (docs/support-assistant.md) — same audience as the cockpit.
 const INBOX_NAV = { href: '/cockpit/inbox', label: 'Inbox', Icon: Inbox }
+// Systeemstatus (backup, stille sensoren, deployments) — org ADMINS only.
+const BEHEER_NAV = { href: '/beheer', label: 'Beheer', Icon: Wrench }
 
 interface Props {
   title?: string
@@ -82,7 +85,9 @@ export default function AppShell({ title, actions, children }: Props) {
     async function checkRole() {
       const { data: sess } = await supabase.auth.getSession()
       if (!sess.session) { try { localStorage.removeItem('wz-org-role') } catch {}; if (!cancelled) { setIsOrgMember(false); setIsOrgAdmin(false) } return }
-      const { data, error } = await supabase.from('org_members').select('role')
+      // Alleen de eigen lidmaatschapsrijen: de policy toont de hele organisatie, dus een
+      // medewerker zou anders de Cockpit- en Beheer-knoppen van een admin te zien krijgen.
+      const { data, error } = await supabase.from('org_members').select('role').eq('user_id', sess.session.user.id)
       if (cancelled || error) return          // org tables not deployed → keep whatever we had
       const rows = data ?? []
       const admin = rows.some((r: { role: string | null }) => r.role === 'admin')
@@ -95,7 +100,7 @@ export default function AppShell({ title, actions, children }: Props) {
     return () => { cancelled = true; sub.subscription.unsubscribe() }
   }, [supabase])
 
-  const nav = [...NAV, ...(isOrgMember ? [FLEET_NAV] : []), ...(isOrgAdmin ? [COCKPIT_NAV, INBOX_NAV] : [])]
+  const nav = [...NAV, ...(isOrgMember ? [FLEET_NAV] : []), ...(isOrgAdmin ? [COCKPIT_NAV, INBOX_NAV, BEHEER_NAV] : [])]
 
   // While on "system", follow OS changes live (D8 — the toggle is no longer a
   // one-way door out of system).

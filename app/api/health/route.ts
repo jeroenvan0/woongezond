@@ -101,6 +101,11 @@ export async function GET(req: NextRequest) {
   const body = {
     status,
     database: 'ok',
+    // Welke build antwoordt hier? /beheer bevraagt prod en dev allebei op dit endpoint om
+    // te laten zien of er een deployment achterloopt — precies de situatie waarin prod
+    // dagenlang een oude dashboardversie draaide zonder dat iemand het zag. Een commit-hash
+    // van een private repo verraadt niets bruikbaars, dus dit mag in het publieke antwoord.
+    version: { commit: process.env.APP_COMMIT ?? 'onbekend', built_at: process.env.APP_BUILT_AT ?? null },
     checked_at: new Date().toISOString(),
     took_ms: Date.now() - startedAt,
     devices: { total: health.length, stale: stale.length },

@@ -3,6 +3,7 @@ import { buildWeeklyDeviceReport, WeeklyDeviceReport } from './weeklyDeviceRepor
 import { issueReportToken } from './token'
 import { periodFor, rollingFor, isDue, isFrequency, PERIOD_KIND, Frequency, WeekPeriod, zonedDate, ymdKey } from './period'
 import { sendEmail } from '@/lib/email'
+import { reportFrom } from '@/lib/settings'
 import { log, errText } from '@/lib/logger'
 
 // Periodieke verzending per SENSOR (docs/rapport-weekmail-plan.md). Eén implementatie voor
@@ -81,7 +82,7 @@ export async function weeklyReportSweep(s: SupabaseClient, opts: SweepOptions = 
     const item: SweepItem = { ...base, verdict: report.verdict, readings: rows.length, subject: report.subject, status: 'dry' }
 
     if (!opts.dry) {
-      const ok = await sendEmail({ to: c.email!, subject: report.subject, text: report.text, html: report.html })
+      const ok = await sendEmail({ from: await reportFrom(), to: c.email!, subject: report.subject, text: report.text, html: report.html })
       item.status = ok ? 'sent' : 'failed'
       const { error: insErr } = await s.from('report_sends').upsert(
         { device_id: d.id, period_start: period.startKey, period_end: period.endKey, status: item.status, verdict: report.verdict, readings: rows.length, trigger: opts.trigger ?? 'timer', sent_at: now.toISOString() },

@@ -55,6 +55,9 @@ export const LIMITS = {
   // Per sticker code (any IP): a code is looked up once per wizard run, so 20/hour is
   // generous for people and hopeless for guessing the 32^6 code space.
   deviceCode: { max: 20, windowMs: 60 * 60 * 1000 },
+  // "Sync nu draaien" in /beheer start een proces op de server dat minuten kan lopen.
+  // Drie per uur is ruim voor een beheerder die iets test, en sluit een dubbelklik-storm uit.
+  beheerSync: { max: 3, windowMs: 60 * 60 * 1000 },
 } as const satisfies Record<string, Limit>
 
 export interface RateResult {

@@ -26,8 +26,9 @@ import { scheduledSendAt } from '@/lib/support/schedule'
 export const dynamic = 'force-dynamic'
 
 const MODE = () => (process.env.SUPPORT_MODE ?? 'draft') as 'draft' | 'delayed' | 'auto' | 'off'
-const FROM = () => process.env.SUPPORT_FROM_ADDR || process.env.ALERT_FROM_ADDR || 'Woongezond <hulp@woongezond.com>'
-const ADMIN = () => process.env.SUPPORT_ADMIN_ADDR || ''
+import { supportFrom, adminAddr } from '@/lib/settings'
+const FROM = supportFrom
+const ADMIN = adminAddr
 
 export async function POST(req: NextRequest) {
   const raw = await req.text()
@@ -82,12 +83,12 @@ export async function POST(req: NextRequest) {
       ].join('\n')
       if (toResident) {
         const sent = await sendEmail({
-          from: FROM(), to: fromAddr, subject: /^re:/i.test(mail.subject) ? mail.subject : `Re: ${mail.subject}`, text: answer.reply,
-          replyTo: process.env.SUPPORT_REPLY_TO || undefined, bcc: ADMIN() || undefined, headers: mail.message_id ? { 'In-Reply-To': mail.message_id, References: mail.message_id } : undefined,
+          from: await FROM(), to: fromAddr, subject: /^re:/i.test(mail.subject) ? mail.subject : `Re: ${mail.subject}`, text: answer.reply,
+          replyTo: undefined, bcc: (await ADMIN()) || undefined, headers: mail.message_id ? { 'In-Reply-To': mail.message_id, References: mail.message_id } : undefined,
         })
         if (!sent) status = 'send_failed'
-      } else if (ADMIN()) {
-        const sent = await sendEmail({ from: FROM(), to: ADMIN(), subject: `[${answer.escalate ? 'ESCALATIE' : scheduled ? 'gaat automatisch' : 'concept'}] ${mail.subject}`, text: adminNote })
+      } else if (await ADMIN()) {
+        const sent = await sendEmail({ from: await FROM(), to: await ADMIN(), subject: `[${answer.escalate ? 'ESCALATIE' : scheduled ? 'gaat automatisch' : 'concept'}] ${mail.subject}`, text: adminNote })
         if (!sent) status = 'send_failed'
       }
     }
@@ -98,7 +99,7 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     log.error('support', 'assistant failed', { row: rowId, detail: errText(e) })
     await s.from('support_messages').update({ status: 'error', reason: errText(e).slice(0, 300) }).eq('id', rowId)
-    if (ADMIN()) await sendEmail({ from: FROM(), to: ADMIN(), subject: `[FOUT] ${mail.subject}`, text: `De assistent kon deze mail niet beantwoorden (${errText(e).slice(0, 200)}).\n\nVan: ${mail.from}\n\n${body}` })
+    if (await ADMIN()) await sendEmail({ from: await FROM(), to: await ADMIN(), subject: `[FOUT] ${mail.subject}`, text: `De assistent kon deze mail niet beantwoorden (${errText(e).slice(0, 200)}).\n\nVan: ${mail.from}\n\n${body}` })
     return NextResponse.json({ ok: true, status: 'error' })
   }
 }

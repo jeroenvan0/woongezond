@@ -6,6 +6,7 @@ import { QUESTIONS } from '@/lib/houseProfile'
 import { log, errText } from '@/lib/logger'
 import { isFrequency } from '@/lib/report/period'
 import { adminOrgs } from '@/lib/cockpit/auth'
+import { supportFrom } from '@/lib/settings'
 
 // Pilot-cockpit voor org-ADMINS (docs/pilot-cockpit-plan.md §2c, docs/support-assistant.md).
 //
@@ -122,7 +123,7 @@ export async function POST(req: NextRequest) {
       const text = typeof body?.text === 'string' && body.text.trim() ? body.text.trim().slice(0, 6000) : m.reply
       if (!text) return NextResponse.json({ error: 'empty' }, { status: 400 })
       const ok = await sendEmail({
-        from: process.env.SUPPORT_FROM_ADDR || process.env.ALERT_FROM_ADDR, to: m.from_addr,
+        from: await supportFrom(), to: m.from_addr,
         subject: /^re:/i.test(m.subject ?? '') ? m.subject : `Re: ${m.subject ?? 'je vraag'}`, text,
         headers: m.message_id ? { 'In-Reply-To': m.message_id, References: m.message_id } : undefined,
       })

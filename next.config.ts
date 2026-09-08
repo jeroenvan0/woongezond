@@ -1,4 +1,16 @@
 import type { NextConfig } from "next";
+import { execSync } from "node:child_process";
+
+// Welke commit draait hier? /beheer vergelijkt prod en dev met elkaar, en daarvoor moet een
+// draaiende instantie kunnen zeggen waar hij vandaan komt. Wordt op buildtijd ingebakken —
+// een gedeployde instantie heeft geen git-checkout nodig om zichzelf te herkennen.
+function buildCommit(): string {
+  try {
+    return execSync("git rev-parse --short HEAD", { stdio: ["ignore", "pipe", "ignore"] }).toString().trim();
+  } catch {
+    return "onbekend";
+  }
+}
 
 // When NEXT_PUBLIC_BASE_PATH is set (e.g. "/admin"), the whole app is served
 // under that prefix. Leaving it unset serves the app at the domain root.
@@ -19,6 +31,10 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  env: {
+    APP_COMMIT: buildCommit(),
+    APP_BUILT_AT: new Date().toISOString(),
+  },
   // Let a phone on the LAN load the dev bundles (the /start wizard test via
   // http://<mac-ip>:3005). Next 16 blocks cross-origin /_next/* requests in dev otherwise,
   // which leaves a server-rendered page with no JavaScript. Dev-only setting.
