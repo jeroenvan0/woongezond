@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { Brain, RotateCw } from 'lucide-react'
 import { withBase } from '@/lib/basePath'
 import { getSeries } from '@/lib/useSeries'
+import { useSelectedDevice } from '@/lib/useSelectedDevice'
 import { buildFeatureVector, predict, ModelWeights, SensorReading, Prediction } from '@/lib/ml'
 import { co2Status, rhStatus, mouldStatus } from '@/lib/calculations'
 
@@ -13,6 +14,9 @@ interface ModelMeta {
 }
 
 export default function MLPredictionCard() {
+  // De voorspelling gebruikt de laatste uren van de gekozen sensor; zonder deze scoping
+  // werd de featurevector over alle sensoren van het account gemiddeld.
+  const selectedDevice = useSelectedDevice()
   const [model, setModel] = useState<ModelWeights | null>(null)
   const [meta, setMeta] = useState<ModelMeta | null>(null)
   const [pred, setPred] = useState<Prediction | null>(null)
@@ -21,7 +25,7 @@ export default function MLPredictionCard() {
   const [trainMsg, setTrainMsg] = useState('')
 
   const buildPrediction = useCallback(async (m: ModelWeights) => {
-    const d = await getSeries(4320) // last 3 days, shared cache/dedupe
+    const d = await getSeries(4320, false, selectedDevice) // last 3 days, shared cache/dedupe
     const readings: SensorReading[] = (d.rows ?? [])
       .filter((x: any) => x.co2 != null && x.temperature != null && x.humidity != null)
       .map((x: any) => ({
@@ -39,7 +43,7 @@ export default function MLPredictionCard() {
     } catch {
       setPred(null)
     }
-  }, [])
+  }, [selectedDevice])
 
   const loadModel = useCallback(async () => {
     setLoading(true)

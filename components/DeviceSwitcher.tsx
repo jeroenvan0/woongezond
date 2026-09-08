@@ -2,7 +2,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { ChevronDown, Cpu, Check } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { useSelectedDevice, setSelectedDevice } from '@/lib/useSelectedDevice'
+import { useSelectedDevice, setSelectedDevice, clearSelectionIfOtherUser, getSelectedDevice } from '@/lib/useSelectedDevice'
 
 interface Device {
   id: string
@@ -25,14 +25,28 @@ export default function DeviceSwitcher() {
   const ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
+    let cancelled = false
     ;(async () => {
+      // Hoort de opgeslagen keuze nog bij dit account? Zo niet: wissen vóór iets ermee gaat
+      // meten. Anders erft een tweede gebruiker op dezelfde computer de sensor van de vorige.
+      const { data: u } = await supabase.auth.getUser()
+      clearSelectionIfOtherUser(u.user?.id ?? null)
+
       const { data } = await supabase
         .from('devices')
         .select('id,name,location')
         .eq('active', true)
         .order('name')
-      setDevices((data as Device[]) ?? [])
+      if (cancelled) return
+      const list = (data as Device[]) ?? []
+      setDevices(list)
+
+      // Een keuze die niet in de lijst staat — sensor van een ander account, overgedragen of
+      // gedeactiveerd — geeft alleen lege grafieken. Val dan terug op "alle sensoren".
+      const sel = getSelectedDevice()
+      if (sel && !list.some((d) => d.id === sel)) setSelectedDevice(null)
     })()
+    return () => { cancelled = true }
   }, [supabase])
 
   useEffect(() => {

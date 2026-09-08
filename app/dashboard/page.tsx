@@ -27,7 +27,8 @@ import { toSeries, buildDiagnosis } from '@/lib/reportAnalytics'
 import { useStickyState } from '@/lib/useStickyState'
 import { freshness } from '@/lib/freshness'
 import { useChartColors, alpha } from '@/lib/useChartColors'
-import { useSelectedDevice } from '@/lib/useSelectedDevice'
+import { useSelectedDevice, useDeviceSelectionReady } from '@/lib/useSelectedDevice'
+import { useIsMobile } from '@/lib/useIsMobile'
 import { useSeries } from '@/lib/useSeries'
 import { Wind, Thermometer, Droplets, Bug, Droplet, Activity, MapPin } from 'lucide-react'
 
@@ -40,6 +41,19 @@ const PERIOD_OPTIONS = [
   { label: '30 dagen', value: 43200 },
   { label: '1 jaar', value: 525600 },
 ]
+
+interface ChartDef {
+  key: 'co2' | 'temp' | 'rh' | 'mr' | 'dp'
+  chip: string
+  label: string
+  unit: string
+  color: string
+  fill: number
+  digits: number
+  col: string
+  height?: number
+  refLines?: { value: number; label: string; color: string }[]
+}
 
 const TABS = [
   { key: 'metingen', label: 'Metingen' },
@@ -91,6 +105,14 @@ export default function DashboardPage() {
   const router = useRouter()
   const supabase = createClient()
   const selectedDevice = useSelectedDevice()
+  // Wacht tot de keuze uit localStorage gelezen is; anders haalt de eerste render nog
+  // "alle sensoren" op en flitst die reeks even in beeld (zie useDeviceSelectionReady).
+  const deviceReady = useDeviceSelectionReady()
+  // Op een telefoon staat er te veel onder elkaar: drie grafieken van 200px achter elkaar
+  // maken de pagina meters lang terwijl je er één tegelijk leest. Mobiel toont daarom één
+  // reeks met een keuzerij erboven; op een breed scherm blijft alles zichtbaar.
+  const isMobile = useIsMobile()
+  const [mobileMetric, setMobileMetric] = useState('co2')
   const [period, setPeriod] = useStickyState('wz-dash-period', 1440)
   const [tab, setTab] = useState('metingen')
   // Smoothing window in SAMPLES, not minutes — see applyMA. The wall-clock
@@ -111,7 +133,7 @@ export default function DashboardPage() {
   // B3: scope the series to the selected device. The cache is keyed by window+device,
   // so switching rooms is a separate cached fetch; the /api/data route falls back to
   // all-devices if the device-aware RPC (migration 20260806120100) isn't deployed yet.
-  const { rows: rawRows, bucketMinutes, loading, error: dataError, refetch } = useSeries(period, { poll: true, device: selectedDevice })
+  const { rows: rawRows, bucketMinutes, loading, error: dataError, refetch } = useSeries(period, { poll: true, device: selectedDevice, enabled: deviceReady })
 
   // Auth guard — the fetch used to double as this; useSeries doesn't, so keep it explicit.
   useEffect(() => {
@@ -132,6 +154,7 @@ export default function DashboardPage() {
   // device filter yet, so on a multi-device account it shows the newest reading from
   // any of them — that waits on the device switcher (ROADMAP M4).
   useEffect(() => {
+    if (!deviceReady) return
     let cancelled = false
     const loadLatest = async () => {
       // Scope the headline reading to the chosen device (6.1). This is the direct,
@@ -166,7 +189,7 @@ export default function DashboardPage() {
       cancelled = true
       clearInterval(id)
     }
-  }, [supabase, selectedDevice])
+  }, [supabase, selectedDevice, deviceReady])
 
   useEffect(() => {
     fetch(withBase('/api/weather'))
@@ -415,40 +438,79 @@ export default function DashboardPage() {
               ? 'Uit'
               : `${formatWindow(windowMinutes(maPoints, bucketMinutes))} · ${maPoints} punten`}
         </span>
-        <span style={{ fontSize: 'var(--fs-2xs)', color: 'var(--subtle)', flexBasis: '100%', textAlign: 'right' }}>
+        <span className="wz-hide-mobile" style={{ fontSize: 'var(--fs-2xs)', color: 'var(--subtle)', flexBasis: '100%', textAlign: 'right' }}>
           Alleen de grafieken — de waarden bovenaan blijven ongewijzigde metingen.
           {rows.length > 0 && ` 1 punt = ${formatWindow(bucketMinutes)}.`}
         </span>
       </div>
 
-      {tab === 'metingen' && (
-        <div style={{ display: 'grid', gap: 12 }}>
-          <ChartCard label="CO₂ (ppm)">
-            <SensorChart data={displayed} dataKey="co2" syncId="wz-dash" color={chartC.co2} fillColor={alpha(chartC.co2, 0.1)} unit="ppm" refLines={[{ value: 1000, label: '1000 ppm', color: chartC.warn }, { value: 1500, label: '1500 ppm', color: chartC.crit }]} />
-            <ChartTable caption="CO₂ (ppm) per meetpunt" columns={[{ key: 't', label: 'Tijd' }, { key: 'v', label: 'CO₂ (ppm)' }]} rows={displayed.map((r) => ({ t: fmtTs(r.ts), v: r.co2.toFixed(0) }))} />
-          </ChartCard>
-          <ChartCard label="Temperatuur (°C)">
-            <SensorChart data={displayed} dataKey="temp" syncId="wz-dash" color={chartC.temp} fillColor={alpha(chartC.temp, 0.09)} unit="°C" />
-            <ChartTable caption="Temperatuur (°C) per meetpunt" columns={[{ key: 't', label: 'Tijd' }, { key: 'v', label: 'Temp (°C)' }]} rows={displayed.map((r) => ({ t: fmtTs(r.ts), v: r.temp.toFixed(1) }))} />
-          </ChartCard>
-          <ChartCard label="Relatieve vochtigheid (%)">
-            <SensorChart data={displayed} dataKey="rh" syncId="wz-dash" color={chartC.rh} fillColor={alpha(chartC.rh, 0.1)} unit="%" refLines={[{ value: 60, label: '60%', color: chartC.warn }, { value: 70, label: '70%', color: chartC.crit }]} />
-            <ChartTable caption="Relatieve vochtigheid (%) per meetpunt" columns={[{ key: 't', label: 'Tijd' }, { key: 'v', label: 'RV (%)' }]} rows={displayed.map((r) => ({ t: fmtTs(r.ts), v: r.rh.toFixed(1) }))} />
-          </ChartCard>
-        </div>
-      )}
-      {tab === 'schimmel' && (
-        <div style={{ display: 'grid', gap: 12 }}>
-          <ChartCard label="Schimmelrisico (0–100)">
-            <SensorChart data={displayed} dataKey="mr" color={chartC.mould} fillColor={alpha(chartC.mould, 0.12)} unit="" height={220} refLines={[{ value: 60, label: 'Verhoogd', color: chartC.warn }]} />
-            <ChartTable caption="Schimmelrisico per meetpunt" columns={[{ key: 't', label: 'Tijd' }, { key: 'v', label: 'Risico / 100' }]} rows={displayed.map((r) => ({ t: fmtTs(r.ts), v: r.mr.toFixed(0) }))} />
-          </ChartCard>
-          <ChartCard label="Dauwpunt (°C)">
-            <SensorChart data={displayed} dataKey="dp" color={chartC.dew} fillColor={alpha(chartC.dew, 0.1)} unit="°C" />
-            <ChartTable caption="Dauwpunt (°C) per meetpunt" columns={[{ key: 't', label: 'Tijd' }, { key: 'v', label: 'Dauwpunt (°C)' }]} rows={displayed.map((r) => ({ t: fmtTs(r.ts), v: r.dp.toFixed(1) }))} />
-          </ChartCard>
-        </div>
-      )}
+      {(() => {
+        // Eén beschrijving per reeks, zodat mobiel en desktop gegarandeerd dezelfde grafiek
+        // tonen — vóór dit stonden de twee tabbladen als losse JSX-blokken naast elkaar en
+        // moest elke wijziging op twee plekken gebeuren.
+        const CHARTS: Record<string, ChartDef[]> = {
+          metingen: [
+            { key: 'co2', chip: 'CO₂', label: 'CO₂ (ppm)', unit: 'ppm', color: chartC.co2, fill: 0.1, digits: 0, col: 'CO₂ (ppm)',
+              refLines: [{ value: 1000, label: '1000 ppm', color: chartC.warn }, { value: 1500, label: '1500 ppm', color: chartC.crit }] },
+            { key: 'temp', chip: 'Temp', label: 'Temperatuur (°C)', unit: '°C', color: chartC.temp, fill: 0.09, digits: 1, col: 'Temp (°C)' },
+            { key: 'rh', chip: 'Vocht', label: 'Relatieve vochtigheid (%)', unit: '%', color: chartC.rh, fill: 0.1, digits: 1, col: 'RV (%)',
+              refLines: [{ value: 60, label: '60%', color: chartC.warn }, { value: 70, label: '70%', color: chartC.crit }] },
+          ],
+          schimmel: [
+            { key: 'mr', chip: 'Schimmel', label: 'Schimmelrisico (0–100)', unit: '', color: chartC.mould, fill: 0.12, digits: 0, col: 'Risico / 100', height: 220,
+              refLines: [{ value: 60, label: 'Verhoogd', color: chartC.warn }] },
+            { key: 'dp', chip: 'Dauwpunt', label: 'Dauwpunt (°C)', unit: '°C', color: chartC.dew, fill: 0.1, digits: 1, col: 'Dauwpunt (°C)' },
+          ],
+        }
+
+        const list = CHARTS[tab as keyof typeof CHARTS] ?? []
+        const active = list.find((c) => c.key === mobileMetric) ?? list[0]
+        const shown = isMobile && active ? [active] : list
+
+        return (
+          <>
+            {isMobile && list.length > 1 && (
+              <div role="tablist" aria-label="Welke meting" style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
+                {list.map((c) => {
+                  const on = c.key === active?.key
+                  return (
+                    <button
+                      key={c.key}
+                      role="tab"
+                      aria-selected={on}
+                      onClick={() => setMobileMetric(c.key)}
+                      style={{ flex: 1, minWidth: 74, padding: '7px 10px', fontSize: 'var(--fs-sm)', fontWeight: on ? 700 : 500, fontFamily: 'inherit', cursor: 'pointer', borderRadius: 'var(--r-sm)', border: `1px solid ${on ? 'var(--brand)' : 'var(--border)'}`, background: on ? 'var(--brand-fill)' : 'var(--surface)', color: on ? 'var(--brand)' : 'var(--muted)' }}
+                    >
+                      {c.chip}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+            <div style={{ display: 'grid', gap: 12 }}>
+              {shown.map((c) => (
+                <ChartCard key={c.key} label={c.label}>
+                  <SensorChart
+                    data={displayed}
+                    dataKey={c.key}
+                    syncId={tab === 'metingen' ? 'wz-dash' : undefined}
+                    color={c.color}
+                    fillColor={alpha(c.color, c.fill)}
+                    unit={c.unit}
+                    height={c.height}
+                    refLines={c.refLines}
+                  />
+                  <ChartTable
+                    caption={`${c.label} per meetpunt`}
+                    columns={[{ key: 't', label: 'Tijd' }, { key: 'v', label: c.col }]}
+                    rows={displayed.map((r) => ({ t: fmtTs(r.ts), v: r[c.key].toFixed(c.digits) }))}
+                  />
+                </ChartCard>
+              ))}
+            </div>
+          </>
+        )
+      })()}
 
       <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--subtle)', marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
         <ContinuityChip />

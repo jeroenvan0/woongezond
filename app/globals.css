@@ -245,3 +245,12 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,te
 }
 @keyframes wz-spin{to{transform:rotate(360deg)}}
 .wz-spin{animation:wz-spin 1s linear infinite}
+
+/* Beheer: de velden per bewoner (naam, e-mail, frequentie). Op een telefoon onder elkaar
+   met volle breedte — drie krappe kolommen naast elkaar maakt een e-mailadres onleesbaar. */
+.wz-mailrow { display: grid; grid-template-columns: 1fr; gap: var(--sp-2); }
+@media (min-width: 600px) { .wz-mailrow { grid-template-columns: 1fr 1.4fr auto; } }
+
+/* Uitleg die op een telefoon alleen ruimte kost. Het element blijft in de DOM voor
+   schermlezers en verdwijnt alleen visueel op smalle schermen. */
+@media (max-width: 639px) { .wz-hide-mobile { display: none; } }

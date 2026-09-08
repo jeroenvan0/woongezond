@@ -32,7 +32,15 @@ function CustomTooltip({ active, payload, unit, color }: any) {
 
 export default function SensorChart({ data, dataKey, color, fillColor, unit, height = 200, refLines, syncId }: Props) {
   const c = useChartColors()
-  if (!data.length) return <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', fontSize: 13 }}>Geen data</div>
+  // Een lege grafiek reserveerde de volle hoogte (200px). Op een telefoon leverde dat
+  // schermen vol "Geen data" op — precies waar je juist wilt kunnen doorscrollen naar wat
+  // er wél staat. Een lege reeks krijgt daarom één regel.
+  if (!data.length)
+    return (
+      <div style={{ padding: '14px 0', color: 'var(--muted)', fontSize: 13, textAlign: 'center' }}>
+        Geen metingen in deze periode
+      </div>
+    )
 
   const chartData = data.map(r => ({
     t: r.ts.getTime(),          // numeric epoch ms → Recharts time scale
