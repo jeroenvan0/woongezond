@@ -25,7 +25,7 @@ is scoped to *what the numbers mean and where they come from*.
 | **Mould risk (dashboard)** | `lib/calculations.ts::mouldRisk` | Dashboard KPI tile | Heuristic margin, fixed wall offset |
 | **Mould risk (scenarios)** | `lib/calculations.ts::mouldRiskScenario` | What-if calculator | Heuristic margin, outdoor-temp-aware wall offset |
 | **Mould risk (trends/report)** | `lib/trends.ts::mouldRiskWd` | Trends, monthly stats, report diagnosis | Heuristic margin, diurnal (time-of-day) wall offset |
-| **Mould risk (Schimmelrisico page)** | `lib/mouldModels.ts` (VTT + WUFI-Bio) | Dedicated Schimmelrisico page | Two published building-physics models |
+| **Mould risk (Schimmelrisico page + cockpit)** | `lib/mouldRisk.ts` | Schimmelrisico page, cockpit per sensor | Cold-spot temperature factor (NEN 2778 / ISO 13788) + published VTT model (Ojanen 2010) + moisture load + winter projection |
 | Health Score | `lib/calculations.ts::healthScore` | Dashboard, trends, monthly stats | Weighted composite of CO₂/RH/mould-risk bands |
 | Night CO₂ outlook | `lib/nightForecast.ts` | Dashboard/chat | Empirical — resident's own recent nights |
 | Report diagnosis | `lib/reportAnalytics.ts` | `/report` page | Rule-based thresholds on CV, ACH, trend p-values |
@@ -155,50 +155,67 @@ than the smooth margin curve in §4.1. Used only in the scenario/what-if simulat
 ```
 wallDelta(hours) = 3.5 − 2.5·sin((hours−14)·π/12)
 ```
-i.e. the wall is modelled as coldest around 2am and warmest mid-afternoon, oscillating between
-1.0°C and 6.0°C colder than indoor air over the day — a middle ground between §4.1's fixed offset
+i.e. the wall offset peaks at 6.0 °C around 08:00 and bottoms at 1.0 °C around 20:00 (the formula's
+actual phase; an earlier version of this doc said "coldest around 2am") — a middle ground between §4.1's fixed offset
 and the full ISO 6946 model. Used for the health timeline, monthly stats, period comparisons, and
 — importantly — **the `/report` page's legal/evidentiary diagnosis** (§6).
 
-### 4.4 VTT Mould Index + WUFI-Bio — Schimmelrisico page
-`lib/mouldModels.ts`, fed by the ISO 6946 wall-surface conditions from §2.4 (not a heuristic
-offset at all). Two independently-published models:
+### 4.4 Schimmelrisico page + cockpit — `lib/mouldRisk.ts` (since 2026-09-11)
 
-**VTT Mould Index** (Hukka & Viitanen 1999; Ojanen et al. 2010; VTT Technical Research Centre of
-Finland) — simulates biological mould growth on a 0–6 scale with memory (growth accumulates,
-decays slowly when conditions improve):
-```
-RH_crit(T) = max(80, −0.00267·T³ + 0.16·T² − 3.13·T + 100)
-k1 = 1 if 0≤T≤50 and RH≥RH_crit, else 0
-A = 0.3·(RH − RH_crit)/(100 − RH_crit)
-dM/dt = k1·k2·[1/(7·e^A + 1) − (M·0.5/6)] · dt_hours,  clipped to [0,6]
-```
-`k2` is a material-class multiplier the user can pick on the Schimmelrisico page: wood 2.0,
-gypsum 1.0 (default), concrete 0.5, treated/painted 0.2.
+Replaced `lib/mouldModels.ts` (the Flask port). An analysis on the first pilot data found that
+port unusable for the pilot's purpose:
+- its "VTT" step was not the published model: M reached 1 in ~17 **hours** (published: weeks),
+  lost 87% per dry day (the code comment claimed "~50% per 6 days" — an hours/days mix-up), and a
+  *higher* RH gave a *lower* equilibrium (`1/(7·e^A+1)` with A growing in RH). M settled at ~1.2–1.5
+  whatever the conditions; the material factor k₂ only changed the speed;
+- its "WUFI-Bio" was an hours-above-threshold counter, not WUFI-Bio;
+- together, the WoonScore `0.6·MI/6·100 + 0.4·SER` could not exceed ~54, so **"Hoog risico" (≥60)
+  was unreachable** even at 95–100% wall RH for four weeks;
+- the wall was the flat wall with Rsi 0.13 (the ISO 6946 heat-loss value), not the coldest spot,
+  and the insulation class followed the glazing: sensor 2 (pre-1945, double glazing) got the
+  cavity-wall value R 0.9 and a WoonScore of 0 while it projects to condensation in the corner.
 
-**WUFI-Bio** (Fraunhofer IBP) — water-activity-based growth potential, 0–100 "SER" scale:
-```
-aw = RH/100,  aw_crit(T) = max(0.70, 0.80 − 0.0007·T)
-if aw ≥ aw_crit and 0≤T≤40:  GP += (aw − aw_crit)·dt
-else:                         GP = max(0, GP − 0.05·dt)
-SER = min(100, GP/50·100)
-```
+The new model, all pure functions with tests in `tests/mouldRisk.test.ts`:
 
-**Combined "WoonScore"**: `0.6·(MI/6·100) + 0.4·SER` — the 60/40 weighting between the two models
-is, again, a judgement call with no cited derivation; it seems chosen to let the (slower-moving,
-memory-based) VTT index dominate while WUFI-Bio's faster water-activity response contributes the
-rest.
+1. **Coldest spot.** `θ_si = θ_e + f·(θ_i − θ_e)`, `RH_si = p_i / p_sat(θ_si)`. f is the
+   temperature factor of the coldest spot (corner, lintel, floor edge) — NEN 2778 / ISO 13788;
+   Bouwbesluit requires ≥ 0.65 for new builds. Order: measured (IR thermometer on a cold morning,
+   `f = (θ_corner − θ_e)/(θ_i − θ_e)`) → build period (pre-1945 0.50, 1945–74 0.55, 1975–91 0.65,
+   1992–2005 0.70, post-2005 0.75) → device insulation class only without a questionnaire → 0.50.
+   Single glazing caps f at 0.50. Outdoor temperature is the hourly city weather, smoothed with an
+   EMA (τ = 12 h) because masonry damps the daily swing; souterrain uses min(outdoor, ground temp
+   ~1 m deep). Missing weather falls back to the **monthly normal**, never a fixed 5 °C.
+2. **Growth.** Published VTT: Hukka & Viitanen (1999) with Ojanen et al. (2010) sensitivity classes
+   (VS/S/MR/R; default S = wallpaper/gypsum/paint on plaster). Growth per **day**
+   `k1·k2 / (7·exp(−0.68 ln T − 13.9 ln RH + 66.02))`, `k2 = max(1 − exp(2.3(M − M_max)), 0)`;
+   decline −0.032/day for 6 h, 0 until 24 h, then −0.016/day, × c_mat (1 / 0.5 / 0.25 / 0.1 —
+   a choice within Ojanen's range). Sanity: class S at 20 °C/95% reaches M = 1 after ~24 days.
+   Run over 90 days of 3-hourly buckets; steps across gaps are capped at 6 h.
+3. **Now** (also in summer): `hoog` if M ≥ 1 or ≥ 50% of the last 14 days above 80% at the
+   cold spot; `verhoogd` if M ≥ 0.1 or ≥ 10%; else `laag`.
+4. **Moisture load.** `Δv = v_in − v_out` (g/m³). Scaled to winter level with the ISO 13788
+   seasonal line (Δv linear to 0 at 20 °C outdoor): `Δv0 = Δv / ((20 − θ_e)/20)`. Per day with
+   mean θ_e ≤ 15 °C and ≥ 16 h coverage; otherwise per cool night (biased high, reliability
+   `laag`); with neither, a prior from the questionnaire (household size, laundry indoors,
+   ventilation, reported moisture). Classes: < 3 laag, 3–5 normaal, 5–7 hoog, ≥ 7 zeer hoog
+   (ISO 13788 dwelling classes ≈ 4 and ≈ 6 g/m³ — **check these against the standard**).
+   Honest limitation: at θ_e = 15 °C the scale factor is 4, so an SCD41 RH error of a few percent
+   becomes several g/m³. Summer estimates are flagged `laag` and improve from October.
+5. **Winter projection.** January normal (3.5 °C, 88% RH) + Δv0 + f; indoor temperature measured
+   once ≥ 3 heating-season days exist (daily θ_e ≤ 10 °C), else per room (bedroom 17, living 20,
+   unheated 15). `RH_si ≥ 80%` (ISO 13788 criterion) → hoog, ≥ 70% → verhoogd. Range from Δv0
+   p25–p75. Days to M ≥ 1 and M ≥ 3 at those constant conditions ("zichtbaar na ~X weken").
 
-**This is the most rigorous of the four models** — it's the only one built on two independently
-published, peer-reviewed building-physics models rather than an ad hoc formula, and the only one
-that actually accounts for a specific home's insulation class and real outdoor-temperature
-history. It's also the only one presented with an in-app explanation panel (`Explanation()` in
-`app/schimmelrisico/page.tsx`) showing users the formulas and citing sources — a good pattern,
-currently only applied to this one page.
+What the first data says (2026-09-11): sensor 2 — now laag, moisture load ~6 g/m³ (3 nights,
+unreliable), winter projection corner ~100% (condensation), growth start ~3 weeks, visible ~11
+weeks. Sensor 1 (reports condensation): winter verhoogd, range laag–hoog.
+
+The Flask app (`/var/www/woongezond-dev`, `mould_models.py`) still has the old models; it is no
+longer the reference for this part.
 
 ### 4.5 Open decision for the pilot
-Right now a user could see a "20/100" mould-risk tile on the dashboard and a "65/100 — hoog
-risico" WoonScore on the Schimmelrisico page *at the same moment*, because they're different
+Right now a user can see a low mould-risk tile on the dashboard (§4.1, fixed 3.5 °C wall offset)
+and a "Deze winter: hoog" on the Schimmelrisico page *at the same moment*, because they're different
 models measuring different things (indoor-air heuristic vs. wall-surface physics). That's not
 necessarily wrong — a quick KPI tile and a rigorous diagnostic page can reasonably use different
 fidelity — but it needs to be an *explicit, documented* decision, not an accident of incremental

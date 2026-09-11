@@ -235,7 +235,7 @@ export default function TrendsPage() {
         <HealthTimelineChart data={timelineData} interventions={ivMarkers} />
         <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--muted)', marginTop: 6, display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
           Dagelijkse gezondheidsscore — hoger = beter.
-          <InfoHint label="gezondheidsscore" text="0–100, hoger = beter (dezelfde score als op het dashboard). Let op: de WoonScore op de Schimmel-pagina loopt juist andersom — daar betekent hoger méér risico." />
+          <InfoHint label="gezondheidsscore" text="0–100, hoger = beter (dezelfde score als op het dashboard). De Schimmel-pagina geeft geen score maar een risico (laag, verhoogd, hoog) voor nu en voor de winter." />
           <span>Groen ≥ 65 · Amber 40–64 · Rood &lt; 40 · Stippellijn = interventie · lijn = 7-daags gemiddelde</span>
         </p>
         <ChartTable
