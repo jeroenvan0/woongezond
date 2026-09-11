@@ -41,7 +41,7 @@ sensor). Tokens niet in docs of chats plakken; ze zijn de identiteit van de sens
 |---|---|---|
 | 1 | DEVICE-2LEMY4 | draait (Jeroen) |
 | 2 | DEVICE-NPNCNF | draait (Faber/Lemke, faber@test.nl) |
-| 3 | DEVICE-A9BB94 | te flashen |
+| 3 | DEVICE-A9BB94 | draait sinds 2026-09-11 (Daan, daan@hiemstratech.nl), fw 2.1.1 |
 | 4 | DEVICE-94R25R | te flashen |
 | 5 | DEVICE-VVLY3Z | te flashen |
 | 6 | DEVICE-B6RGC5 | te flashen |
@@ -108,6 +108,15 @@ sensor is weer "schoon" voor de bewoner.
 
 ## Valkuilen van de eerste avond
 
+- **Nog steeds `I2C scan: 0x0, 0x36, 0x62` in de monitor** → dat is de fabriekstestsketch van
+  Adafruit; er is nog niet geüpload. Die sketch negeert alles wat je typt.
+- **Board kiezen**: *Adafruit Feather ESP32-S3 2MB PSRAM* (`adafruit_feather_esp32s3`), niet
+  de "No PSRAM"-variant. De poort kan ook `/dev/cu.usbmodem1101` heten.
+- **Verkeerd WiFi-wachtwoord bij de bewoner** → **niet opnieuw flashen**: een upload wist het
+  WiFi-wachtwoord niet. Stekker eruit en erin; firmware 2.1.1 opent na ~2 min weer
+  Woongezond-0N (5 min open). Vanaf 2.2.0 gaat het setupnetwerk meteen open als de router
+  het wachtwoord weigert, staat er op de portalpagina "Het wachtwoord klopte niet", knippert
+  de LED 4× en werken BOOT-knop en `RESET WIFI` altijd (vroeger niet tijdens het verbinden).
 - **Compileren hangt** → sketch of libraries staan in iCloud (zie §0).
 - **Seriële monitor leeg / poort "Resource busy"** → een andere monitor houdt de poort vast
   (IDE-monitor of een script). Eén tegelijk.

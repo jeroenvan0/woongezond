@@ -224,7 +224,7 @@ function StartInner() {
               </div>
               {!wifiOnly && <Primary onClick={() => setStep(2)} icon={<ArrowRight size={17} />} variant="soft">Eerst de vragen doen</Primary>}
               <Ghost onClick={() => { setWifiOnly(false); setStep(0) }} icon={<ArrowLeft size={15} />}>Terug</Ghost>
-              <Note>Lukt het niet? De sensor werkt alleen op 2,4 GHz WiFi. Brandt het lampje niet, probeer een ander stopcontact.</Note>
+              <Note>Lukt het niet? De sensor werkt alleen op 2,4 GHz WiFi. Wachtwoord verkeerd getypt? Binnen twee minuten verschijnt {status.ap_name} weer; verbind opnieuw en probeer het nog eens. Brandt het lampje niet, probeer een ander stopcontact.</Note>
             </Panel>
           ))}
 
