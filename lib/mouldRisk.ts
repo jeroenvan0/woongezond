@@ -238,6 +238,7 @@ export interface MouldAssessment {
     pOpen: number                // kans op zichtbaar in een open hoek
     pFurniture: number           // kans op zichtbaar achter een kast/bed tegen de buitenmuur
     rhSurfaceFurniture: number   // januari, achter de kast
+    provisional: boolean         // voorlopig: < 14 dagen data of een onbetrouwbare vochtschatting (zomer, geen koele dagen)
     daysToVisible: number | null // dagen tot M ≥ 3 in de koudste hoek, constante wintercondities
     daysToStart: number | null   // dagen tot M ≥ 1
   }
@@ -395,6 +396,7 @@ export function assessMould(inp: MouldInputs): MouldAssessment {
   const furnitureShare = furniture === 'ja' ? 1 : furniture === 'nee' ? 0 : 0.5
   const fSpot = furniture === 'ja' ? fFurniture : f
   const souterrain = inp.profile?.floor === 'souterrain'
+  const dataDays = indoor.length > 1 ? (indoor[indoor.length - 1].ts - indoor[0].ts) / 86_400_000 : 0
 
   // Buitentemperatuur gedempt (EMA, τ = 12 u) voor het muuroppervlak; ruwe waarde voor Δv.
   const ema: number[] = []
@@ -559,6 +561,9 @@ export function assessMould(inp: MouldInputs): MouldAssessment {
     pGrowth: +p.pGrowth.toFixed(2),
     pOpen: +pOpen.toFixed(2),
     pFurniture: +pFurn.toFixed(2),
+    // Een winterkans uit twee weken zomer of uit alleen de vragenlijst is een eerste schatting.
+    // In de zomer geldt dat voor iedereen; vanaf oktober (koele dagen) wordt het vaster.
+    provisional: dataDays < 14 || load.reliability === 'laag',
     rhSurfaceFurniture: +project(load.dv0, ti, fFurniture).rhSurface.toFixed(0),
     daysToStart: vttDaysTo(1, mid.tSurface, mid.rhSurface, cls),
     daysToVisible: vttDaysTo(3, mid.tSurface, mid.rhSurface, cls),

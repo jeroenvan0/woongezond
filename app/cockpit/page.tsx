@@ -301,7 +301,7 @@ function MouldLine({ deviceId }: { deviceId: string }) {
       <Droplets size={13} style={{ flexShrink: 0, color: LEVEL_COLOR[winterLevel] }} />
       <span style={{ fontWeight: 600, color: 'var(--text)' }}>Schimmel: {r.profile.title.toLowerCase()}</span>
       <span aria-hidden>·</span>
-      {part('nu', r.now.level, r.now.pctAbove80 ? ` (${r.now.pctAbove80}% >80%)` : '')}
+      {part('nu', r.now.level, '')}
       <span aria-hidden>·</span>
       {part('winter', winterLevel, ` (kans ${Math.round(w.pVisible * 100)}%)`)}
       <span aria-hidden>·</span>

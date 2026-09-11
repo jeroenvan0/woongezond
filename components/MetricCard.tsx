@@ -1,4 +1,6 @@
 'use client'
+import Link from 'next/link'
+import { ChevronRight } from 'lucide-react'
 import { ReactNode } from 'react'
 
 interface Props {
@@ -14,13 +16,20 @@ interface Props {
   icon?: ReactNode
   /** Reading is too old to be trusted as current — desaturate it (A1). */
   stale?: boolean
+  /** Naar een andere pagina (hele tegel wordt een link). */
+  href?: string
+  /** Of een actie op dezelfde pagina, bv. naar de grafiek scrollen. */
+  onClick?: () => void
+  /** Waar de tegel heen gaat, voor schermlezers en de tooltip. */
+  goLabel?: string
 }
 
-export default function MetricCard({ title, value, unit, label, labelColor, sub, subColor, accent = 'var(--accent)', progress, icon, stale }: Props) {
+export default function MetricCard({ title, value, unit, label, labelColor, sub, subColor, accent = 'var(--accent)', progress, icon, stale, href, onClick, goLabel }: Props) {
+  const interactive = !!(href || onClick)
   // color-mix keeps the tint working whether `accent` is a token or a literal —
   // the old `${accent}1a` hex-concat breaks the moment accent is a var().
   const tint = `color-mix(in srgb, ${accent} 12%, transparent)`
-  return (
+  const card = (
     <div
       style={{
         background: 'var(--surface)',
@@ -31,6 +40,8 @@ export default function MetricCard({ title, value, unit, label, labelColor, sub,
         display: 'flex',
         flexDirection: 'column',
         minHeight: 104,
+        height: '100%',
+        position: 'relative',
         // A stale reading is desaturated so it reads as "not current" at a glance,
         // while the number stays legible for reference.
         filter: stale ? 'saturate(0.25)' : undefined,
@@ -44,6 +55,7 @@ export default function MetricCard({ title, value, unit, label, labelColor, sub,
           </span>
         )}
         <span style={{ fontSize: 'var(--fs-2xs)', fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</span>
+        {interactive && <ChevronRight className="wz-tile-go" size={14} aria-hidden style={{ position: 'absolute', top: 12, right: 10, color: 'var(--muted)' }} />}
       </div>
 
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 4 }}>
@@ -62,4 +74,9 @@ export default function MetricCard({ title, value, unit, label, labelColor, sub,
       </div>
     </div>
   )
+  if (!interactive) return card
+  const aria = `${title}: ${value}${unit ? ' ' + unit : ''}${label ? ', ' + label : ''}${goLabel ? ' — ' + goLabel : ''}`
+  return href
+    ? <Link href={href} className="wz-tile" aria-label={aria} title={goLabel}>{card}</Link>
+    : <button type="button" className="wz-tile" onClick={onClick} aria-label={aria} title={goLabel}>{card}</button>
 }

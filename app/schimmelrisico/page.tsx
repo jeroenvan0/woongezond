@@ -177,12 +177,12 @@ function HouseProfileSection({ r, isDemo, profile }: { r: MouldAssessment; isDem
       <div style={{ display: 'grid', gap: 6 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', fontSize: 'var(--fs-md)', padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
           <span style={{ color: 'var(--muted)' }}>Zoals het nu gaat</span>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><span style={{ color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>kans {pct(w.pVisible)} · hoek ~{nl(w.rhSurface)}%</span><Pill level={w.level} /></span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><span style={{ color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>kans {pct(w.pVisible)} <span style={{ color: 'var(--subtle)', fontSize: 'var(--fs-sm)' }}>(hoek {nl(w.rhSurface)}% RV)</span></span><Pill level={w.level} /></span>
         </div>
         {r.whatIf.map((v) => (
           <div key={v.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', fontSize: 'var(--fs-md)', padding: '4px 0' }}>
             <span style={{ color: 'var(--text)', minWidth: 0 }}>{v.label}</span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><span style={{ color: v.better ? 'var(--text)' : 'var(--muted)', fontVariantNumeric: 'tabular-nums' }}>kans {pct(v.pVisible)} · hoek ~{nl(v.rhSurface)}%</span><Pill level={v.level} /></span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><span style={{ color: v.better ? 'var(--text)' : 'var(--muted)', fontVariantNumeric: 'tabular-nums' }}>kans {pct(v.pVisible)} <span style={{ color: 'var(--subtle)', fontSize: 'var(--fs-sm)' }}>(hoek {nl(v.rhSurface)}% RV)</span></span><Pill level={v.level} /></span>
           </div>
         ))}
       </div>
@@ -237,7 +237,7 @@ export default function SchimmelrisicoPage() {
 
   const r = result
   const w = r?.winter
-  const winterPill = w ? `${LEVEL_STYLE[w.level].label} · kans ${pct(w.pVisible)}` : ''
+  const winterPill = w ? `${LEVEL_STYLE[w.level].label} · kans ${pct(w.pVisible)}${w.provisional ? ' · voorlopig' : ''}` : ''
   const hasProfile = !!inputs?.profile
   const loadBasis = r
     ? r.load.basis === 'dagen' ? `${r.load.n} koele dagen`
@@ -263,8 +263,8 @@ export default function SchimmelrisicoPage() {
             <RiskCard icon={<Sun size={16} />} title="Nu" hint="Het risico van de afgelopen weken op de koudste plek in de kamer: hoe vaak het daar boven 80% vochtigheid kwam, en of het groeimodel al groei ziet. Dit geldt ook in de zomer.">
               <Pill level={r.now.level} />
               <Fact>
-                Koudste plek nu <strong style={{ color: 'var(--text)' }}>{r.now.rhSurface != null ? `${nl(r.now.rhSurface)}%` : '–'}</strong> vochtig
-                {r.now.pctAbove80 != null && <>; afgelopen 14 dagen <strong style={{ color: 'var(--text)' }}>{nl(r.now.pctAbove80)}%</strong> van de tijd boven 80%</>}.
+                Luchtvochtigheid in de koudste hoek nu <strong style={{ color: 'var(--text)' }}>{r.now.rhSurface != null ? `${nl(r.now.rhSurface)}% RV` : '–'}</strong>. Schimmel groeit pas boven ~80% RV
+                {r.now.pctAbove80 != null && <>; dat was de afgelopen 14 dagen {r.now.pctAbove80 > 0 ? <><strong style={{ color: 'var(--text)' }}>{nl(r.now.pctAbove80)}%</strong> van de tijd</> : 'niet'} het geval</>}.
               </Fact>
               <Fact>Schimmelindex {nl(r.now.mi, 2)} van 6: {mouldIndexText(r.now.mi)}.{r.now.condensHours > 0 && <> {nl(r.now.condensHours)} uur condens in de hoek.</>}</Fact>
               {!r.now.outdoorMeasured && <Fact>Geen weerdata: gerekend met de gemiddelde buitentemperatuur van deze maand.</Fact>}
@@ -277,14 +277,21 @@ export default function SchimmelrisicoPage() {
                   <Fact>
                     Kans op zichtbare schimmel: <strong style={{ color: 'var(--text)' }}>{pct(w.pVisible)}</strong>; op groei die je nog niet ziet (geur, sporen): {pct(w.pGrowth)}.
                   </Fact>
+                  {w.provisional && (
+                    <Fact>
+                      <strong style={{ color: 'var(--text)' }}>Voorlopig.</strong> {r.load.basis === 'vragenlijst'
+                        ? 'We hebben nog geen koele dagen gemeten, dus dit rekent met een standaardhuishouden.'
+                        : 'Gebaseerd op een paar koele nachten in de zomer; dat is onzeker.'} Nu zegt weinig: de ramen staan open en het is warm. Zodra het buiten kouder wordt, meten we hoeveel vocht dit huishouden echt maakt.
+                    </Fact>
+                  )}
                   <Fact>
                     In een open hoek {pct(w.pOpen)}, achter een kast of bed tegen de buitenmuur {pct(w.pFurniture)}
                     {r.furniture === 'onbekend' ? ' (we weten niet of daar iets staat, dus beide tellen mee).' : r.furniture === 'ja' ? ' (daar staat er een, dus dat telt).' : '.'}
                   </Fact>
                   <Fact>
-                    Op een gemiddelde januaridag is de hoek ongeveer <strong style={{ color: 'var(--text)' }}>{nl(w.rhSurface)}%</strong> vochtig
+                    Op een gemiddelde januaridag verwachten we in de hoek <strong style={{ color: 'var(--text)' }}>{nl(w.rhSurface)}% RV</strong>
                     {w.rhSurfaceRange[0] !== w.rhSurfaceRange[1] && <> ({nl(w.rhSurfaceRange[0])}–{nl(w.rhSurfaceRange[1])}%)</>}, bij {nl(w.ti, 0)} °C binnen
-                    {w.tiMeasured ? ' (gemeten)' : ' (aanname)'} en {nl(w.rhIndoor)}% in de kamer.
+                    {w.tiMeasured ? ' (gemeten)' : ' (aanname)'} en {nl(w.rhIndoor)}% RV in de kamer.
                   </Fact>
                   <Fact>
                     {r.yearGrowth.start && r.yearGrowth.start !== 'nu'
