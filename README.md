@@ -11,7 +11,7 @@ Live: `https://woongezond-react.vostech.group` (systemd `woongezond-react`, port
 |-------|------|
 | `/dashboard` | Live KPIs (CO₂, temp, RV, schimmel, dauwpunt, gezondheid), weather + AQI bar, insight banner, moving-average smoothing, tabs (Metingen / Dauw & schimmel / Ventilatie / Diagnose), **ML-voorspelling** card, AI chat |
 | `/trends` | Daily health timeline (+7-day rolling, intervention markers), monthly score bars (+ est. outdoor temp), season×hour heatmap, **period comparison with seasonal correction**, intervention tracking (CRUD) |
-| `/schimmelrisico` | **VTT Mould Index + WUFI-Bio** models over the T/RH series, WoonScore hero, MI/SER charts, dual-axis T/RH chart, material class (k₂), model explanation |
+| `/schimmelrisico` | Mould risk per sensor (`lib/mouldRisk.ts`): now (cold-spot RH + VTT index, also in summer), winter projection, moisture load; charts for cold-spot RH, VTT index and indoor T/RH; surface sensitivity class; explanation |
 | `/scenarios` | What-if calculator (season, outdoor T/RH, occupants, ACH, heating, window habit), live results, ML card, AI recommendations, saved-scenario comparison |
 | `/login` | Supabase email/password auth |
 
@@ -29,7 +29,7 @@ Live: `https://woongezond-react.vostech.group` (systemd `woongezond-react`, port
 ```
 app/api/        data · chat · recommendations · weather · ml/{model,retrain}
                 notifications/check · health
-lib/            calculations · trends · mouldModels · chatTools · ml/* · supabase/*
+lib/            calculations · trends · mouldRisk · chatTools · ml/* · supabase/*
                 logger · email · rateLimit
 components/     MetricCard · ChartCard · SensorChart · TimeSeriesChart · DualAxisChart
                 HealthTimelineChart · MonthlyTrendChart · HourHeatmap
