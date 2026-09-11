@@ -11,15 +11,16 @@ import SegmentedControl from '@/components/ui/SegmentedControl'
 import InfoHint from '@/components/ui/InfoHint'
 import ChartTable from '@/components/ui/ChartTable'
 import DataBanner, { DataError, describeError } from '@/components/DataBanner'
+import MouldYearChart from '@/components/MouldYearChart'
 import {
-  assessMould, demoInputs, mouldIndexText, SENSITIVITY_LABELS, WINTER_TE,
-  type Level, type LoadLevel, type MouldInputs, type SensitivityClass, type FSource,
+  assessMould, demoInputs, mouldIndexText, growthSentence, SENSITIVITY_LABELS, WINTER_TE,
+  type Level, type LoadLevel, type MouldInputs, type SensitivityClass, type FSource, type MouldAssessment,
 } from '@/lib/mouldRisk'
 import { fetchMouldInputs } from '@/lib/mouldLoad'
 import { useStickyState } from '@/lib/useStickyState'
 import { useChartColors } from '@/lib/useChartColors'
 import { useSelectedDevice, useDeviceSelectionReady } from '@/lib/useSelectedDevice'
-import { ChevronDown, ChevronUp, FlaskConical, Snowflake, Sun, Droplets } from 'lucide-react'
+import { ChevronDown, ChevronUp, FlaskConical, Snowflake, Sun, Droplets, Home } from 'lucide-react'
 
 // Schimmelrisico per sensor (lib/mouldRisk.ts): nu — ook in de zomer — op de koudste
 // plek, de verwachting voor de winter, en de vochtbelasting die beide aandrijft.
@@ -43,12 +44,17 @@ const LOAD_STYLE: Record<LoadLevel, Level> = { laag: 'laag', normaal: 'laag', ho
 const F_SOURCE_TEXT: Record<FSource, string> = {
   gemeten: 'gemeten in de woning',
   bouwperiode: 'geschat uit het bouwjaar',
+  renovatie: 'geschat uit bouwjaar en renovatie',
   isolatie: 'geschat uit de isolatieklasse',
   standaard: 'onbekend, voorzichtige aanname',
 }
 
+// Bron van f in woorden; bij een oud huis zonder renovatieantwoord zeggen we dat erbij,
+// anders is 0,53 i.p.v. 0,50 een raadsel.
+const fText = (r: MouldAssessment, profile?: MouldInputs['profile']) =>
+  F_SOURCE_TEXT[r.fSource] + (r.fSource === 'bouwperiode' && r.f < 0.7 && (!profile?.renovation || profile.renovation === 'onbekend') ? '; of het huis later geïsoleerd is, weten we niet' : '')
+const pct = (p: number) => `${Math.round(p * 100)}%`
 const nl = (v: number, d = 0) => v.toLocaleString('nl-NL', { minimumFractionDigits: d, maximumFractionDigits: d })
-const weeks = (days: number) => (days < 14 ? `${Math.round(days)} dagen` : `${Math.round(days / 7)} weken`)
 const fmtT = (t: number) => new Date(t).toLocaleString('nl-NL', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
 
 function Pill({ level, text }: { level: Level; text?: string }) {
@@ -116,14 +122,72 @@ function Explanation() {
         <Code>dM/dt = k₁·k₂ / (7·exp(−0,68·ln T − 13,9·ln RV + 66,02))</Code> per dag, alleen boven de kritieke RV.
       </p>
       {h('3. Vochtbelasting')}
-      {p('Hoeveel vochtiger is het binnen dan buiten, in gram water per m³ lucht? Dat hangt af van het huishouden (koken, douchen, was drogen, adem) en van ventilatie. In de zomer staan ramen open en is het verschil klein; ISO 13788 rekent daarom met een seizoenslijn die bij 20 °C buiten naar nul gaat. Wij rekenen gemeten waarden terug naar winterniveau. Normale woningen zitten rond 4 g/m³, druk bewoonde rond 6.')}
+      {p('Hoeveel vochtiger is het binnen dan buiten, in gram water per m³ lucht? Dat hangt af van het huishouden (koken, douchen, was drogen, adem) en van ventilatie. In de zomer staan ramen open en is het verschil klein; ISO 13788 rekent daarom met een seizoenslijn die bij 20 °C buiten naar nul gaat. Wij rekenen gemeten waarden terug naar winterniveau. Een normaal huishouden zit volgens ISO 13788 rond 4 g/m³, een druk bewoond huis rond 6.')}
       {p('In de zomer schatten we dit alleen op koele dagen of nachten (buiten ≤ 15 °C), en dan is de schatting onzeker: een kleine meetfout wordt bij warm weer sterk vergroot. Zonder koele dagen gebruiken we de vragenlijst. De betrouwbaarheid staat erbij en wordt vanzelf beter vanaf oktober.')}
+      {h('Achter een kast')}
+      {p('Achter een kast of bed tegen de buitenmuur komt weinig warmte bij de muur. Daar is het flink kouder dan in een open hoek (in het model: temperatuurfactor 0,1 lager), en daar begint schimmel vaak. Staat er zo’n kast, dan rekenen we met die plek; weten we het niet, dan telt die plek voor de helft mee in de kans. Kasten 5–10 cm van de buitenmuur zetten helpt vaak meer dan je zou denken.')}
       {h('4. Verwachting voor de winter')}
-      {p(`We nemen een gemiddelde januaridag (${nl(WINTER_TE, 1)} °C buiten, 88% RV), tellen de vochtbelasting erbij en rekenen de koudste plek uit. De binnentemperatuur is gemeten zodra het stookseizoen begint; daarvoor een aanname per kamer (slaapkamer 17 °C, woonkamer 20 °C). Boven 80% aan het oppervlak (het criterium uit ISO 13788) is het risico hoog. Hoe lang het duurt voor schimmel zichtbaar wordt, rekent het VTT-model uit bij die omstandigheden.`)}
+      {p(`We nemen een gemiddelde januaridag (${nl(WINTER_TE, 1)} °C buiten, 88% RV), tellen de vochtbelasting erbij en rekenen de koudste plek uit. De binnentemperatuur is gemeten zodra het stookseizoen begint; daarvoor een aanname per kamer (slaapkamer 17 °C, woonkamer 20 °C). Daarna rekent het VTT-model het komende seizoen maand voor maand door, 200 keer, telkens met een iets andere vochtbelasting, binnentemperatuur en temperatuurfactor binnen wat we niet zeker weten (bouwjaar geschat of gemeten, wel of niet gerenoveerd, zomer- of wintermeting). Het deel van die berekeningen met zichtbare schimmel is de kans. Zichtbaar betekent index 3, ook de grens in de Amerikaanse norm ASHRAE 160. Label: laag onder 15% kans, hoog vanaf 50%. Niet de 80%-grens uit ISO 13788 alleen: dat is een ontwerpgrens met veiligheidsmarge, en daarmee kreeg bijna elk oud huis “hoog”. Het groeimodel werkt bijna als een schakelaar: per huis is de uitkomst meestal ‘niets’ of ‘zeker’, met een scherpe grens rond 4–5 g/m³ vocht in een oud huis. De kans komt vooral uit wat we niet precies weten: vocht, isolatie, temperatuur en of er een kast tegen de buitenmuur staat. Microscopische groei, die al geur en sporen geeft, komt eerder dan zichtbare schimmel en telt mee in het label: vanaf 30% kans daarop is het risico verhoogd. Let op: dit is de onzekerheid van het model, nog geen kans die aan echte huizen is afgemeten. Dat doet de pilot.`)}
       <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '14px 0 10px' }} />
       <p style={{ fontSize: 11.5, color: 'var(--subtle)', fontStyle: 'italic', margin: 0, lineHeight: 1.6 }}>
         Dit is een risico-inschatting met bouwfysische modellen, geen bouwkundig onderzoek. De grootste onzekerheid is f: één meting met een
         infraroodthermometer in de koudste hoek op een koude ochtend maakt de uitkomst veel preciezer.
+      </p>
+    </div>
+  )
+}
+
+
+function Chip({ level, children }: { level: Level | null; children: React.ReactNode }) {
+  const c = level ? LEVEL_STYLE[level].color : 'var(--muted)'
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 'var(--fs-sm)', color: 'var(--text)', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--r-pill)', padding: '4px 11px' }}>
+      <span aria-hidden style={{ width: 7, height: 7, borderRadius: '50%', background: c, flexShrink: 0 }} />
+      {children}
+    </span>
+  )
+}
+
+function HouseProfileSection({ r, isDemo, profile }: { r: MouldAssessment; isDemo: boolean; profile?: MouldInputs['profile'] }) {
+  const w = r.winter
+  return (
+    <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--r-lg)', padding: '18px 20px', boxShadow: 'var(--shadow-sm)', marginBottom: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}>
+        <span style={{ color: 'var(--muted)', display: 'inline-flex' }}><Home size={16} /></span>
+        <span style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Schimmelprofiel van dit huis{isDemo ? ' — voorbeeld' : ''}</span>
+        <InfoHint label="Schimmelprofiel" text="Waar zit het risico: in het gebouw (koude plekken) of in het vocht in de lucht? Samen bepalen ze hoe het huis zich door het jaar heen gedraagt." />
+      </div>
+      <div style={{ fontSize: 'var(--fs-xl)', fontWeight: 700, color: 'var(--text)', letterSpacing: '-0.01em' }}>{r.profile.title}</div>
+      <p style={{ fontSize: 'var(--fs-md)', color: 'var(--muted)', lineHeight: 1.55, margin: '6px 0 12px', maxWidth: 760 }}>{r.profile.text}</p>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+        <Chip level={r.profile.cold ? 'hoog' : 'laag'}>Koudste plek f = {nl(r.f, 2)} ({fText(r, profile)})</Chip>
+        <Chip level={LOAD_STYLE[r.load.level]}>Vochtbelasting {r.load.level}: {nl(r.load.dv0, 1)} g/m³</Chip>
+        <Chip level={null}>Winter binnen {nl(w.ti, 0)} °C ({w.tiMeasured ? 'gemeten' : 'aanname'})</Chip>
+      </div>
+
+      <div style={{ fontSize: 'var(--fs-md)', fontWeight: 700, color: 'var(--text)', marginBottom: 2 }}>Hoe het door het jaar gaat</div>
+      <p style={{ fontSize: 'var(--fs-md)', color: 'var(--muted)', margin: '0 0 6px', lineHeight: 1.5 }}>{growthSentence(r.yearGrowth)}</p>
+      <MouldYearChart data={r.year} />
+      <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--subtle)', margin: '4px 0 16px', lineHeight: 1.5 }}>
+        Balken: verwachte vochtigheid op de koudste plek bij een gemiddelde maand (ISO 13788-maandmethode); oranje = boven 80%, groei mogelijk; rood = zichtbare schimmel verwacht. Stippen: berekend uit de eigen metingen.
+        Koude nachten en vochtige dagen liggen hoger dan het maandgemiddelde.
+      </p>
+
+      <div style={{ fontSize: 'var(--fs-md)', fontWeight: 700, color: 'var(--text)', marginBottom: 6 }}>Wat helpt deze winter?</div>
+      <div style={{ display: 'grid', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', fontSize: 'var(--fs-md)', padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
+          <span style={{ color: 'var(--muted)' }}>Zoals het nu gaat</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><span style={{ color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>kans {pct(w.pVisible)} · hoek ~{nl(w.rhSurface)}%</span><Pill level={w.level} /></span>
+        </div>
+        {r.whatIf.map((v) => (
+          <div key={v.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', fontSize: 'var(--fs-md)', padding: '4px 0' }}>
+            <span style={{ color: 'var(--text)', minWidth: 0 }}>{v.label}</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><span style={{ color: v.better ? 'var(--text)' : 'var(--muted)', fontVariantNumeric: 'tabular-nums' }}>kans {pct(v.pVisible)} · hoek ~{nl(v.rhSurface)}%</span><Pill level={v.level} /></span>
+          </div>
+        ))}
+      </div>
+      <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--subtle)', margin: '8px 0 0', lineHeight: 1.5 }}>
+        Kans: zichtbare schimmel in het komende seizoen. Hoek: op een gemiddelde januaridag. Ventileren telt als 1,5 g/m³ minder vocht; na-isolatie als temperatuurfactor 0,75.
       </p>
     </div>
   )
@@ -173,7 +237,7 @@ export default function SchimmelrisicoPage() {
 
   const r = result
   const w = r?.winter
-  const winterPill = w ? (w.levelRange[0] !== w.levelRange[1] ? `${LEVEL_STYLE[w.levelRange[0]].label} tot ${LEVEL_STYLE[w.levelRange[1]].label.toLowerCase()}` : LEVEL_STYLE[w.level].label) : ''
+  const winterPill = w ? `${LEVEL_STYLE[w.level].label} · kans ${pct(w.pVisible)}` : ''
   const hasProfile = !!inputs?.profile
   const loadBasis = r
     ? r.load.basis === 'dagen' ? `${r.load.n} koele dagen`
@@ -206,27 +270,32 @@ export default function SchimmelrisicoPage() {
               {!r.now.outdoorMeasured && <Fact>Geen weerdata: gerekend met de gemiddelde buitentemperatuur van deze maand.</Fact>}
             </RiskCard>
 
-            <RiskCard icon={<Snowflake size={16} />} title="Deze winter" hint={`Verwachting voor een gemiddelde januaridag (${nl(WINTER_TE, 1)} °C buiten) met de vochtbelasting van dit huis. De bandbreedte komt van de onzekerheid in de vochtbelasting.`}>
-              {w && <Pill level={w.levelRange[1]} text={winterPill} />}
+            <RiskCard icon={<Snowflake size={16} />} title="Deze winter" hint={`De kans dat er deze winter zichtbare schimmel komt op de koudste plek. We rekenen het seizoen 200 keer door met wat we van dit huis weten, telkens met iets andere vochtbelasting, binnentemperatuur en isolatie binnen de onzekerheid. Het deel waarin schimmel zichtbaar wordt (index 3, ook de grens in de norm ASHRAE 160) is de kans. Onder 15% laag, vanaf 50% hoog.`}>
+              {w && <Pill level={w.level} text={winterPill} />}
               {w && (
                 <>
                   <Fact>
-                    Koudste hoek ongeveer <strong style={{ color: 'var(--text)' }}>{nl(w.rhSurface)}%</strong> vochtig
+                    Kans op zichtbare schimmel: <strong style={{ color: 'var(--text)' }}>{pct(w.pVisible)}</strong>; op groei die je nog niet ziet (geur, sporen): {pct(w.pGrowth)}.
+                  </Fact>
+                  <Fact>
+                    In een open hoek {pct(w.pOpen)}, achter een kast of bed tegen de buitenmuur {pct(w.pFurniture)}
+                    {r.furniture === 'onbekend' ? ' (we weten niet of daar iets staat, dus beide tellen mee).' : r.furniture === 'ja' ? ' (daar staat er een, dus dat telt).' : '.'}
+                  </Fact>
+                  <Fact>
+                    Op een gemiddelde januaridag is de hoek ongeveer <strong style={{ color: 'var(--text)' }}>{nl(w.rhSurface)}%</strong> vochtig
                     {w.rhSurfaceRange[0] !== w.rhSurfaceRange[1] && <> ({nl(w.rhSurfaceRange[0])}–{nl(w.rhSurfaceRange[1])}%)</>}, bij {nl(w.ti, 0)} °C binnen
                     {w.tiMeasured ? ' (gemeten)' : ' (aanname)'} en {nl(w.rhIndoor)}% in de kamer.
                   </Fact>
                   <Fact>
-                    {w.daysToStart == null
-                      ? 'Bij deze omstandigheden groeit er geen schimmel.'
-                      : w.daysToVisible == null
-                        ? `Schimmel begint na ongeveer ${weeks(w.daysToStart)}; zichtbaar wordt het binnen een half jaar niet.`
-                        : `Schimmel begint na ongeveer ${weeks(w.daysToStart)} en is na ongeveer ${weeks(w.daysToVisible)} zichtbaar, als er niets verandert.`}
+                    {r.yearGrowth.start && r.yearGrowth.start !== 'nu'
+                      ? `Middelste schatting: groei begint in ${r.yearGrowth.start}${r.yearGrowth.visible ? ` en is in ${r.yearGrowth.visible} zichtbaar` : ' en wordt nog niet zichtbaar'}.`
+                      : growthSentence(r.yearGrowth)}
                   </Fact>
                 </>
               )}
             </RiskCard>
 
-            <RiskCard icon={<Droplets size={16} />} title="Vochtbelasting" hint="Hoeveel vochtiger het binnen is dan buiten, omgerekend naar winterniveau (g/m³). Normale woningen zitten rond 4, druk bewoonde rond 6. Dit drijft het winterrisico aan.">
+            <RiskCard icon={<Droplets size={16} />} title="Vochtbelasting" hint="Hoeveel vochtiger het binnen is dan buiten, omgerekend naar winterniveau (g/m³). Een normaal huishouden zit volgens ISO 13788 rond 4, een druk bewoond huis rond 6. Dit drijft het winterrisico aan.">
               <Pill level={LOAD_STYLE[r.load.level]} text={r.load.level[0].toUpperCase() + r.load.level.slice(1)} />
               <Fact>
                 Ongeveer <strong style={{ color: 'var(--text)' }}>{nl(r.load.dv0, 1)} g/m³</strong> in de winter ({nl(r.load.range[0], 1)}–{nl(r.load.range[1], 1)}),
@@ -239,6 +308,8 @@ export default function SchimmelrisicoPage() {
               )}
             </RiskCard>
           </div>
+
+          <HouseProfileSection r={r} isDemo={inputs.isDemo} profile={inputs.profile} />
 
           {/* Instellingen */}
           <div style={{ display: 'flex', gap: 24, alignItems: 'flex-end', flexWrap: 'wrap', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 14, padding: '16px 18px', marginBottom: 14, boxShadow: 'var(--shadow-xs)' }}>
@@ -253,7 +324,7 @@ export default function SchimmelrisicoPage() {
               </select>
             </div>
             <div style={{ flex: '1 1 220px', minWidth: 0, fontSize: 'var(--fs-sm)', color: 'var(--muted)', lineHeight: 1.5 }}>
-              Koudste plek: temperatuurfactor <strong style={{ color: 'var(--text)' }}>f = {nl(r.f, 2)}</strong>, {F_SOURCE_TEXT[r.fSource]}.
+              Koudste plek: temperatuurfactor <strong style={{ color: 'var(--text)' }}>f = {nl(r.f, 2)}</strong>, {fText(r, inputs.profile)}.
             </div>
           </div>
 

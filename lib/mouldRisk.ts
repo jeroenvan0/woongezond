@@ -59,32 +59,45 @@ export const F_BY_PERIOD: Record<string, number> = {
 const F_BY_INSULATION: Record<string, number> = { poor: 0.5, moderate: 0.6, good: 0.7, excellent: 0.75 }
 const F_DEFAULT = 0.5 // onbekend → voorzichtig
 
-export type FSource = 'gemeten' | 'bouwperiode' | 'isolatie' | 'standaard'
+export type FSource = 'gemeten' | 'bouwperiode' | 'renovatie' | 'isolatie' | 'standaard'
 
 /**
- * Temperatuurfactor voor de koudste plek. Volgorde: gemeten → bouwperiode uit de
- * vragenlijst → isolatieklasse van het apparaat (alleen zonder vragenlijst; die klasse
- * leunt op het glas en zegt weinig over de muur) → 0,5.
+ * Temperatuurfactor voor de koudste plek, met een spreiding (sd) voor de kansberekening.
+ * Volgorde: gemeten → bouwperiode uit de vragenlijst → isolatieklasse van het apparaat (alleen
+ * zonder vragenlijst; die klasse leunt op het glas) → 0,5. Daarna renovatie: een oud huis met
+ * na-geïsoleerde spouw of gevel heeft veel warmere hoeken (f ≥ 0,70); "deels" +0,05. Is het
+ * onbekend of een oud huis gerenoveerd is, dan iets hoger en vooral onzekerder.
  */
 export function coldSpotFactor(
   profile?: Partial<HouseProfile> | null,
   insulation?: string | null,
   measured?: number | null,
-): { f: number; source: FSource } {
-  if (measured != null && measured >= 0.2 && measured <= 0.98) return { f: measured, source: 'gemeten' }
+): { f: number; source: FSource; sd: number } {
+  if (measured != null && measured >= 0.2 && measured <= 0.98) return { f: measured, source: 'gemeten', sd: 0.03 }
   let f: number | undefined
   let source: FSource = 'standaard'
-  if (profile?.build_period && F_BY_PERIOD[profile.build_period] != null) { f = F_BY_PERIOD[profile.build_period]; source = 'bouwperiode' }
-  else if (!profile && insulation && F_BY_INSULATION[insulation] != null) { f = F_BY_INSULATION[insulation]; source = 'isolatie' }
+  let sd = 0.08
+  if (profile?.build_period && F_BY_PERIOD[profile.build_period] != null) { f = F_BY_PERIOD[profile.build_period]; source = 'bouwperiode'; sd = 0.05 }
+  else if (!profile && insulation && F_BY_INSULATION[insulation] != null) { f = F_BY_INSULATION[insulation]; source = 'isolatie'; sd = 0.07 }
   f ??= F_DEFAULT
+  if (f < 0.7) {
+    const reno = profile?.renovation
+    if (reno === 'gevel') { f = 0.7; source = 'renovatie'; sd = 0.06 }
+    else if (reno === 'deels') { f = Math.min(0.75, f + 0.05); source = 'renovatie'; sd = 0.06 }
+    else if (reno !== 'nee') { f += 0.03; sd = Math.max(sd, 0.09) } // kan gerenoveerd zijn
+  }
   // Enkel glas: het kozijn en de dagkant zijn de koudste plek, ongeacht het bouwjaar.
   if (profile?.glazing === 'enkel') f = Math.min(f, 0.5)
-  return { f, source }
+  return { f: +f.toFixed(2), source, sd }
 }
 
 // Maandnormaal buitentemperatuur Amsterdam/De Bilt (°C), gelijk aan lib/trends.ts.
-// Alleen als terugval wanneer er geen weermeting is — nooit een vaste 5 °C in de zomer.
+// Terugval zonder weermeting (nooit een vaste 5 °C in de zomer) en basis van de jaarverwachting.
 export const MONTH_NORMAL_C = [3.5, 4.2, 7.0, 10.5, 14.8, 17.8, 19.9, 19.6, 16.4, 12.0, 7.5, 4.5]
+// Maandnormaal relatieve vochtigheid buiten (%), De Bilt, afgerond.
+export const MONTH_NORMAL_RH = [88, 85, 80, 75, 74, 75, 77, 78, 82, 85, 88, 89]
+const MONTH_SHORT = ['jan', 'feb', 'mrt', 'apr', 'mei', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec']
+const MONTH_LONG = ['januari', 'februari', 'maart', 'april', 'mei', 'juni', 'juli', 'augustus', 'september', 'oktober', 'november', 'december']
 
 /** Benadering bodemtemperatuur op ~1 m diepte (°C): gem. 10,5, piek half aug., dal half feb. */
 export function groundTemp(ts: number): number {
@@ -187,7 +200,9 @@ export interface MouldInputs {
 }
 
 export interface MouldAssessment {
-  f: number
+  f: number                      // open hoek
+  fFurniture: number             // achter een kast/bed tegen de buitenmuur (f − 0,1)
+  furniture: 'ja' | 'nee' | 'onbekend'
   fSource: FSource
   material: SensitivityClass
   series: { ts: number[]; tIndoor: number[]; rhIndoor: number[]; tSurface: number[]; rhSurface: number[]; mi: number[] }
@@ -217,11 +232,67 @@ export interface MouldAssessment {
     tSurface: number
     rhSurface: number
     rhSurfaceRange: [number, number]
-    level: Level
-    levelRange: [Level, Level]
+    level: Level                 // uit de kans, zie probabilityLevel
+    pVisible: number             // kans op zichtbare schimmel (index ≥ 3) in het komende seizoen, 0–1
+    pGrowth: number              // kans op groei (index ≥ 1), 0–1
+    pOpen: number                // kans op zichtbaar in een open hoek
+    pFurniture: number           // kans op zichtbaar achter een kast/bed tegen de buitenmuur
+    rhSurfaceFurniture: number   // januari, achter de kast
     daysToVisible: number | null // dagen tot M ≥ 3 in de koudste hoek, constante wintercondities
     daysToStart: number | null   // dagen tot M ≥ 1
   }
+  profile: HouseMouldProfile
+  year: MonthOutlook[]           // 2 maanden terug t/m 9 vooruit (ISO 13788-maandmethode)
+  yearGrowth: { start: string | null; visible: string | null } // maand waarin M ≥ 1 / ≥ 3, als er niets verandert
+  whatIf: WhatIf[]               // januari-omstandigheden met één maatregel
+}
+
+export type ProfileType = 'koud-vochtig' | 'koud' | 'vochtig' | 'balans'
+export interface HouseMouldProfile { type: ProfileType; title: string; text: string; cold: boolean; humid: boolean }
+export interface MonthOutlook {
+  key: string          // 'YYYY-MM'
+  label: string        // 'sep'
+  te: number; ti: number; rhIndoor: number; rhSurface: number
+  level: Level
+  measured: number | null // gemiddelde berekende RV op de koudste plek uit echte metingen
+  mi: number | null        // verwachte schimmelindex aan het eind van de maand (alleen vooruit)
+  isNow: boolean; isPast: boolean
+}
+export interface WhatIf { key: string; label: string; rhSurface: number; pVisible: number; level: Level; better: boolean }
+
+// Typering: waar zit het risico — in het gebouw (koude plekken) of in de bewoning (vocht)?
+const PROFILE_TEXT: Record<ProfileType, { title: string; text: string }> = {
+  'koud-vochtig': {
+    title: 'Koude plekken én veel vocht',
+    text: 'De hoeken worden in de winter koud en er komt veel vocht in de lucht. Dat is het klassieke schimmelhuis: het vocht slaat neer op de koude plekken. Minder vocht helpt, maar de koude plekken blijven het zwakke punt.',
+  },
+  koud: {
+    title: 'Koude plekken',
+    text: 'Het vochtniveau is normaal, maar de hoeken worden in de winter zo koud dat zelfs gewoon vocht er neerslaat. Het risico zit vooral in het gebouw: isolatie en koudebruggen.',
+  },
+  vochtig: {
+    title: 'Veel vocht',
+    text: 'Het gebouw houdt de hoeken redelijk warm, maar er komt veel vocht in de lucht. Het risico zit vooral in vocht en ventilatie: koken, douchen, was drogen en luchten.',
+  },
+  balans: {
+    title: 'In balans',
+    text: 'Geen opvallend koude plekken en een normaal vochtniveau. Schimmel is hier niet te verwachten, tenzij er iets verandert, zoals een lekkage of veel was binnen drogen.',
+  },
+}
+export function houseProfileType(f: number, dv0: number): HouseMouldProfile {
+  const cold = f < 0.6
+  const humid = dv0 >= 5
+  const type: ProfileType = cold && humid ? 'koud-vochtig' : cold ? 'koud' : humid ? 'vochtig' : 'balans'
+  return { type, ...PROFILE_TEXT[type], cold, humid }
+}
+
+/** RV binnen en op een plek met factor f, voor maandgemiddelde buitencondities en vochtbelasting Δv0. */
+function projectAt(te: number, rhe: number, teSurface: number, ti: number, dv0: number, f: number) {
+  const vi = vAbs(te, rhe) + dv0 * seasonFraction(te)
+  const pi = pFromV(vi, ti)
+  const rhIndoor = Math.min(100, (pi / pSat(ti)) * 100)
+  const surf = surfaceConditions(ti, rhIndoor, teSurface, f)
+  return { rhIndoor, tSurface: surf.t, rhSurface: surf.rh }
 }
 
 // Winterreferentie: koudste maand (januari) volgens dezelfde maandnormalen, RV ≈ 88%.
@@ -271,6 +342,34 @@ export function winterIndoorAssumption(p?: Partial<HouseProfile> | null): number
   return 18
 }
 
+/**
+ * Winterlabel uit de verwachte groei over het komende seizoen: zichtbare schimmel (index ≥ 3,
+ * ook de grens in ASHRAE 160) = hoog, microscopische groei (1–3) = verhoogd, anders laag.
+ * Niet de 80%-ontwerpgrens alleen: die heeft veiligheidsmarge en gaf bijna elk oud huis "hoog".
+ */
+export function probabilityLevel(pVisible: number, pGrowth: number): Level {
+  if (pVisible >= 0.5) return 'hoog'
+  if (pVisible >= 0.15 || pGrowth >= 0.3) return 'verhoogd'
+  return 'laag'
+}
+
+// Vaste standaardnormale trekkingen (Box–Muller, vaste seed): elk huis en elke maatregel
+// gebruikt dezelfde reeks, dus dezelfde invoer geeft altijd dezelfde kans en verschillen
+// tussen maatregelen zijn geen toeval.
+const MC_N = 200
+const MC_Z: [number, number, number, number][] = (() => {
+  let seed = 20260911
+  const rand = () => { seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296 }
+  const z = () => Math.sqrt(-2 * Math.log(Math.max(rand(), 1e-12))) * Math.cos(2 * Math.PI * rand())
+  return Array.from({ length: MC_N }, () => [z(), z(), z(), rand()] as [number, number, number, number])
+})()
+
+export function growthLevel(maxM: number): Level {
+  if (maxM >= 3) return 'hoog'
+  if (maxM >= 1) return 'verhoogd'
+  return 'laag'
+}
+
 function surfaceLevel(rh: number): Level {
   // ISO 13788: ontwerpcriterium 80% aan het oppervlak (maandgemiddeld).
   if (rh >= 80) return 'hoog'
@@ -283,10 +382,18 @@ const localHour = (ts: number) => +new Date(ts).toLocaleString('en-GB', { timeZo
 
 export function assessMould(inp: MouldInputs): MouldAssessment {
   const cls = inp.material ?? 'S'
-  const { f, source: fSource } = coldSpotFactor(inp.profile, inp.insulation, inp.fMeasured)
+  const { f, source: fSource, sd: fSd } = coldSpotFactor(inp.profile, inp.insulation, inp.fMeasured)
   const indoor = inp.indoor.filter((s) => Number.isFinite(s.t) && Number.isFinite(s.rh) && s.rh > 0)
   const outdoor = inp.outdoor.filter((o) => Number.isFinite(o.t)).sort((a, b) => a.ts - b.ts)
   const now = inp.now ?? (indoor.length ? indoor[indoor.length - 1].ts : Date.now())
+  // Achter een kast of bed tegen de buitenmuur komt minder warmte bij de muur: daar is het
+  // ~0,1 kouder in f dan in een open hoek (ISO 13788 rekent daar met een hogere Rsi). Staat er
+  // zeker een kast, dan is dat de koudste plek; weten we het niet, dan telt die plek voor de
+  // helft van de varianten mee in de kans.
+  const furniture: 'ja' | 'nee' | 'onbekend' = inp.profile?.furniture_outer_wall === 'ja' ? 'ja' : inp.profile?.furniture_outer_wall === 'nee' ? 'nee' : 'onbekend'
+  const fFurniture = Math.max(0.3, +(f - 0.1).toFixed(2))
+  const furnitureShare = furniture === 'ja' ? 1 : furniture === 'nee' ? 0 : 0.5
+  const fSpot = furniture === 'ja' ? fFurniture : f
   const souterrain = inp.profile?.floor === 'souterrain'
 
   // Buitentemperatuur gedempt (EMA, τ = 12 u) voor het muuroppervlak; ruwe waarde voor Δv.
@@ -322,7 +429,7 @@ export function assessMould(inp: MouldInputs): MouldAssessment {
       normalUsed++
     }
     if (souterrain) teSurf = Math.min(teSurf, groundTemp(s.ts))
-    const surf = surfaceConditions(s.t, s.rh, teSurf, f)
+    const surf = surfaceConditions(s.t, s.rh, teSurf, fSpot)
     const dtH = i === 0 ? 0 : Math.min(MAX_STEP_H, (s.ts - indoor[i - 1].ts) / 3_600_000)
     state = vttAdvance(state, surf.t, surf.rh, dtH, cls)
     ts.push(s.ts); tIn.push(s.t); rhIn.push(s.rh); tS.push(+surf.t.toFixed(2)); rhS.push(+surf.rh.toFixed(1)); mi.push(+state.m.toFixed(3))
@@ -386,28 +493,127 @@ export function assessMould(inp: MouldInputs): MouldAssessment {
   const tiMeasured = heatingDays.length >= 3
   const ti = tiMeasured ? mean(heatingDays.map((d) => d.ti)) : winterIndoorAssumption(inp.profile)
   const te = WINTER_TE
-  const project = (dv0: number) => {
-    const vi = vAbs(te, WINTER_RHE) + dv0 * seasonFraction(te)
-    const pi = pFromV(vi, ti)
-    const rhIndoor = Math.min(100, (pi / pSat(ti)) * 100)
-    const surf = surfaceConditions(ti, rhIndoor, te, f)
-    return { rhIndoor, tSurface: surf.t, rhSurface: surf.rh }
+  const project = (dv0: number, tiX = ti, fX = f) => projectAt(te, WINTER_RHE, te, tiX, dv0, fX)
+  const nowD = new Date(now)
+
+  // Groei over het komende seizoen (maandmethode): elke maand bij zijn maandnormaal, de
+  // vochtbelasting volgens de seizoenslijn, binnen in het stookseizoen de wintertemperatuur en
+  // daarbuiten ~4 °C boven buiten. De VTT-index loopt vanaf de huidige stand door.
+  const monthConditions = (mo: number, midMonth: number, dv0: number, tiX: number, fX: number) => {
+    const teM = MONTH_NORMAL_C[mo]
+    const teSurf = souterrain ? Math.min(teM, groundTemp(midMonth)) : teM
+    const tiM = teM <= 15 ? tiX : Math.max(tiX, teM + 4)
+    return { teM, tiM, ...projectAt(teM, MONTH_NORMAL_RH[mo], teSurf, tiM, dv0, fX) }
   }
+  const season = (dv0: number, tiX: number, fX: number) => {
+    let g: VttState = { m: miNow, hoursUnfavourable: 0 }
+    let st: string | null = miNow >= 1 ? 'nu' : null
+    let vis: string | null = miNow >= 3 ? 'nu' : null
+    let maxM = miNow
+    const monthEnd: number[] = []
+    for (let k = 0; k < 10; k++) {
+      const d = new Date(nowD.getFullYear(), nowD.getMonth() + k, 15)
+      const mo = d.getMonth()
+      const c = monthConditions(mo, d.getTime(), dv0, tiX, fX)
+      const end = new Date(d.getFullYear(), mo + 1, 1).getTime()
+      const hours = (end - (k === 0 ? now : new Date(d.getFullYear(), mo, 1).getTime())) / 3_600_000
+      for (let h = 0; h < hours; h += 12) g = vttAdvance(g, c.tSurface, c.rhSurface, Math.min(12, hours - h), cls)
+      monthEnd.push(+g.m.toFixed(2))
+      maxM = Math.max(maxM, g.m)
+      if (!st && g.m >= 1) st = MONTH_LONG[mo]
+      if (!vis && g.m >= 3) vis = MONTH_LONG[mo]
+    }
+    return { start: st, visible: vis, maxM, monthEnd, level: growthLevel(maxM) }
+  }
+
+  // Kans: dezelfde seizoensberekening voor MC_N varianten van vochtbelasting, binnentemperatuur
+  // en f, elk rond de schatting met een spreiding die past bij hoe zeker die schatting is.
+  const dvSd = load.basis === 'dagen' ? (load.reliability === 'hoog' ? 0.5 : load.reliability === 'matig' ? 0.8 : 1.0)
+    : load.basis === 'nachten' ? Math.max(1.0, (load.range[1] - load.range[0]) / 1.35) : 1.5
+  const tiSd = tiMeasured ? 0.7 : 1.5
+  const chance = (dv0: number, tiX: number, fX: number, n = MC_N, share = furnitureShare) => {
+    let vis = 0, grow = 0
+    for (let i = 0; i < n; i++) {
+      const [a, b, c, u] = MC_Z[i]
+      const fS = (u < share ? fX - 0.1 : fX) + fSd * c
+      const m = season(Math.max(0, dv0 + dvSd * a), tiX + tiSd * b, Math.min(0.9, Math.max(0.3, fS))).maxM
+      if (m >= 3) vis++
+      if (m >= 1) grow++
+    }
+    return { pVisible: vis / n, pGrowth: grow / n }
+  }
+
   const mid = project(load.dv0)
   const lo = project(load.range[0])
   const hi = project(load.range[1])
+  const sMid = season(load.dv0, ti, fSpot)
+  const p = chance(load.dv0, ti, f)
+  const pOpen = chance(load.dv0, ti, f, 100, 0).pVisible
+  const pFurn = chance(load.dv0, ti, f, 100, 1).pVisible
   const winter: MouldAssessment['winter'] = {
     te, ti: +ti.toFixed(1), tiMeasured,
     rhIndoor: +mid.rhIndoor.toFixed(0), tSurface: +mid.tSurface.toFixed(1), rhSurface: +mid.rhSurface.toFixed(0),
     rhSurfaceRange: [+lo.rhSurface.toFixed(0), +hi.rhSurface.toFixed(0)],
-    level: surfaceLevel(mid.rhSurface),
-    levelRange: [surfaceLevel(lo.rhSurface), surfaceLevel(hi.rhSurface)],
+    level: probabilityLevel(p.pVisible, p.pGrowth),
+    pVisible: +p.pVisible.toFixed(2),
+    pGrowth: +p.pGrowth.toFixed(2),
+    pOpen: +pOpen.toFixed(2),
+    pFurniture: +pFurn.toFixed(2),
+    rhSurfaceFurniture: +project(load.dv0, ti, fFurniture).rhSurface.toFixed(0),
     daysToStart: vttDaysTo(1, mid.tSurface, mid.rhSurface, cls),
     daysToVisible: vttDaysTo(3, mid.tSurface, mid.rhSurface, cls),
   }
 
+  // Jaarverwachting: 2 maanden terug t/m 9 vooruit, met de gemeten maanden erbij.
+  const measured = new Map<string, number[]>()
+  for (let i = 0; i < ts.length; i++) { const d = new Date(ts[i]); const k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; (measured.get(k) ?? measured.set(k, []).get(k)!).push(rhS[i]) }
+  const year: MonthOutlook[] = []
+  for (let k = -2; k < 10; k++) {
+    const d = new Date(nowD.getFullYear(), nowD.getMonth() + k, 15)
+    const mo = d.getMonth()
+    const key = `${d.getFullYear()}-${String(mo + 1).padStart(2, '0')}`
+    const c = monthConditions(mo, d.getTime(), load.dv0, ti, fSpot)
+    const ms = measured.get(key)
+    year.push({
+      key, label: MONTH_SHORT[mo], te: c.teM, ti: +c.tiM.toFixed(1), rhIndoor: +c.rhIndoor.toFixed(0), rhSurface: +c.rhSurface.toFixed(0),
+      // Balkkleur: rood pas als het groeimodel zichtbare schimmel verwacht, oranje als de hoek
+      // boven 80% komt (groei mogelijk), anders groen.
+      level: k >= 0 && sMid.monthEnd[k] >= 3 ? 'hoog' : c.rhSurface >= 80 ? 'verhoogd' : 'laag',
+      measured: ms?.length ? +mean(ms).toFixed(0) : null, mi: k >= 0 ? sMid.monthEnd[k] : null, isNow: k === 0, isPast: k < 0,
+    })
+  }
+  const start = sMid.start
+  const visible = sMid.visible
+
+  // Wat helpt: dezelfde seizoensberekening met één maatregel tegelijk; het getal is de hoek in januari.
+  const rank: Record<Level, number> = { laag: 0, verhoogd: 1, hoog: 2 }
+  const variant = (key: string, label: string, dv0: number, tiX: number, fX: number): WhatIf => {
+    const pr = project(Math.max(0, dv0), tiX, fX)
+    const pv = chance(Math.max(0, dv0), tiX, fX, 100)
+    const level = probabilityLevel(pv.pVisible, pv.pGrowth)
+    return { key, label, rhSurface: +pr.rhSurface.toFixed(0), pVisible: +pv.pVisible.toFixed(2), level, better: rank[level] < rank[winter.level] || pv.pVisible < winter.pVisible - 0.05 }
+  }
+  const whatIf: WhatIf[] = [variant('ventileren', 'Beter ventileren: roosters open, afzuigen bij koken en douchen', load.dv0 - 1.5, ti, f)]
+  const laundry = inp.profile?.laundry_indoors
+  if (laundry === 'vaak' || laundry === 'soms') whatIf.push(variant('was', 'Was niet meer binnen drogen', load.dv0 - (laundry === 'vaak' ? 1 : 0.5), ti, f))
+  if (furnitureShare > 0) {
+    const pv = chance(load.dv0, ti, f, 100, 0)
+    const level = probabilityLevel(pv.pVisible, pv.pGrowth)
+    whatIf.push({ key: 'kast', label: 'Kast en bed 5–10 cm van de buitenmuur', rhSurface: +mid.rhSurface.toFixed(0), pVisible: +pv.pVisible.toFixed(2), level, better: rank[level] < rank[winter.level] || pv.pVisible < winter.pVisible - 0.05 })
+  }
+  whatIf.push(variant('warmer', 'Deze kamer 2 °C warmer stoken', load.dv0, ti + 2, f))
+  whatIf.push(variant('combi', 'Ventileren én 2 °C warmer', load.dv0 - 1.5, ti + 2, f))
+  if (f < 0.75) {
+    whatIf.push(variant('isoleren', 'Koude plekken aanpakken (na-isolatie, f 0,75)', load.dv0, ti, 0.75))
+    whatIf.push(variant('alles', 'Alles samen: ventileren, warmer én na-isolatie', load.dv0 - 1.5, ti + 2, 0.75))
+  }
+
   return {
-    f, fSource, material: cls,
+    f, fFurniture, furniture, fSource, material: cls,
+    profile: houseProfileType(f, load.dv0),
+    year,
+    yearGrowth: { start, visible },
+    whatIf,
     series: { ts, tIndoor: tIn, rhIndoor: rhIn, tSurface: tS, rhSurface: rhS, mi },
     now: {
       level: nowLevel, mi: +miNow.toFixed(2), miMax: +miMax.toFixed(2),
@@ -419,6 +625,13 @@ export function assessMould(inp: MouldInputs): MouldAssessment {
     load,
     winter,
   }
+}
+
+/** Groeizin voor de jaarverwachting. */
+export function growthSentence(g: MouldAssessment['yearGrowth']): string {
+  if (g.start === 'nu') return g.visible === 'nu' ? 'Het groeimodel ziet al zichtbare schimmel op de koudste plek.' : `De groei is op de koudste plek al begonnen${g.visible ? ` en wordt naar verwachting in ${g.visible} zichtbaar` : ''}.`
+  if (!g.start) return 'Het model verwacht het komende jaar geen schimmelgroei op de koudste plek.'
+  return `Als er niets verandert, begint schimmelgroei in ${g.start}${g.visible ? ` en is het in ${g.visible} zichtbaar` : '; zichtbaar wordt het het komende jaar niet'}.`
 }
 
 // ── Voorbeelddata (lege account) ────────────────────────────────────────────────

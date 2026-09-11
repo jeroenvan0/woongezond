@@ -285,7 +285,7 @@ function MouldLine({ deviceId }: { deviceId: string }) {
   if (r === null) return <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--subtle)', marginTop: 'var(--sp-2)' }}>Schimmelrisico berekenen…</div>
   if (r === 'error') return null
   const w = r.winter
-  const winterLevel = w.levelRange[1]
+  const winterLevel = w.level
   const part = (label: string, level: Level, extra: string) => (
     <span style={{ whiteSpace: 'nowrap' }}>
       {label} <strong style={{ color: LEVEL_COLOR[level] }}>{level}</strong>{extra}
@@ -299,10 +299,11 @@ function MouldLine({ deviceId }: { deviceId: string }) {
       style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', flexWrap: 'wrap', marginTop: 'var(--sp-2)', padding: 0, background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--fs-xs)', color: 'var(--muted)', textAlign: 'left', fontFamily: 'inherit' }}
     >
       <Droplets size={13} style={{ flexShrink: 0, color: LEVEL_COLOR[winterLevel] }} />
-      <span style={{ fontWeight: 600, color: 'var(--text)' }}>Schimmel</span>
+      <span style={{ fontWeight: 600, color: 'var(--text)' }}>Schimmel: {r.profile.title.toLowerCase()}</span>
+      <span aria-hidden>·</span>
       {part('nu', r.now.level, r.now.pctAbove80 ? ` (${r.now.pctAbove80}% >80%)` : '')}
       <span aria-hidden>·</span>
-      {part('winter', winterLevel, ` (hoek ~${w.rhSurface}%)`)}
+      {part('winter', winterLevel, ` (kans ${Math.round(w.pVisible * 100)}%)`)}
       <span aria-hidden>·</span>
       <span style={{ whiteSpace: 'nowrap' }}>vocht {r.load.level} {r.load.dv0.toLocaleString('nl-NL')} g/m³{r.load.reliability === 'laag' ? ' (onzeker)' : ''}</span>
       <span aria-hidden>·</span>
