@@ -11,7 +11,10 @@ import DataBanner, { DataError, describeError } from '@/components/DataBanner'
 import { MetricCardSkeleton } from '@/components/ui/Skeleton'
 import { withBase } from '@/lib/basePath'
 import Link from 'next/link'
-import { Building2, ShieldAlert, Wifi, WifiOff, CircleDashed, Mail, Send, Check, FileText, Inbox, AlertTriangle, ArrowRight } from 'lucide-react'
+import { Building2, ShieldAlert, Wifi, WifiOff, CircleDashed, Mail, Send, Check, FileText, Inbox, AlertTriangle, ArrowRight, Droplets } from 'lucide-react'
+import { assessMould, type Level, type MouldAssessment } from '@/lib/mouldRisk'
+import { fetchMouldInputs } from '@/lib/mouldLoad'
+import { setSelectedDevice } from '@/lib/useSelectedDevice'
 
 // Pilot-cockpit voor org-ADMINS (docs/pilot-cockpit-plan.md §2c fase 2, docs/support-assistant.md).
 // Leest /api/cockpit: sensoren van de org mét contact (laag B), laatste rapport en een
@@ -265,6 +268,49 @@ function Tile({ Icon, color, value, label }: { Icon: typeof Wifi; color: string;
 
 // ── Sectie A: één kaart per sensor ───────────────────────────────────────────
 
+// Schimmelrisico per sensor, zelfde berekening als /schimmelrisico (lib/mouldRisk.ts).
+// Per rij los geladen: 90 dagen metingen + weer, dus de cockpit zelf wacht er niet op.
+const LEVEL_COLOR: Record<Level, string> = { laag: 'var(--ok)', verhoogd: 'var(--warn)', hoog: 'var(--crit)' }
+function MouldLine({ deviceId }: { deviceId: string }) {
+  const router = useRouter()
+  const [r, setR] = useState<MouldAssessment | null | 'error'>(null)
+  useEffect(() => {
+    let cancelled = false
+    fetchMouldInputs(deviceId).then((res) => {
+      if (cancelled) return
+      setR(res.ok && res.readings >= 2 ? assessMould(res.inputs) : 'error')
+    })
+    return () => { cancelled = true }
+  }, [deviceId])
+  if (r === null) return <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--subtle)', marginTop: 'var(--sp-2)' }}>Schimmelrisico berekenen…</div>
+  if (r === 'error') return null
+  const w = r.winter
+  const winterLevel = w.levelRange[1]
+  const part = (label: string, level: Level, extra: string) => (
+    <span style={{ whiteSpace: 'nowrap' }}>
+      {label} <strong style={{ color: LEVEL_COLOR[level] }}>{level}</strong>{extra}
+    </span>
+  )
+  return (
+    <button
+      type="button"
+      onClick={() => { setSelectedDevice(deviceId); router.push('/schimmelrisico') }}
+      title="Open de schimmelpagina voor deze sensor"
+      style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', flexWrap: 'wrap', marginTop: 'var(--sp-2)', padding: 0, background: 'none', border: 'none', cursor: 'pointer', fontSize: 'var(--fs-xs)', color: 'var(--muted)', textAlign: 'left', fontFamily: 'inherit' }}
+    >
+      <Droplets size={13} style={{ flexShrink: 0, color: LEVEL_COLOR[winterLevel] }} />
+      <span style={{ fontWeight: 600, color: 'var(--text)' }}>Schimmel</span>
+      {part('nu', r.now.level, r.now.pctAbove80 ? ` (${r.now.pctAbove80}% >80%)` : '')}
+      <span aria-hidden>·</span>
+      {part('winter', winterLevel, ` (hoek ~${w.rhSurface}%)`)}
+      <span aria-hidden>·</span>
+      <span style={{ whiteSpace: 'nowrap' }}>vocht {r.load.level} {r.load.dv0.toLocaleString('nl-NL')} g/m³{r.load.reliability === 'laag' ? ' (onzeker)' : ''}</span>
+      <span aria-hidden>·</span>
+      <span style={{ whiteSpace: 'nowrap' }}>f {r.f.toLocaleString('nl-NL')}</span>
+    </button>
+  )
+}
+
 function DeviceRow({ device: d, messages, onChanged }: { device: Device; messages: number; onChanged: () => void }) {
   const [asking, setAsking] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -387,6 +433,7 @@ function DeviceRow({ device: d, messages, onChanged }: { device: Device; message
           </div>
         )}
       </div>
+      {d.minutes_since != null && <MouldLine deviceId={d.id} />}
       {d.profile?.length > 0 && (
         <details style={{ marginTop: 'var(--sp-3)', fontSize: 'var(--fs-xs)' }}>
           <summary style={{ cursor: 'pointer', color: 'var(--muted)', fontWeight: 600 }}>
