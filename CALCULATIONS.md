@@ -203,8 +203,51 @@ The new model, all pure functions with tests in `tests/mouldRisk.test.ts`:
    becomes several g/m³. Summer estimates are flagged `laag` and improve from October.
 5. **Winter projection.** January normal (3.5 °C, 88% RH) + Δv0 + f; indoor temperature measured
    once ≥ 3 heating-season days exist (daily θ_e ≤ 10 °C), else per room (bedroom 17, living 20,
-   unheated 15). `RH_si ≥ 80%` (ISO 13788 criterion) → hoog, ≥ 70% → verhoogd. Range from Δv0
-   p25–p75. Days to M ≥ 1 and M ≥ 3 at those constant conditions ("zichtbaar na ~X weken").
+   unheated 15). The corner RH on an average January day is shown as a number (range from Δv0
+   p25–p75).
+   **The label is a probability, not the 80% line.** ISO 13788's 80% is a *design* limit with
+   margin; used as the label it called nearly every pre-1975 home with an ordinary household
+   "hoog" (sensor 1 flipped between verhoogd and hoog all summer), while most such homes have no
+   mould. Now the VTT index is carried from today through the coming season, month by month at
+   monthly normals (see 7), for 200 variants of the house: Δv0, indoor temperature and f are drawn
+   around their estimates with a spread that matches how sure we are — Δv0 sd 0.5 (reliable
+   winter days) / 0.8 / 1.0 / IQR-based (cool nights) / 1.5 (questionnaire); indoor sd 0.7
+   (measured) / 1.5 (assumed); f sd 0.03 (measured) / 0.05 (build period) / 0.06 (renovation
+   answered) / 0.09 (old house, renovation unknown). Fixed-seed draws, so the same input always
+   gives the same number and measures are compared on the same draws. `pVisible` = share of
+   variants reaching M ≥ 3 (visible; also the ASHRAE 160 criterion), `pGrowth` = M ≥ 1.
+   Label: pVisible ≥ 50% hoog; ≥ 15% **or pGrowth ≥ 30%** verhoogd (microscopic growth already
+   means smell and spores); else laag.
+   **Behind furniture.** A cupboard or bed against an outer wall is the coldest spot in most
+   rooms (ISO 13788 uses a higher Rsi there). Modelled as f − 0.1. Questionnaire item
+   `furniture_outer_wall` (ja/nee/weet ik niet, optional for older profiles): ja → that spot is
+   the cold spot everywhere; nee → open corner only; unknown → half of the Monte Carlo variants
+   use it (fourth random stream). The page shows open corner and behind-furniture chances
+   separately, and "kast 5–10 cm van de buitenmuur" as a measure.
+   Open corner only, bedroom 17 °C, load measured in autumn (before the furniture spot was added):
+   pre-1945 uninsulated 0/1/20/75/99% at 2/3/4/5/6 g/m³; pre-1945 with insulated facade
+   0/0/1/4/26%; 1975–91 0/0/1/7/48%. At 20 °C roughly one class lower. **This is model uncertainty, not a calibrated probability** — calibrating it needs pilot
+   homes where we know whether mould appeared. Monthly means understate cold nights, so it is the
+   calm case.
+   **Renovation** (new questionnaire item `renovation`, optional for older profiles): facade or
+   cavity insulated → f ≥ 0.70; partly (roof, floor, windows) → +0.05; unknown or missing for a
+   house with f < 0.70 → +0.03 and sd 0.09 (it may have been renovated).
+
+6. **House profile.** Two causes, two axes: cold spots (f < 0.6 → building) and moisture
+   (Δv0 ≥ 5 g/m³ → occupancy/ventilation). Four types: *koude plekken én veel vocht*,
+   *koude plekken*, *veel vocht*, *in balans* — also a first hint at who can fix it.
+7. **Year outlook** (ISO 13788 monthly method): 2 months back to 9 ahead, each month at its
+   normal outdoor T/RH (De Bilt), Δv0 on the seasonal line, indoor at the winter temperature
+   when θ_e ≤ 15 °C and ~4 °C above outdoor otherwise; souterrain against the ground. The VTT
+   index is carried forward from today in 6-hour steps → "growth starts in <month>, visible in
+   <month>". Measured months are overlaid (monthly mean cold-spot RH from real data). Monthly
+   means understate cold nights, so this is the calm case.
+8. **What helps** (January): −1.5 g/m³ (ventilation), laundry out (−1/−0.5), +2 °C, both,
+   f 0.75 (insulation), and all together. Sensor 2: only "all together" leaves *hoog*.
+
+The dashboard tile "Schimmel" now shows the cold-spot RH now with the winter level as its label,
+plus a profile card in the advice zone. Still on the §4.1/§4.3 heuristic: the health score's
+mould component, the "Schimmel > 60" diagnosis stat, the ML card, the report and the weekly mail.
 
 What the first data says (2026-09-11): sensor 2 — now laag, moisture load ~6 g/m³ (3 nights,
 unreliable), winter projection corner ~100% (condensation), growth start ~3 weeks, visible ~11
@@ -212,6 +255,45 @@ weeks. Sensor 1 (reports condensation): winter verhoogd, range laag–hoog.
 
 The Flask app (`/var/www/woongezond-dev`, `mould_models.py`) still has the old models; it is no
 longer the reference for this part.
+
+### 4.4a What the model does and does not claim (checked 2026-09-11)
+
+An earlier summary said "an ordinary household has almost no chance in any house". That was too
+strong. A simulation of 200 winters per case (AR(1) cold spells, sd 4 °C, lag-1 0.8; ±2 °C
+day/night; ±25% moisture per day), bedroom 17 °C, class S:
+
+| spot | 2 g/m³ | 3 | 4 | 5 |
+|---|---|---|---|---|
+| open corner, pre-1945 (f 0.50) | 0% | 0% | 0% | 100% |
+| behind cupboard, pre-1945 (f ~0.40) | 0% | 0% | 99% | 100% |
+| open corner, 1975–91 (f 0.65) | 0% | 0% | 0% | 0% |
+| behind cupboard, 1975–91 (f ~0.55) | 0% | 0% | 0% | 97% |
+
+Findings:
+- **Weather variability hardly matters.** Colder corners also get a higher VTT threshold and slower
+  growth, so cold spells do not add much. Monthly means are not the weak point.
+- **The spot matters a lot** — hence the behind-furniture spot above.
+- **"Ordinary" is ~4 g/m³** (ISO 13788 dwelling class), not 2–3. At 4 g/m³ a pre-1945 home sits
+  exactly at the tipping point.
+- **The model is nearly a switch** per house (0% or ~100%, sharp edge between 4 and 5 g/m³). The
+  probability the app shows is almost entirely *our* uncertainty about the inputs.
+- **Visible (M ≥ 3) is hard on class S:** VTT caps growth (M_max ≈ 2.5 at ~90% RH). Microscopic
+  growth comes much earlier — hence pGrowth in the label.
+- Not validated: no pilot home has yet been checked against these numbers.
+
+### 4.4b Validation in the pilot (plan)
+
+1. **December–February, sensors 1–3 (and each new home):** look behind cupboards/beds against
+   outer walls and in outer corners; photo; note none / spots / visible patch. Compare with
+   pVisible/pGrowth from the same week.
+2. **Measure f once per home** on a cold morning (outdoor < 5 °C) with an IR thermometer:
+   `f = (θ_corner − θ_out)/(θ_in − θ_out)`, for the open corner and behind the cupboard. Store it
+   as the measured factor (the model already accepts `fMeasured`; a place to enter it is next).
+3. **Ask the renovation and furniture questions** of existing residents (Faber, Daan) — their
+   profiles predate them and count as "unknown".
+4. **After the winter:** with ~8–10 homes, check whether "hoog" homes had mould and "laag" homes
+   did not. Too few for a statistical calibration, enough to catch a model that is clearly off
+   (for instance, if f 0.1 lower behind furniture is too much or too little).
 
 ### 4.5 Open decision for the pilot
 Right now a user can see a low mould-risk tile on the dashboard (§4.1, fixed 3.5 °C wall offset)

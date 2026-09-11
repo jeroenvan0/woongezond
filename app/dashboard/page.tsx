@@ -21,7 +21,7 @@ import InfoHint from '@/components/ui/InfoHint'
 import ChartTable from '@/components/ui/ChartTable'
 import { MetricCardSkeleton } from '@/components/ui/Skeleton'
 import { ProcessedRow, SensorRow } from '@/lib/types'
-import { dewpoint, mouldRisk, co2Status, rhStatus, tempStatus, mouldStatus, movingAverage, healthScore, healthLabel, absHumidityGkg } from '@/lib/calculations'
+import { dewpoint, mouldRisk, co2Status, rhStatus, tempStatus, movingAverage, healthScore, healthLabel, absHumidityGkg } from '@/lib/calculations'
 import { windowMinutes, maxWindowPoints, formatWindow } from '@/lib/smoothing'
 import { toSeries, buildDiagnosis } from '@/lib/reportAnalytics'
 import { useStickyState } from '@/lib/useStickyState'
@@ -30,7 +30,9 @@ import { useChartColors, alpha } from '@/lib/useChartColors'
 import { useSelectedDevice, useDeviceSelectionReady } from '@/lib/useSelectedDevice'
 import { useIsMobile } from '@/lib/useIsMobile'
 import { useSeries } from '@/lib/useSeries'
-import { Wind, Thermometer, Droplets, Bug, Droplet, Activity, MapPin } from 'lucide-react'
+import { Wind, Thermometer, Droplets, Bug, Droplet, Activity, MapPin, Home, ArrowRight } from 'lucide-react'
+import { assessMould, growthSentence, type Level, type MouldAssessment } from '@/lib/mouldRisk'
+import { fetchMouldInputs } from '@/lib/mouldLoad'
 
 const PERIOD_OPTIONS = [
   { label: '30 min', value: 30 },
@@ -120,6 +122,18 @@ export default function DashboardPage() {
   const [maPoints, setMaPoints] = useState(0)
   const [latest, setLatest] = useState<ProcessedRow | null>(null)
   const [latestTs, setLatestTs] = useState<Date | null>(null)
+  // Schimmelrisico (lib/mouldRisk.ts): koudste plek nu + winterverwachting + profiel. Los van de
+  // grafiekreeks: 90 dagen metingen + weer, één keer per sensorkeuze.
+  const [mould, setMould] = useState<MouldAssessment | null>(null)
+  useEffect(() => {
+    if (!deviceReady) return
+    let cancelled = false
+    setMould(null)
+    fetchMouldInputs(selectedDevice).then((res) => {
+      if (!cancelled && res.ok && res.readings >= 2) setMould(assessMould(res.inputs))
+    })
+    return () => { cancelled = true }
+  }, [selectedDevice, deviceReady])
   const [weather, setWeather] = useState<any>(null)
   const [poll, setPoll] = useState<any>(null)
   // Tick so the "x min geleden" line and staleness re-evaluate without a refetch.
@@ -233,7 +247,6 @@ export default function DashboardPage() {
   const co2s = last ? co2Status(last.co2) : null
   const rhs = last ? rhStatus(last.rh) : null
   const temps = last ? tempStatus(last.temp) : null
-  const moulds = last ? mouldStatus(last.mr) : null
   const hs = last ? healthScore(last.co2, last.rh, last.mr) : null
   const hl = hs != null ? healthLabel(hs) : null
 
@@ -279,7 +292,19 @@ export default function DashboardPage() {
           {card('CO₂', last?.co2.toFixed(0) ?? '—', 'ppm', co2s, 'var(--c-co2)', <Wind size={14} />, last ? Math.min(100, last.co2 / 20) : 0)}
           {card('Temperatuur', last?.temp.toFixed(1) ?? '—', '°C', temps, 'var(--c-temp)', <Thermometer size={14} />)}
           {card('Vochtigheid', last?.rh.toFixed(1) ?? '—', '% RV', rhs, 'var(--c-rh)', <Droplets size={14} />, last?.rh)}
-          {card('Schimmel', last?.mr.toFixed(0) ?? '—', '/ 100', moulds, 'var(--c-mould)', <Bug size={14} />, last?.mr)}
+          <MetricCard
+            title="Schimmel"
+            value={loading || !mould?.now.rhSurface ? '—' : mould.now.rhSurface.toFixed(0)}
+            unit="% hoek"
+            label={mould ? `winter: ${Math.round(mould.winter.pVisible * 100)}% kans` : undefined}
+            labelColor={mould ? LEVEL_COLOR[mould.winter.level] : undefined}
+            sub={mould ? `nu ${mould.now.level}` : undefined}
+            subColor={mould && mould.now.level !== 'laag' ? LEVEL_COLOR[mould.now.level] : undefined}
+            accent="var(--c-mould)"
+            icon={<Bug size={14} />}
+            progress={mould?.now.rhSurface ?? undefined}
+            stale={stale && !loading}
+          />
           {card('Dauwpunt', last?.dp.toFixed(1) ?? '—', '°C', null, 'var(--c-dew)', <Droplet size={14} />)}
           {hs != null && (
             <MetricCard
@@ -387,6 +412,8 @@ export default function DashboardPage() {
           </div>
         )
       })()}
+
+      {mould && <MouldProfileCard r={mould} />}
 
       {/* Night ventilation outlook + ML prediction */}
       <NightOutlookCard />
@@ -521,6 +548,31 @@ export default function DashboardPage() {
 
       <ChatWidget />
     </AppShell>
+  )
+}
+
+
+const LEVEL_COLOR: Record<Level, string> = { laag: 'var(--ok)', verhoogd: 'var(--warn)', hoog: 'var(--crit)' }
+
+// Schimmelprofiel in één kaart: wat voor huis dit is en hoe het de winter in gaat.
+function MouldProfileCard({ r }: { r: MouldAssessment }) {
+  const level = r.winter.level
+  const color = LEVEL_COLOR[level]
+  return (
+    <div style={{ display: 'flex', gap: 11, alignItems: 'flex-start', background: 'var(--surface)', border: `1px solid color-mix(in srgb, ${color} 30%, transparent)`, borderLeft: `3px solid ${color}`, borderRadius: 'var(--r-md)', padding: '12px 15px', marginBottom: 14, boxShadow: 'var(--shadow-xs)' }}>
+      <Home size={17} color={color} style={{ flexShrink: 0, marginTop: 1 }} />
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 'var(--fs-md)', fontWeight: 700, color: 'var(--text)' }}>
+          Schimmelprofiel: {r.profile.title.toLowerCase()} — deze winter {Math.round(r.winter.pVisible * 100)}% kans op zichtbare schimmel
+        </div>
+        <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--muted)', marginTop: 2, lineHeight: 1.45 }}>
+          {growthSentence(r.yearGrowth)} Nu is de koudste plek {r.now.rhSurface != null ? `${r.now.rhSurface.toFixed(0)}%` : '–'} vochtig; in januari verwachten we ~{r.winter.rhSurface}%.
+        </div>
+        <Link href="/schimmelrisico" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 6, fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--brand)', textDecoration: 'none' }}>
+          Bekijk het schimmelprofiel <ArrowRight size={13} />
+        </Link>
+      </div>
+    </div>
   )
 }
 

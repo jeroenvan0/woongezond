@@ -20,6 +20,8 @@ export interface HouseProfile {
   floor?: string          // storey of the room: ground contact / crawl space vs. top floor changes the moisture picture (added 2026-09-07, older profiles lack it)
   build_period: string    // insulation era (1975 cavity walls, 1992 Bouwbesluit, 2006 EPC)
   glazing: string         // strongest single proxy for insulation class
+  furniture_outer_wall?: string // cupboard/bed against an outer wall: the coldest spot in the room (added 2026-09-11, older profiles lack it)
+  renovation?: string     // later insulated (cavity/facade) — an old house need not have cold corners (added 2026-09-11, older profiles lack it)
   ventilation: string
   heating: string
   moisture: string        // baseline for mould risk
@@ -79,6 +81,23 @@ export const QUESTIONS: Question[] = [
     ],
   },
   {
+    key: 'renovation', title: 'Is de woning later geïsoleerd?',
+    help: 'Bijvoorbeeld de spouwmuur volgespoten of de gevel geïsoleerd. Alleen nieuwe ramen, dak- of vloerisolatie is “deels”.',
+    options: [
+      { value: 'nee', label: 'Nee' },
+      { value: 'deels', label: 'Deels', hint: 'dak, vloer of nieuwe ramen' },
+      { value: 'gevel', label: 'Ja, spouw of gevel geïsoleerd' },
+      { value: 'onbekend', label: 'Weet ik niet' },
+    ],
+  },
+  {
+    key: 'furniture_outer_wall', title: 'Staat er in die kamer een kast of bed tegen een buitenmuur?',
+    help: 'Achter een kast tegen de buitenmuur is de muur extra koud. Daar begint schimmel vaak.',
+    options: [
+      { value: 'ja', label: 'Ja' }, { value: 'nee', label: 'Nee' }, { value: 'onbekend', label: 'Weet ik niet' },
+    ],
+  },
+  {
     key: 'ventilation', title: 'Hoe wordt die kamer geventileerd?',
     options: [
       { value: 'raam', label: 'Raam open zetten' }, { value: 'roosters', label: 'Roosters boven de ramen' },
@@ -120,7 +139,7 @@ export const QUESTIONS: Question[] = [
 
 // Questions added after the first residents filled the wizard; not required so an older
 // profile still validates. The wizard itself asks them like any other question.
-const OPTIONAL_KEYS = new Set<keyof HouseProfile>(['floor'])
+const OPTIONAL_KEYS = new Set<keyof HouseProfile>(['floor', 'renovation', 'furniture_outer_wall'])
 
 // Validate a raw body into a HouseProfile. Unknown keys are dropped, unknown values
 // rejected, so the JSON column only ever holds values from QUESTIONS.
@@ -149,6 +168,8 @@ export function deriveDeviceColumns(p: HouseProfile): {
   else if (p.glazing === 'hr') insulation = 'excellent'
   else if (p.glazing === 'dubbel') insulation = ['1992_2005', 'na_2005'].includes(p.build_period) ? 'good' : 'moderate'
   else insulation = ['na_2005'].includes(p.build_period) ? 'good' : ['1992_2005'].includes(p.build_period) ? 'moderate' : 'poor'
+  // Later geïsoleerde gevel: de muur is minstens 'good', ongeacht het bouwjaar.
+  if (p.renovation === 'gevel' && (insulation === 'poor' || insulation === 'moderate')) insulation = 'good'
   return { location: p.room, house_type: p.house_type, build_year: buildYear[p.build_period] ?? null, insulation }
 }
 
