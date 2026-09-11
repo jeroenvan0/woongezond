@@ -336,3 +336,12 @@ describe('achter een kast tegen de buitenmuur', () => {
     expect(probabilityLevel(0.6, 0.9)).toBe('hoog')
   })
 })
+
+describe('voorlopig', () => {
+  it('twee dagen data of alleen de vragenlijst is voorlopig; een maand herfst niet', () => {
+    const kort = house({ ti: 18, dv: 2, te: 8, rhe: 85, days: 2 })
+    expect(assessMould({ ...kort, profile: { build_period: '1975_1991' } }).winter.provisional).toBe(true)
+    const lang = house({ ti: 18, dv: 2, te: 6, rhe: 85, days: 30 })
+    expect(assessMould({ ...lang, profile: { build_period: '1975_1991' } }).winter.provisional).toBe(false)
+  })
+})

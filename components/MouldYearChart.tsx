@@ -16,7 +16,7 @@ function Tip({ active, payload }: any) {
   if (!m) return null
   return (
     <div className="custom-tooltip">
-      <div style={{ fontWeight: 700, color: 'var(--text)' }}>{m.label}{m.isNow ? ' (nu)' : ''}: hoek ~{m.rhSurface}%</div>
+      <div style={{ fontWeight: 700, color: 'var(--text)' }}>{m.label}{m.isNow ? ' (nu)' : ''}: hoek ~{m.rhSurface}% RV</div>
       <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2, lineHeight: 1.5 }}>
         Buiten gem. {m.te.toLocaleString('nl-NL')} °C · binnen {m.ti.toLocaleString('nl-NL')} °C / {m.rhIndoor}%
         {m.measured != null && <><br />Uit metingen: {m.measured}%</>}

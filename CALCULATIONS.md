@@ -245,8 +245,11 @@ The new model, all pure functions with tests in `tests/mouldRisk.test.ts`:
 8. **What helps** (January): −1.5 g/m³ (ventilation), laundry out (−1/−0.5), +2 °C, both,
    f 0.75 (insulation), and all together. Sensor 2: only "all together" leaves *hoog*.
 
-The dashboard tile "Schimmel" now shows the cold-spot RH now with the winter level as its label,
-plus a profile card in the advice zone. Still on the §4.1/§4.3 heuristic: the health score's
+The dashboard tile "Schimmel" shows one kind of percentage only: the winter chance ("74 % kans"),
+with the level and "voorlopig" (< 14 days of data or an unreliable moisture estimate — in summer
+that is everyone). Cold-spot RH lives on the Schimmelrisico page, always written as "% RV". The
+tile links there; a profile card in the advice zone explains why *now* (windows open, warm) says
+little about winter. The old "Schimmelrisico (0–100)" chart on the dashboard is removed. Still on the §4.1/§4.3 heuristic: the health score's
 mould component, the "Schimmel > 60" diagnosis stat, the ML card, the report and the weekly mail.
 
 What the first data says (2026-09-11): sensor 2 — now laag, moisture load ~6 g/m³ (3 nights,

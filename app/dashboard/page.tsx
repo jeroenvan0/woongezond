@@ -59,7 +59,7 @@ interface ChartDef {
 
 const TABS = [
   { key: 'metingen', label: 'Metingen' },
-  { key: 'schimmel', label: 'Schimmel & dauwpunt' },
+  { key: 'dauwpunt', label: 'Dauwpunt' },
 ]
 
 function processRows(raw: SensorRow[]): ProcessedRow[] {
@@ -250,8 +250,17 @@ export default function DashboardPage() {
   const hs = last ? healthScore(last.co2, last.rh, last.mr) : null
   const hl = hs != null ? healthLabel(hs) : null
 
-  const card = (title: string, value: string, unit: string, status: any, accent: string, icon: React.ReactNode, progress?: number) => (
-    <MetricCard title={title} value={loading ? '—' : value} unit={unit} label={withStatus(status)?.label} labelColor={withStatus(status)?.color} accent={accent} icon={icon} progress={progress} stale={stale && !loading} />
+  // Tegels zijn klikbaar: naar de grafiek van die meting op deze pagina, of naar de pagina die
+  // er dieper op ingaat (schimmel → /schimmelrisico, gezondheid → /trends).
+  const goToChart = (t: string, key: string) => {
+    setTab(t)
+    setMobileMetric(key)
+    // Na de render: de grafiek staat er pas als het tabblad gewisseld is.
+    requestAnimationFrame(() => setTimeout(() => document.getElementById(`grafiek-${key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60))
+  }
+  const card = (title: string, value: string, unit: string, status: any, accent: string, icon: React.ReactNode, progress?: number, go?: { tab: string; key: string; label: string }) => (
+    <MetricCard title={title} value={loading ? '—' : value} unit={unit} label={withStatus(status)?.label} labelColor={withStatus(status)?.color} accent={accent} icon={icon} progress={progress} stale={stale && !loading}
+      onClick={go ? () => goToChart(go.tab, go.key) : undefined} goLabel={go?.label} />
   )
 
   const periodSelect = (
@@ -289,23 +298,26 @@ export default function DashboardPage() {
           </div>
         ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 10, marginBottom: 8 }}>
-          {card('CO₂', last?.co2.toFixed(0) ?? '—', 'ppm', co2s, 'var(--c-co2)', <Wind size={14} />, last ? Math.min(100, last.co2 / 20) : 0)}
-          {card('Temperatuur', last?.temp.toFixed(1) ?? '—', '°C', temps, 'var(--c-temp)', <Thermometer size={14} />)}
-          {card('Vochtigheid', last?.rh.toFixed(1) ?? '—', '% RV', rhs, 'var(--c-rh)', <Droplets size={14} />, last?.rh)}
+          {card('CO₂', last?.co2.toFixed(0) ?? '—', 'ppm', co2s, 'var(--c-co2)', <Wind size={14} />, last ? Math.min(100, last.co2 / 20) : 0, { tab: 'metingen', key: 'co2', label: 'naar de CO₂-grafiek' })}
+          {card('Temperatuur', last?.temp.toFixed(1) ?? '—', '°C', temps, 'var(--c-temp)', <Thermometer size={14} />, undefined, { tab: 'metingen', key: 'temp', label: 'naar de temperatuurgrafiek' })}
+          {card('Vochtigheid', last?.rh.toFixed(1) ?? '—', '% RV', rhs, 'var(--c-rh)', <Droplets size={14} />, last?.rh, { tab: 'metingen', key: 'rh', label: 'naar de vochtigheidsgrafiek' })}
           <MetricCard
             title="Schimmel"
-            value={loading || !mould?.now.rhSurface ? '—' : mould.now.rhSurface.toFixed(0)}
-            unit="% hoek"
-            label={mould ? `winter: ${Math.round(mould.winter.pVisible * 100)}% kans` : undefined}
+            // Eén soort procent in de tegel: de kans. De vochtigheid in de hoek staat op de schimmelpagina.
+            value={loading || !mould ? '—' : Math.round(mould.winter.pVisible * 100).toString()}
+            unit="% kans"
+            label={mould ? `winter ${mould.winter.level}` : undefined}
             labelColor={mould ? LEVEL_COLOR[mould.winter.level] : undefined}
-            sub={mould ? `nu ${mould.now.level}` : undefined}
+            sub={mould ? `${mould.winter.provisional ? 'voorlopig · ' : ''}nu ${mould.now.level}` : undefined}
             subColor={mould && mould.now.level !== 'laag' ? LEVEL_COLOR[mould.now.level] : undefined}
             accent="var(--c-mould)"
             icon={<Bug size={14} />}
-            progress={mould?.now.rhSurface ?? undefined}
+            progress={mould ? mould.winter.pVisible * 100 : undefined}
             stale={stale && !loading}
+            href="/schimmelrisico"
+            goLabel="naar de schimmelpagina: profiel, winterkans en wat helpt"
           />
-          {card('Dauwpunt', last?.dp.toFixed(1) ?? '—', '°C', null, 'var(--c-dew)', <Droplet size={14} />)}
+          {card('Dauwpunt', last?.dp.toFixed(1) ?? '—', '°C', null, 'var(--c-dew)', <Droplet size={14} />, undefined, { tab: 'dauwpunt', key: 'dp', label: 'naar de dauwpuntgrafiek' })}
           {hs != null && (
             <MetricCard
               title="Gezondheid"
@@ -317,6 +329,8 @@ export default function DashboardPage() {
               progress={hs}
               icon={<Activity size={14} />}
               stale={stale && !loading}
+              href="/trends"
+              goLabel="naar trends: gezondheid per dag en per maand"
             />
           )}
         </div>
@@ -483,9 +497,9 @@ export default function DashboardPage() {
             { key: 'rh', chip: 'Vocht', label: 'Relatieve vochtigheid (%)', unit: '%', color: chartC.rh, fill: 0.1, digits: 1, col: 'RV (%)',
               refLines: [{ value: 60, label: '60%', color: chartC.warn }, { value: 70, label: '70%', color: chartC.crit }] },
           ],
-          schimmel: [
-            { key: 'mr', chip: 'Schimmel', label: 'Schimmelrisico (0–100)', unit: '', color: chartC.mould, fill: 0.12, digits: 0, col: 'Risico / 100', height: 220,
-              refLines: [{ value: 60, label: 'Verhoogd', color: chartC.warn }] },
+          // De oude "Schimmelrisico (0–100)" (vaste 3,5 °C-muur) is weg: het schimmelrisico staat
+          // op /schimmelrisico met het model van lib/mouldRisk.ts.
+          dauwpunt: [
             { key: 'dp', chip: 'Dauwpunt', label: 'Dauwpunt (°C)', unit: '°C', color: chartC.dew, fill: 0.1, digits: 1, col: 'Dauwpunt (°C)' },
           ],
         }
@@ -515,8 +529,14 @@ export default function DashboardPage() {
               </div>
             )}
             <div style={{ display: 'grid', gap: 12 }}>
+              {tab === 'dauwpunt' && (
+                <Link href="/schimmelrisico" style={{ fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--brand)', textDecoration: 'none' }}>
+                  Het schimmelrisico staat op de schimmelpagina →
+                </Link>
+              )}
               {shown.map((c) => (
-                <ChartCard key={c.key} label={c.label}>
+                <div key={c.key} id={`grafiek-${c.key}`} style={{ scrollMarginTop: 72 }}>
+                <ChartCard label={c.label}>
                   <SensorChart
                     data={displayed}
                     dataKey={c.key}
@@ -533,6 +553,7 @@ export default function DashboardPage() {
                     rows={displayed.map((r) => ({ t: fmtTs(r.ts), v: r[c.key].toFixed(c.digits) }))}
                   />
                 </ChartCard>
+                </div>
               ))}
             </div>
           </>
@@ -566,7 +587,8 @@ function MouldProfileCard({ r }: { r: MouldAssessment }) {
           Schimmelprofiel: {r.profile.title.toLowerCase()} — deze winter {Math.round(r.winter.pVisible * 100)}% kans op zichtbare schimmel
         </div>
         <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--muted)', marginTop: 2, lineHeight: 1.45 }}>
-          {growthSentence(r.yearGrowth)} Nu is de koudste plek {r.now.rhSurface != null ? `${r.now.rhSurface.toFixed(0)}%` : '–'} vochtig; in januari verwachten we ~{r.winter.rhSurface}%.
+          {growthSentence(r.yearGrowth)} Nu is het risico {r.now.level}: de ramen staan open en het is buiten nog warm. In de winter bepaalt vooral het vocht dat het huishouden maakt of de koude hoeken nat worden.
+          {r.winter.provisional && ' Dit is een voorlopige schatting; hij wordt vanzelf beter zodra het buiten kouder wordt.'}
         </div>
         <Link href="/schimmelrisico" style={{ display: 'inline-flex', alignItems: 'center', gap: 5, marginTop: 6, fontSize: 'var(--fs-sm)', fontWeight: 600, color: 'var(--brand)', textDecoration: 'none' }}>
           Bekijk het schimmelprofiel <ArrowRight size={13} />
