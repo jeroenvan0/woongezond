@@ -5,6 +5,9 @@
 //     eenmalig via de seriële monitor gezet:   SET TOKEN wgd_…   SET URL http://…   SET NUMBER 3
 //   • WiFi kiest de bewoner zelf: zonder opgeslagen netwerk opent de sensor het open netwerk
 //     "Woongezond-0N" met een captive portal (WiFiManager). Kies daar het thuisnetwerk.
+//   • Verkeerd wachtwoord ingetypt: de router weigert, de sensor opent het setup-netwerk meteen
+//     weer en zegt op de portalpagina dat het wachtwoord niet klopte. Opnieuw flashen is nooit
+//     nodig (een upload wist het WiFi-wachtwoord ook niet).
 //   • Elke 60 s een meting naar <URL>/api/ingest met header x-device-token.
 //     Body: co2, temperature, humidity, rssi, fw, boot_count, uptime_s (docs/pilot-feather-s3-plan.md).
 //   • Stroom eraf/eraan: alles blijft (WiFi-gegevens én token staan in flash). De sensor
@@ -15,8 +18,8 @@
 //   • "Sensor resetten" op de website: de server geeft in het antwoord op de volgende meting
 //     {"cmd":"reset_wifi"} mee → sensor wist alleen WiFi en opent het setup-netwerk.
 //     Het token wordt nooit op afstand gewist.
-//   • Rode LED: 2× knipperen = geen WiFi / setup-modus, 3× = server weigert token (401),
-//     1 korte flits = meting verstuurd.
+//   • Rode LED: 2× knipperen = geen WiFi / setup-modus, 4× = WiFi-wachtwoord afgewezen
+//     (setup-netwerk staat open), 3× = server weigert token (401), 1 korte flits = meting verstuurd.
 //
 // Libraries (Arduino Library Manager): "WiFiManager" (tzapu), "Sensirion I2C SCD4x".
 // Board: Adafruit Feather ESP32-S3 (esp32 core 3.x). Zie README.md hiernaast.
@@ -29,7 +32,7 @@
 #include <Preferences.h>
 #include <SensirionI2cScd4x.h>
 
-#define FW_VERSION "2.1.1"
+#define FW_VERSION "2.2.0"
 
 // ── pinnen (Feather ESP32-S3) ─────────────────────────
 static const int SDA_PIN    = 3;
@@ -43,6 +46,8 @@ static const int BUTTON_PIN = 0;             // BOOT-knop
 static const unsigned long INTERVAL_MS     = 60000;
 static const unsigned long HTTP_TIMEOUT_MS = 10000;
 static const unsigned long WIFI_RETRY_MS   = 30000;
+static const unsigned long PORTAL_RETRY_MS = 60000;  // setup-netwerk open: zo vaak het bekende netwerk proberen
+static const int           WIFI_PATIENCE   = 4;      // pogingen (~2 min) bij "netwerk niet gevonden" vóór het portal
 static const unsigned long BUTTON_HOLD_MS  = 10000;
 static const int           HTTP_RETRIES    = 2;
 
@@ -74,6 +79,16 @@ int     cfgNumber = 0;
 uint32_t bootCount = 0;
 bool    scd41Ok = false;
 unsigned long lastSend = 0, lastWifiTry = 0, buttonDownAt = 0;
+
+// WiFi-status (zie wifiTick). Staat hier boven alle functies: de Arduino-builder zet zijn
+// automatische prototypes vóór de eerste functie, en die gebruiken WifiFail al.
+enum WifiFail : uint8_t { WF_NONE, WF_PASSWORD, WF_NOT_FOUND, WF_OTHER };
+volatile uint8_t discReason = 0;          // laatste betekenisvolle disconnect-reden (WiFi-event)
+volatile bool    discNew    = false;
+WifiFail wifiFail  = WF_NONE;
+int      wifiTries = 0;                   // mislukte pogingen sinds de laatste verbinding
+bool     wifiUp    = false;
+String   failSsid, portalHome;            // WiFiManager bewaart alleen de pointer naar portalHome
 
 // ── LED ───────────────────────────────────────────────
 void blink(int times, int onMs = 120, int offMs = 160) {
@@ -113,7 +128,7 @@ void handleSerial() {
     if (line.startsWith("SET TOKEN "))       { cfgToken = line.substring(10); cfgToken.trim(); saveConfig("token", cfgToken); Serial.println("[cfg] token opgeslagen"); }
     else if (line.startsWith("SET URL "))    { cfgUrl = line.substring(8); cfgUrl.trim(); while (cfgUrl.endsWith("/")) cfgUrl.remove(cfgUrl.length() - 1); saveConfig("url", cfgUrl); Serial.println("[cfg] url opgeslagen: " + cfgUrl); }
     else if (line.startsWith("SET NUMBER ")) { cfgNumber = line.substring(11).toInt(); saveNumber(cfgNumber); Serial.println("[cfg] nummer opgeslagen: " + String(cfgNumber) + " → AP " + apName()); }
-    else if (line == "SHOW")                 { Serial.printf("[cfg] fw=%s number=%d url=%s token=%s… boots=%u wifi=%s ip=%s\n", FW_VERSION, cfgNumber, cfgUrl.c_str(), cfgToken.substring(0, 8).c_str(), bootCount, WiFi.SSID().c_str(), WiFi.localIP().toString().c_str()); }
+    else if (line == "SHOW")                 { Serial.printf("[cfg] fw=%s number=%d url=%s token=%s… boots=%u wifi=%s ip=%s portal=%s fout=%s\n", FW_VERSION, cfgNumber, cfgUrl.c_str(), cfgToken.substring(0, 8).c_str(), bootCount, wm.getWiFiSSID(true).c_str(), WiFi.localIP().toString().c_str(), wm.getConfigPortalActive() ? "open" : "dicht", failText(wifiFail)); }
     else if (line == "RESET WIFI")           { Serial.println("[cfg] wifi gewist, herstart…"); wm.resetSettings(); delay(300); ESP.restart(); }
     else if (line == "RESET ALL")            { prefs.begin("wg", false); prefs.clear(); prefs.end(); wm.resetSettings(); Serial.println("[cfg] alles gewist, herstart…"); delay(300); ESP.restart(); }
     else if (line.length())                  { Serial.println("[cfg] onbekend. Gebruik: SET TOKEN <t> | SET URL <u> | SET NUMBER <n> | SHOW | RESET WIFI | RESET ALL"); }
@@ -122,18 +137,70 @@ void handleSerial() {
 }
 
 // ── WiFi via captive portal ───────────────────────────
-// Eerste keer (of na RESET WIFI): open netwerk "Woongezond-0N", portal op 192.168.4.1.
-// Het portal controleert het wachtwoord vóór opslaan; bij fout blijft het portal open.
-bool ensureWiFi() {
-  if (WiFi.status() == WL_CONNECTED) return true;
-  if (millis() - lastWifiTry < WIFI_RETRY_MS && lastWifiTry != 0) return false;
+// Het setup-netwerk "Woongezond-0N" (portal op 192.168.4.1) draait naast de loop (WiFiManager
+// non-blocking), dus BOOT-knop en seriële commando's werken altijd. Wanneer het opengaat:
+//   • geen opgeslagen netwerk                → meteen;
+//   • router weigert het wachtwoord          → meteen, met die melding op de portalpagina;
+//   • netwerk niet gevonden / andere fout    → na ~2 min geduld (router die na een
+//                                               stroomstoring trager opkomt dan de sensor).
+// Het portal blijft open tot er verbinding is. Zolang niemand ermee verbonden is, probeert de
+// sensor elke minuut het opgeslagen netwerk opnieuw. Opgeslagen gegevens worden nooit gewist.
+WifiFail classifyReason(uint8_t r) {
+  switch (r) {
+    case WIFI_REASON_AUTH_EXPIRE: case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT:
+    case WIFI_REASON_AUTH_FAIL:   case WIFI_REASON_HANDSHAKE_TIMEOUT:
+      return WF_PASSWORD;
+    case WIFI_REASON_NO_AP_FOUND: case WIFI_REASON_NO_AP_FOUND_W_COMPATIBLE_SECURITY:
+    case WIFI_REASON_NO_AP_FOUND_IN_AUTHMODE_THRESHOLD: case WIFI_REASON_NO_AP_FOUND_IN_RSSI_THRESHOLD:
+      return WF_NOT_FOUND;
+    default:
+      return WF_NONE;
+  }
+}
+const char* failText(WifiFail f) {
+  return f == WF_PASSWORD ? "wachtwoord afgewezen" : f == WF_NOT_FOUND ? "netwerk niet gevonden" : f == WF_OTHER ? "geen verbinding" : "-";
+}
+
+String htmlEsc(const String& s) {
+  String o; for (char c : s) { if (c == '<') o += "&lt;"; else if (c == '>') o += "&gt;"; else if (c == '&') o += "&amp;"; else if (c == '"') o += "&quot;"; else o += c; }
+  return o;
+}
+
+// Startpagina van het portal, met bovenaan wat er misging.
+void setPortalHome() {
+  String ssid = "<b>" + htmlEsc(failSsid) + "</b>";
+  String msg;
+  if (wifiFail == WF_PASSWORD)       msg = "<div class='msg D'><b>Het wachtwoord klopte niet</b> voor " + ssid + ". Kies het netwerk opnieuw en typ het wachtwoord nog eens. Let op hoofdletters.</div>";
+  else if (wifiFail == WF_NOT_FOUND) msg = "<div class='msg D'>Netwerk " + ssid + " is niet gevonden. Staat de router aan? De sensor werkt alleen op 2,4 GHz.</div>";
+  else if (wifiFail == WF_OTHER)     msg = "<div class='msg D'>Verbinden met " + ssid + " lukte niet. Probeer het opnieuw.</div>";
+  portalHome = msg + PORTAL_HOME;
+  wm.setCustomMenuHTML(portalHome.c_str());
+}
+
+void noteFailure(WifiFail f) {
+  wifiFail = f;
+  failSsid = wm.getWiFiSSID(true);
+  Serial.printf("[wifi] %s: %s (reden %u)\n", failSsid.c_str(), failText(f), discReason);
+  if (wm.getConfigPortalActive()) setPortalHome();
+}
+
+void openPortal() {
+  Serial.println("[wifi] setup-netwerk " + apName() + " open (192.168.4.1)");
+  WiFi.setAutoReconnect(false);          // geen eigen herverbind-pogingen terwijl iemand in het portal zit
+  setPortalHome();
+  wm.startConfigPortal(apName().c_str());
   lastWifiTry = millis();
-  // Geduldig: eerst ruim proberen op het bekende netwerk (router die na een stroomstoring
-  // trager opkomt dan de sensor), pas dan het setup-netwerk. Opgeslagen creds worden nooit
-  // gewist; als het portal na 5 min sluit, proberen we het bekende netwerk gewoon opnieuw.
-  wm.setConnectTimeout(30);
-  wm.setConnectRetries(4);                 // 4 × 30 s ≈ 2 min voordat het portal opent
-  wm.setConfigPortalTimeout(300);
+}
+
+void setupWiFi() {
+  // Driver starten vóór getWiFiIsSaved()/getWiFiSSID(): die lezen de opgeslagen config via
+  // esp_wifi_get_config, en dat geeft vóór de init rommel terug.
+  WiFi.mode(WIFI_STA);
+  wm.setConfigPortalBlocking(false);
+  wm.setEnableConfigPortal(false);       // autoConnect alleen laten verbinden; het portal openen we zelf
+  wm.setConfigPortalTimeout(0);
+  wm.setConnectTimeout(20);
+  wm.setConnectRetries(1);
   wm.setTitle("Woongezond");
   wm.setDarkMode(false);
   // Portal in Woongezond-stijl: eigen CSS, alleen de WiFi-knop (geen Info/Update/Exit),
@@ -147,12 +214,52 @@ bool ensureWiFi() {
   wm.setShowStaticFields(false);
   wm.setShowDnsFields(false);
   wm.setScanDispPerc(true);
-  Serial.println("[wifi] verbinden… (geen creds → setup-netwerk " + apName() + ")");
+  // Alleen redenen die iets zeggen bewaren; de disconnects die we zelf veroorzaken (portal
+  // starten, opnieuw proberen) zouden "wachtwoord afgewezen" anders overschrijven.
+  WiFi.onEvent([](arduino_event_id_t, arduino_event_info_t info) {
+    uint8_t r = info.wifi_sta_disconnected.reason;
+    if (classifyReason(r) != WF_NONE) { discReason = r; discNew = true; }
+  }, ARDUINO_EVENT_WIFI_STA_DISCONNECTED);
+}
+
+// Elke loop: nooit langer blokkeren dan één verbindingspoging (≤ 20 s).
+void wifiTick() {
+  if (WiFi.status() == WL_CONNECTED) {
+    if (wm.getConfigPortalActive()) wm.stopConfigPortal();
+    if (!wifiUp) {
+      Serial.printf("[wifi] verbonden met %s, ip %s, rssi %d\n", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str(), WiFi.RSSI());
+      WiFi.setAutoReconnect(true);
+    }
+    wifiUp = true; wifiTries = 0; wifiFail = WF_NONE; discNew = false;
+    return;
+  }
+  if (wifiUp) { wifiUp = false; lastWifiTry = millis(); Serial.println("[wifi] verbinding weg"); }
+
+  if (wm.getConfigPortalActive()) {
+    wm.process();                                   // portal + DNS; een opgeslagen poging blokkeert ≤ 20 s
+    if (discNew) { discNew = false; noteFailure(classifyReason(discReason)); }
+    static unsigned long lastBlink;
+    if (millis() - lastBlink > 5000) { lastBlink = millis(); if (wifiFail == WF_PASSWORD) blink(4, 60, 90); else blink(2, 60, 90); }
+    // Niemand in het portal: stil het bekende netwerk opnieuw proberen (router weer terug).
+    if (WiFi.softAPgetStationNum() == 0 && wm.getWiFiIsSaved() && millis() - lastWifiTry > PORTAL_RETRY_MS) {
+      lastWifiTry = millis();
+      WiFi.begin();
+    }
+    return;
+  }
+
+  if (lastWifiTry && millis() - lastWifiTry < WIFI_RETRY_MS) return;
+  lastWifiTry = millis();
+  if (!wm.getWiFiIsSaved()) { Serial.println("[wifi] nog geen netwerk opgeslagen"); openPortal(); return; }
+
+  Serial.println("[wifi] verbinden met " + wm.getWiFiSSID(true) + "…");
   blink(2);
-  bool ok = wm.autoConnect(apName().c_str());   // blokkeert tot verbonden of portal-timeout
-  if (ok) Serial.printf("[wifi] verbonden met %s, ip %s, rssi %d\n", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str(), WiFi.RSSI());
-  else    Serial.println("[wifi] niet verbonden; volgende poging over 30 s");
-  return ok;
+  discNew = false; discReason = 0;
+  if (wm.autoConnect(apName().c_str())) return;   // één poging; het portal openen we zelf
+  wifiTries++;
+  noteFailure(discNew ? classifyReason(discReason) : WF_OTHER);
+  discNew = false;
+  if (wifiFail == WF_PASSWORD || wifiTries >= WIFI_PATIENCE) openPortal();
 }
 
 // BOOT-knop 10 s vasthouden → alleen WiFi wissen.
@@ -227,20 +334,20 @@ void setup() {
   scd41Ok = scd4x.startPeriodicMeasurement() == 0;
   Serial.println(scd41Ok ? "[scd41] gestart" : "[scd41] FOUT — check bedrading SDA=3 SCL=4");
 
-  // Nog geen token/url (aan het bureau): NIET het setup-netwerk openen — autoConnect blokkeert
-  // tot 5 min en dan zijn SET-commando's doof. WiFi komt vanzelf zodra de config er staat.
+  setupWiFi();
+  // Nog geen token/url (aan het bureau): nog geen WiFi of setup-netwerk. Dat komt vanzelf
+  // (wifiTick in de loop) zodra de config er staat.
   if (!configured()) {
     Serial.println("[cfg] geen token/url. Typ in de seriële monitor:");
     Serial.println("      SET TOKEN wgd_…    SET URL https://woongezond.com/admin    SET NUMBER 3");
-    return;
   }
-  ensureWiFi();
 }
 
 void loop() {
   handleSerial();
   handleButton();
   if (!configured()) { static unsigned long t; if (millis() - t > 5000) { t = millis(); blink(3, 60, 120); Serial.println("[cfg] wacht op SET TOKEN / SET URL"); } delay(50); return; }
+  wifiTick();
 
   if (millis() - lastSend >= INTERVAL_MS || lastSend == 0) {
     lastSend = millis();
@@ -250,11 +357,11 @@ void loop() {
     uint16_t co2; float temp, rh;
     if (scd4x.readMeasurement(co2, temp, rh) != 0 || co2 == 0) { Serial.println("[scd41] ongeldige meting"); return; }
     Serial.printf("[meting] CO2 %u ppm · %.2f °C · %.2f %%\n", co2, temp, rh);
-    if (!ensureWiFi()) { Serial.println("[wifi] geen verbinding, meting overgeslagen"); return; }
+    if (WiFi.status() != WL_CONNECTED) { Serial.println("[wifi] geen verbinding, meting overgeslagen"); return; }
     int code = postReading(co2, temp, rh);
     if (code == 200)      blink(1, 40, 0);
     else if (code == 401) { Serial.println("[http] token afgewezen — SET TOKEN opnieuw"); blink(3); }
     else if (code == 429) Serial.println("[http] te snel — server vraagt te wachten");
   }
-  delay(50);
+  delay(wm.getConfigPortalActive() ? 5 : 50);   // portal open: DNS/HTTP vlot bedienen
 }
