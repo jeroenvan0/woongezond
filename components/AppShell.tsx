@@ -14,6 +14,9 @@ import {
   FlaskConical,
   FileText,
   Building2,
+  Gauge,
+  Inbox,
+  Wrench,
   Share2,
   Moon,
   Sun,
@@ -40,6 +43,12 @@ const NAV = [
 // Fleet (C1) is only shown to corporation members. Appended to NAV once the
 // membership check resolves, so residents never see it.
 const FLEET_NAV = { href: '/vloot', label: 'Vloot', Icon: Building2 }
+// Cockpit (pilot, §2c) shows resident contact details — org ADMINS only.
+const COCKPIT_NAV = { href: '/cockpit', label: 'Cockpit', Icon: Gauge }
+// Klantenservice-inbox (docs/support-assistant.md) — same audience as the cockpit.
+const INBOX_NAV = { href: '/cockpit/inbox', label: 'Inbox', Icon: Inbox }
+// Systeemstatus (backup, stille sensoren, deployments) — org ADMINS only.
+const BEHEER_NAV = { href: '/beheer', label: 'Beheer', Icon: Wrench }
 
 interface Props {
   title?: string
@@ -55,20 +64,43 @@ export default function AppShell({ title, actions, children }: Props) {
   const [collapsed, setCollapsed] = useState(false)
   const [email, setEmail] = useState('')
   const [isOrgMember, setIsOrgMember] = useState(false)
+  const [isOrgAdmin, setIsOrgAdmin] = useState(false)
 
   useEffect(() => {
     const stored = localStorage.getItem('theme')
     setTheme(stored === 'light' || stored === 'dark' ? stored : 'system')
     setCollapsed(localStorage.getItem('wz-sidebar-collapsed') === '1')
     supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email ?? ''))
-    // Show the Vloot nav only for corporation members. A single count query; if the
-    // org tables aren't deployed yet it errors and we simply keep the item hidden.
-    supabase.from('org_members').select('id', { count: 'exact', head: true }).then(({ count }) => {
-      if ((count ?? 0) > 0) setIsOrgMember(true)
-    })
+    // Show the Vloot nav only for corporation members and the Cockpit/Inbox only for org
+    // admins. Last known answer comes from localStorage so a hard reload paints the full
+    // menu at once; then re-check AFTER the session is loaded (on a cold reload the first
+    // PostgREST call could go out before the token was restored, RLS returned nothing, and
+    // the two admin items stayed hidden until the next navigation). Re-run on auth changes.
+    try {
+      const cached = localStorage.getItem('wz-org-role')
+      if (cached === 'admin' || cached === 'member') setIsOrgMember(true)
+      if (cached === 'admin') setIsOrgAdmin(true)
+    } catch {}
+    let cancelled = false
+    async function checkRole() {
+      const { data: sess } = await supabase.auth.getSession()
+      if (!sess.session) { try { localStorage.removeItem('wz-org-role') } catch {}; if (!cancelled) { setIsOrgMember(false); setIsOrgAdmin(false) } return }
+      // Alleen de eigen lidmaatschapsrijen: de policy toont de hele organisatie, dus een
+      // medewerker zou anders de Cockpit- en Beheer-knoppen van een admin te zien krijgen.
+      const { data, error } = await supabase.from('org_members').select('role').eq('user_id', sess.session.user.id)
+      if (cancelled || error) return          // org tables not deployed → keep whatever we had
+      const rows = data ?? []
+      const admin = rows.some((r: { role: string | null }) => r.role === 'admin')
+      setIsOrgMember(rows.length > 0)
+      setIsOrgAdmin(admin)
+      try { if (rows.length) localStorage.setItem('wz-org-role', admin ? 'admin' : 'member'); else localStorage.removeItem('wz-org-role') } catch {}
+    }
+    checkRole()
+    const { data: sub } = supabase.auth.onAuthStateChange((event) => { if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'SIGNED_OUT') checkRole() })
+    return () => { cancelled = true; sub.subscription.unsubscribe() }
   }, [supabase])
 
-  const nav = isOrgMember ? [...NAV, FLEET_NAV] : NAV
+  const nav = [...NAV, ...(isOrgMember ? [FLEET_NAV] : []), ...(isOrgAdmin ? [COCKPIT_NAV, INBOX_NAV, BEHEER_NAV] : [])]
 
   // While on "system", follow OS changes live (D8 — the toggle is no longer a
   // one-way door out of system).
@@ -99,6 +131,7 @@ export default function AppShell({ title, actions, children }: Props) {
   }
 
   async function logout() {
+    try { localStorage.removeItem('wz-org-role') } catch {}
     await supabase.auth.signOut()
     router.push('/login')
     router.refresh()

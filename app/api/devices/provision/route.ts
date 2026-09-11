@@ -25,7 +25,11 @@ async function client() {
 }
 
 async function callerOrgs(supabase: Awaited<ReturnType<typeof client>>) {
-  const { data, error } = await supabase.from('org_members').select('org_id, role, organizations(name)').order('created_at', { ascending: true })
+  // Filter op de eigen gebruiker: de RLS-policy op org_members toont de hele organisatie,
+  // dus zonder dit zou de rol van een collega worden overgenomen.
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+  const { data, error } = await supabase.from('org_members').select('org_id, role, organizations(name)').eq('user_id', user.id).order('created_at', { ascending: true })
   if (error) return null
   return (data ?? []).map((m: any) => ({ id: m.org_id, name: m.organizations?.name ?? 'Corporatie', role: m.role }))
 }
@@ -33,7 +37,7 @@ async function callerOrgs(supabase: Awaited<ReturnType<typeof client>>) {
 function genCode(): string {
   const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
   let s = ''
-  for (let i = 0; i < 4; i++) s += alphabet[Math.floor(Math.random() * alphabet.length)]
+  for (let i = 0; i < 6; i++) s += alphabet[Math.floor(Math.random() * alphabet.length)]
   return `DEVICE-${s}`
 }
 

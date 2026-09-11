@@ -2,6 +2,7 @@
 import { AlertTriangle, RotateCw } from 'lucide-react'
 
 export type DataError =
+  | { kind: 'auth' }
   | { kind: 'rate-limited' }
   | { kind: 'server'; status?: number }
   | { kind: 'network' }
@@ -9,12 +10,14 @@ export type DataError =
 
 export function describeError(status: number | undefined, networkFailed: boolean): DataError {
   if (networkFailed) return { kind: 'network' }
+  if (status === 401) return { kind: 'auth' }
   if (status === 429) return { kind: 'rate-limited' }
   if (status != null && status >= 400) return { kind: 'server', status }
   return null
 }
 
 const MESSAGES: Record<Exclude<NonNullable<DataError>['kind'], never>, string> = {
+  auth: 'Je sessie is verlopen of je bent op een ander account ingelogd. Log opnieuw in om je metingen te zien.',
   'rate-limited': 'Te veel verzoeken achter elkaar — even wachten. De getoonde waarden kunnen verouderd zijn.',
   server: 'De gegevens konden niet worden opgehaald. De getoonde waarden kunnen verouderd zijn.',
   network: 'Geen verbinding met de server. De getoonde waarden kunnen verouderd zijn.',

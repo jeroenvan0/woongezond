@@ -22,7 +22,7 @@ import {
 import { calcWallConditions, INSULATION_R, type InsulationClass } from '@/lib/calculations'
 import { useStickyState } from '@/lib/useStickyState'
 import { useChartColors } from '@/lib/useChartColors'
-import { useSelectedDevice } from '@/lib/useSelectedDevice'
+import { useSelectedDevice, useDeviceSelectionReady } from '@/lib/useSelectedDevice'
 import { ChevronDown, ChevronUp, FlaskConical } from 'lucide-react'
 
 const INSULATION_LABELS: Record<InsulationClass, string> = {
@@ -297,8 +297,10 @@ export default function SchimmelrisicoPage() {
   // B3: scope the mould analysis to the selected room. Falls back to all-devices when
   // nothing is selected or the device-aware RPC isn't deployed.
   const selectedDevice = useSelectedDevice()
+  const deviceReady = useDeviceSelectionReady()
 
   useEffect(() => {
+    if (!deviceReady) return   // eerst de sensorkeuze uit localStorage, dan pas ophalen
     ;(async () => {
       const {
         data: { user },
@@ -353,7 +355,7 @@ export default function SchimmelrisicoPage() {
         setSeries(makeDemo())
       }
     })()
-  }, [router, supabase, selectedDevice])
+  }, [router, supabase, selectedDevice, deviceReady])
 
   const computed = useMemo(() => {
     if (!series) return null

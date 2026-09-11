@@ -3,11 +3,14 @@ import { useMemo } from 'react'
 import { Moon } from 'lucide-react'
 import { nightForecast, NightOutlook } from '@/lib/nightForecast'
 import { useSeries } from '@/lib/useSeries'
+import { useSelectedDevice } from '@/lib/useSelectedDevice'
 
 const COLORS = { ok: 'var(--ok)', warning: 'var(--warn)', critical: 'var(--crit)' } as const
 
 export default function NightOutlookCard() {
-  const { rows, loading } = useSeries(20160) // 14 days → enough nights, shared cache
+  // Scope op de gekozen sensor — de nachtverwachting gaat over één slaapkamer.
+  const selectedDevice = useSelectedDevice()
+  const { rows, loading } = useSeries(20160, { device: selectedDevice }) // 14 days → enough nights
   const outlook: NightOutlook | null = useMemo(() => {
     const readings = (rows ?? [])
       .filter((x: any) => x.co2 != null && x.created_at)

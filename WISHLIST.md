@@ -121,3 +121,37 @@ the data is analysed in April.
 Milestone 3 already covers server-side alerting and a `/api/health` endpoint. Worth explicitly
 adding **per-device liveness monitoring and a coverage metric** to that milestone, since the
 pilot is contractually judged on exactly those two numbers.
+
+---
+
+## 4. ML-model per huishouden (per sensor), niet één gemengd model
+
+**Requested 2026-09-07 (Jeroen).** Het voorspelmodel (`lib/ml/`, `/api/ml/retrain`) traint nu
+op *alle* metingen die de ingelogde gebruiker mag zien, zonder onderscheid naar sensor, en slaat
+één gewichtenset per **gebruiker** op (`ml_models.user_id`). Dat is niet per huishouden:
+
+- Een gebruiker met meerdere sensoren (Jeroen: sensor 1 + Feather) krijgt één model over
+  meerdere kamers/woningen heen.
+- Sinds de org-admin alle pilotsensoren mag lezen (migratie 20260907200000) zou zijn model
+  zonder filter op *acht verschillende huizen* trainen. Als tijdelijke rem filtert de retrain
+  sinds 2026-09-07 op de eigen `user_id`; dat lost het principiële punt niet op.
+- De voorspelling voor sensor 2 komt uit het model van de kijker, niet van dat huis.
+
+**Waarom het niet klopt.** De huizen in de pilot verschillen te veel (bouwjaar, glas,
+ventilatie, verdieping, bewoning) om het gedrag van het ene huis te gebruiken om het andere
+te voorspellen. Een model over meerdere huizen middelt precies de verschillen weg waar het
+om gaat.
+
+**Gewenst.**
+1. **Eén model per sensor** (= per kamer/huishouden): `ml_models` krijgt `device_id` als
+   sleutel, retrain draait per device over alleen dat device's rijen, de voorspelling op het
+   dashboard/rapport gebruikt het model van de *gekozen sensor*.
+2. **Minimale datavereiste per model** (bijv. 14 dagen) en een eerlijke "nog te weinig
+   data"-staat in plaats van een voorspelling uit een vreemd huis.
+3. **Later, bij veel huizen:** hiërarchisch/gepoold — een gedeeld basismodel per huistype
+   (huisprofiel: bouwperiode, glas, ventilatie, verdieping) als startpunt, per huishouden
+   bijgetraind. Pas zinvol als er tientallen woningen per klasse zijn; nu niet.
+
+**Raakvlak.** Het punt uit de analyse-discussie van 2026-09-07 (analyses op ruwe minuutdata,
+serverkant, niet op de grafiekreeks) geldt hier ook: features per device uit ruwe rijen.
+

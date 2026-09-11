@@ -1,4 +1,5 @@
 import { log, errText } from '@/lib/logger'
+import { getSetting } from '@/lib/settings'
 
 // Alert email via the Resend HTTP API.
 //
@@ -25,16 +26,44 @@ async function post(key: string, payload: unknown): Promise<{ ok: true } | { ok:
   }
 }
 
-export async function sendAlertEmail(to: string, subject: string, body: string): Promise<boolean> {
+export interface EmailMessage {
+  to: string
+  subject: string
+  text: string
+  html?: string
+  from?: string                     // default ALERT_FROM_ADDR
+  replyTo?: string
+  bcc?: string
+  headers?: Record<string, string>  // e.g. In-Reply-To / References to stay in a thread
+}
+
+/** Alert/digest email, plain text only. Kept for existing callers. */
+export function sendAlertEmail(to: string, subject: string, body: string): Promise<boolean> {
+  return sendEmail({ to, subject, text: body })
+}
+
+/** Send one email (text + optional HTML alternative) via Resend. Same retry/logging policy. */
+export async function sendEmail({ to, subject, text, html, from: fromOverride, replyTo, bcc, headers }: EmailMessage): Promise<boolean> {
   const key = process.env.RESEND_API_KEY
-  const from = process.env.ALERT_FROM_ADDR || 'alerts@woongezond.nl'
+  // Instelling wint van env (adminportaal fase 2); getSetting valt zelf terug op env,
+  // ook als de database onbereikbaar is, dus een verzendronde kan hier niet op stuklopen.
+  const from = fromOverride || (await getSetting('alert_from_addr')) || 'alerts@woongezond.nl'
   if (!key) return false
   if (!to) {
     log.warn('email', 'no recipient address; skipping alert email', { subject })
     return false
   }
 
-  const payload = { from, to, subject, text: body }
+  // Antwoorden op elke mail van de app (rapport, alert, klantenservice) landen bij de
+  // klantenservice-inbox: SUPPORT_REPLY_TO is het ontvangstadres op het Resend-subdomein.
+  const reply = replyTo || (await getSetting('support_reply_to'))
+  const payload = {
+    from, to, subject, text,
+    ...(html ? { html } : {}),
+    ...(reply ? { reply_to: reply } : {}),
+    ...(bcc ? { bcc } : {}),
+    ...(headers ? { headers } : {}),
+  }
 
   const first = await post(key, payload)
   if (first.ok) return true

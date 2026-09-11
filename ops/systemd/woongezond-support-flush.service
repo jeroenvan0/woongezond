@@ -1,0 +1,8 @@
+[Unit]
+Description=Woongezond support: send scheduled assistant replies (SUPPORT_MODE=delayed)
+After=network.target woongezond-react-dev.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/var/www/woongezond-react-dev
+ExecStart=/usr/bin/bash -lc 'SECRET=$(grep -m1 "^CRON_SECRET=" /var/www/woongezond-react-dev/.env.local | cut -d= -f2-); curl -fsS -X POST -H "x-cron-secret: $SECRET" http://localhost:3002/admin/api/inbox/flush'

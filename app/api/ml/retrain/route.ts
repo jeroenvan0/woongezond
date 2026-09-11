@@ -19,7 +19,10 @@ async function client() {
   })
 }
 
-async function fetchReadings(supabase: any, days: number): Promise<SensorReading[]> {
+// Traint op de EIGEN rijen (user_id) — niet op alles wat RLS toelaat. Een org-admin mag
+// sinds 2026-09-07 ook de rijen van andere huishoudens lezen; die horen niet in zijn model.
+// Nog steeds één model per gebruiker over al zijn sensoren heen; per-sensor is WISHLIST §4.
+async function fetchReadings(supabase: any, days: number, userId: string): Promise<SensorReading[]> {
   const since = new Date(Date.now() - days * 86400000).toISOString()
   const readings: SensorReading[] = []
   const PAGE = 1000
@@ -27,6 +30,7 @@ async function fetchReadings(supabase: any, days: number): Promise<SensorReading
     const { data, error } = await supabase
       .from('air_quality')
       .select('created_at,co2,temperature,humidity')
+      .eq('user_id', userId)
       .gte('created_at', since)
       .order('created_at', { ascending: true })
       .range(offset, offset + PAGE - 1)
@@ -59,7 +63,7 @@ export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}))
   const days = body.days ?? 30
 
-  const readings = await fetchReadings(supabase, days)
+  const readings = await fetchReadings(supabase, days, user.id)
   if (readings.length < 50) {
     return NextResponse.json({ ok: false, reason: 'insufficient_data', readings: readings.length })
   }

@@ -27,10 +27,13 @@ export async function GET(req: NextRequest) {
   const { data: userData } = await supabase.auth.getUser()
   if (!userData.user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 })
 
-  // Which orgs may this user view? RLS on org_members already restricts to own rows.
+  // Which orgs may this user view? De RLS-policy is "dezelfde organisatie", niet "eigen
+  // rij", dus het filter op user_id moet hier staan — anders erft een medewerker de rol van
+  // een collega.
   const { data: memberships, error: memErr } = await supabase
     .from('org_members')
     .select('org_id, role, organizations(name)')
+    .eq('user_id', userData.user.id)
     .order('created_at', { ascending: true })
 
   // The tables may not be deployed yet (migration 20260806120000). Treat that as "no

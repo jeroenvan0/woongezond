@@ -45,6 +45,14 @@ export async function GET(req: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     { cookies: { getAll: ()=>cookieStore.getAll(), setAll:(c)=>{try{c.forEach(({name,value,options})=>cookieStore.set(name,value,options))}catch{}} } }
   )
+  // Zonder geldige sessie gaf deze route een lege lijst met status 200 terug: de RPC is
+  // voor anon ingetrokken, de fallback ziet door RLS nul rijen, en de grafiek toont dan
+  // "Geen data" alsof de sensor niets gemeten heeft. Een expliciete 401 maakt het verschil
+  // zichtbaar (DataBanner: "sessie verlopen"). getUser() ververst en passant het
+  // auth-cookie, zodat een net verlopen token hier hersteld wordt in plaats van stil te falen.
+  const { data: userData } = await supabase.auth.getUser()
+  if (!userData.user) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 })
+
   // Fast path: aggregate server-side in a single RPC call. The function buckets
   // the whole window down to ≤~900 rows, so it stays under Supabase's row cap
   // and avoids fetching tens of thousands of raw readings.
@@ -89,10 +97,12 @@ export async function GET(req: NextRequest) {
   const MAX_ROWS = 600000
   const all: any[] = []
   for (let offset = 0; offset < MAX_ROWS; offset += PAGE) {
-    const { data, error } = await supabase
+    let q = supabase
       .from('air_quality')
       .select('created_at,co2,temperature,humidity')
       .gte('created_at', since)
+    if (deviceId) q = q.eq('device_id', deviceId)   // nooit sensoren mengen, ook niet in de fallback
+    const { data, error } = await q
       .order('created_at', { ascending: true })
       .range(offset, offset + PAGE - 1)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })

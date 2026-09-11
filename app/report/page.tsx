@@ -1,7 +1,8 @@
 'use client'
-import { useEffect, useMemo, useState, useCallback } from 'react'
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { useSelectedDevice, useDeviceSelectionReady } from '@/lib/useSelectedDevice'
 import { withBase } from '@/lib/basePath'
 import { SensorRow } from '@/lib/types'
 import { toSeries, buildDiagnosis, buildTips, mean } from '@/lib/reportAnalytics'
@@ -38,9 +39,22 @@ function fmtDateTime(d: Date) {
   return d.toLocaleString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Amsterdam' })
 }
 
+interface DeviceOption {
+  id: string
+  name: string
+  location: string | null
+}
+
 export default function ReportPage() {
   const router = useRouter()
   const supabase = createClient()
+  // Het rapport volgt dezelfde sensorkeuze als de rest van de app (de switcher in de
+  // paginakop). Zonder dit haalde /report altijd de ongefilterde reeks op en werden de
+  // metingen van alle sensoren van het account door elkaar gemiddeld — een rapport over
+  // "de slaapkamer" bevatte dan ook de woonkamer.
+  const selectedDevice = useSelectedDevice()
+  const deviceReady = useDeviceSelectionReady()
+  const [devices, setDevices] = useState<DeviceOption[]>([])
   const [rows, setRows] = useState<SensorRow[]>([])
   const [email, setEmail] = useState('')
   const [weather, setWeather] = useState<any>(null)
@@ -50,8 +64,13 @@ export default function ReportPage() {
   const [dataError, setDataError] = useState<DataError>(null)
   const [generatedAt, setGeneratedAt] = useState<Date | null>(null)
 
+  // Stale-guard, net als in useSeries: elke (periode, sensor)-combinatie krijgt een ticket,
+  // zodat een traag antwoord van de vorige sensor het rapport van de nieuwe niet overschrijft.
+  const ticket = useRef(0)
   const load = useCallback(async () => {
+    if (!deviceReady) return   // eerst de sensorkeuze, dan pas meten
     setLoading(true)
+    const mine = ++ticket.current
     const {
       data: { user },
     } = await supabase.auth.getUser()
@@ -59,22 +78,41 @@ export default function ReportPage() {
       router.push('/login')
       return
     }
+    if (mine !== ticket.current) return
     setEmail(user.email ?? '')
     // Data via the shared cache (A5-visible errors); weather is best-effort.
     const [dRes, wRes] = await Promise.all([
-      getSeries(period).then((d) => { setDataError(null); return d }).catch((e) => {
+      getSeries(period, false, selectedDevice).then((d) => { setDataError(null); return d }).catch((e) => {
         const status = (e as { status?: number })?.status
         setDataError(describeError(status, status == null))
         return { rows: [], bucketMinutes: 1 }
       }),
       fetch(withBase('/api/weather')).then((r) => r.json()).catch(() => ({ weather: null, pollution: null })),
     ])
+    if (mine !== ticket.current) return
     setRows(dRes.rows ?? [])
     setWeather(wRes.weather ?? null)
     setPollution(wRes.pollution ?? null)
     setGeneratedAt(new Date())
     setLoading(false)
-  }, [period, router, supabase])
+  }, [period, selectedDevice, deviceReady, router, supabase])
+
+  // Sensornamen voor de kop van het rapport: een bewijsstuk moet vermelden over welke
+  // sensor (en welke kamer) het gaat.
+  useEffect(() => {
+    let cancelled = false
+    supabase
+      .from('devices')
+      .select('id,name,location')
+      .eq('active', true)
+      .order('name')
+      .then(({ data }) => {
+        if (!cancelled) setDevices((data as DeviceOption[]) ?? [])
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [supabase])
 
   useEffect(() => {
     load()
@@ -112,6 +150,18 @@ export default function ReportPage() {
   const cov = useMemo(() => measurementCoverage(rows), [rows])
   const gaps = useMemo(() => detectGaps(rows), [rows])
 
+  const currentDevice = useMemo(
+    () => devices.find((d) => d.id === selectedDevice) ?? (devices.length === 1 ? devices[0] : null),
+    [devices, selectedDevice],
+  )
+  // "Samengevoegd" alleen melden als er echt meer dan één sensor te kiezen valt.
+  const merged = !currentDevice && devices.length > 1
+  const sensorLabel = currentDevice
+    ? `${currentDevice.name}${currentDevice.location ? ` · ${currentDevice.location}` : ''}`
+    : merged
+      ? 'alle sensoren samengevoegd'
+      : '—'
+
   function downloadCsv() {
     if (!model) return
     const s = model.s
@@ -123,7 +173,8 @@ export default function ReportPage() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `woongezond-metingen-${new Date().toISOString().slice(0, 10)}.csv`
+    const slug = currentDevice ? currentDevice.name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') : 'alle-sensoren'
+    a.download = `woongezond-metingen-${slug}-${new Date().toISOString().slice(0, 10)}.csv`
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -167,6 +218,14 @@ export default function ReportPage() {
 
       <div className="no-print" style={{ maxWidth: 800, margin: '0 auto' }}>
         <DataBanner error={dataError} onRetry={load} />
+        {merged && (
+          <div role="status" style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '10px 13px', marginBottom: 'var(--sp-3)', borderRadius: 'var(--r-md)', background: 'var(--warn-fill)', color: 'var(--warn)', border: '1px solid color-mix(in srgb, var(--warn) 22%, transparent)', fontSize: 'var(--fs-sm)', lineHeight: 1.5 }}>
+            <span>
+              Dit rapport voegt de metingen van <strong>al je sensoren</strong> samen. Kies hierboven één sensor als je een
+              rapport voor één kamer of woning wilt.
+            </span>
+          </div>
+        )}
       </div>
 
       <div
@@ -189,6 +248,7 @@ export default function ReportPage() {
                 <div style={{ fontSize: 12.5, opacity: 0.92, marginTop: 5 }}>
                   {email ? `${email} · ` : ''}gegenereerd op {generatedAt ? fmtDateTime(generatedAt) : ''}
                 </div>
+                <div style={{ fontSize: 12.5, opacity: 0.92, marginTop: 2 }}>Sensor: {sensorLabel}</div>
               </div>
               <div style={{ padding: '11px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', background: '#fff' }}>
                 <span style={{ fontSize: 12, color: MUTED }}>
@@ -370,71 +430,10 @@ export default function ReportPage() {
               GGD-richtlijn (RV 40–60%). Dit rapport is een geautomatiseerde indicatie op basis van sensordata en vervangt
               geen bouwkundig onderzoek.
             </p>
-
-            {/* Complaint letter — screen only; copy into your own letter/e-mail */}
-            <ComplaintLetter diag={model.diag} kpi={kpi} s={model.s} email={email} generatedAt={generatedAt} />
           </>
         )}
       </div>
     </AppShell>
-  )
-}
-
-const fmtDateShort = (d: Date) => d.toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })
-
-function buildLetter(diag: any, kpi: any, s: any, email: string, generatedAt: Date): string {
-  const period = `${fmtDateShort(s.times[0])} t/m ${fmtDateShort(s.times[s.times.length - 1])}`
-  const findings = diag.findings.length ? diag.findings.map((f: any) => `• ${f.text}`).join('\n') : '• Geen structurele afwijkingen vastgesteld.'
-  const achLine = diag.ach ? `\n• Geschatte ventilatie (ACH) ${diag.ach.achGem} per uur (richtlijn ≥ 0,9).` : ''
-  return `Betreft: Melding van een gebrek aan de huurwoning – vocht en ventilatie
-
-Geachte verhuurder,
-
-Met deze brief meld ik formeel een mogelijk gebrek aan de door mij gehuurde woning, betreffende de luchtkwaliteit en de vochthuishouding. Op basis van continue sensormetingen over de periode ${period} (${s.co2.length} metingen) is het volgende vastgesteld:
-
-${findings}
-
-Conclusie: ${diag.conclusieTxt}.
-
-Kerncijfers:
-• CO₂ gemiddeld ${kpi.co2Avg} ppm; ${kpi.pct1000.toFixed(0)}% van de tijd boven de Bouwbesluit-norm van 1000 ppm.
-• Relatieve luchtvochtigheid gemiddeld ${kpi.rhAvg.toFixed(0)}%.
-• Schimmelrisico-indicatie ${kpi.pctMr60.toFixed(0)}% van de tijd verhoogd.${achLine}
-
-Op grond van artikel 7:206 van het Burgerlijk Wetboek verzoek ik u dit gebrek binnen een redelijke termijn — uiterlijk zes weken na dagtekening — te (laten) onderzoeken en te verhelpen. Het bijgevoegde luchtkwaliteitsrapport onderbouwt deze melding met grafieken en de gebruikte meetmethodiek.
-
-Graag ontvang ik binnen veertien dagen een schriftelijke ontvangstbevestiging en een voorstel voor de vervolgstappen.
-
-Hoogachtend,
-
-${email || '[uw naam]'}
-${fmtDateShort(generatedAt)}`
-}
-
-function ComplaintLetter({ diag, kpi, s, email, generatedAt }: { diag: any; kpi: any; s: any; email: string; generatedAt: Date | null }) {
-  const [copied, setCopied] = useState(false)
-  if (!generatedAt) return null
-  const letter = buildLetter(diag, kpi, s, email, generatedAt)
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(letter)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch {}
-  }
-  return (
-    <div className="no-print" style={{ marginTop: 20, border: '1px solid #E2E8F0', borderRadius: 14, overflow: 'hidden' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '12px 16px', background: '#F8FAFC', borderBottom: '1px solid #E2E8F0' }}>
-        <div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: TEXT }}>Klachtbrief voor de verhuurder</div>
-          <div style={{ fontSize: 11.5, color: MUTED, marginTop: 1 }}>Automatisch opgesteld uit de bevindingen — kopieer en stuur als begeleidende brief bij dit rapport.</div>
-        </div>
-        <button onClick={copy} style={{ padding: '8px 14px', background: copied ? GREEN : PRIMARY, color: '#fff', border: 'none', borderRadius: 8, fontSize: 12.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-          {copied ? 'Gekopieerd ✓' : 'Kopieer tekst'}
-        </button>
-      </div>
-      <pre style={{ margin: 0, padding: '16px 18px', fontSize: 12.5, lineHeight: 1.65, color: TEXT, whiteSpace: 'pre-wrap', fontFamily: 'Inter, system-ui, sans-serif', background: '#fff' }}>{letter}</pre>
-    </div>
   )
 }
 

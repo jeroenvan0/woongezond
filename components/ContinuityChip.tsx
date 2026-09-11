@@ -3,11 +3,15 @@ import { useMemo } from 'react'
 import { Activity } from 'lucide-react'
 import { measurementCoverage } from '@/lib/coverage'
 import { useSeries } from '@/lib/useSeries'
+import { useSelectedDevice } from '@/lib/useSelectedDevice'
 
 // Compact "your record is continuous" indicator — a continuous measurement
 // history matters when the data is used as evidence.
 export default function ContinuityChip() {
-  const { rows } = useSeries(30 * 1440) // last 30 days, shared cache
+  // Dezelfde sensorkeuze als de rest van het dashboard: een dekkingscijfer over twee
+  // sensoren door elkaar zegt niets over de kamer die je bekijkt.
+  const selectedDevice = useSelectedDevice()
+  const { rows } = useSeries(30 * 1440, { device: selectedDevice }) // last 30 days, shared cache
   const cov = useMemo(() => (rows?.length ? measurementCoverage(rows) : null), [rows])
 
   if (!cov) return null

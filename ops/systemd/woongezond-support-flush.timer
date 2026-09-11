@@ -1,0 +1,9 @@
+[Unit]
+Description=Every 5 minutes: send assistant replies whose send_at has passed
+
+[Timer]
+OnCalendar=*:0/5
+Persistent=false
+
+[Install]
+WantedBy=timers.target
