@@ -1,5 +1,6 @@
 'use client'
 import { AlertTriangle, RotateCw } from 'lucide-react'
+import { reportFetchFailure } from '@/lib/clientLog'
 
 export type DataError =
   | { kind: 'auth' }
@@ -8,7 +9,18 @@ export type DataError =
   | { kind: 'network' }
   | null
 
-export function describeError(status: number | undefined, networkFailed: boolean): DataError {
+/**
+ * Status → bannersoort. Elke echte fout wordt meteen aan de server gemeld (lib/clientLog.ts),
+ * zodat een 429 of 500 die alleen in de browser zichtbaar was ook in de journal staat.
+ * `source` is het pad dat mislukte; zonder pad wordt alleen de pagina gelogd.
+ */
+export function describeError(status: number | undefined, networkFailed: boolean, source?: string): DataError {
+  const err = classify(status, networkFailed)
+  if (err) reportFetchFailure({ kind: err.kind, status, path: source })
+  return err
+}
+
+function classify(status: number | undefined, networkFailed: boolean): DataError {
   if (networkFailed) return { kind: 'network' }
   if (status === 401) return { kind: 'auth' }
   if (status === 429) return { kind: 'rate-limited' }

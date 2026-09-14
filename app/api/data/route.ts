@@ -1,34 +1,20 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
+import { aggregateRows, pickBucketSeconds, spanSeconds, type BucketedRow } from '@/lib/bucketing'
 
-function bucketMinutes(minutes: number): number {
-  if (minutes <= 2*1440)   return 1
-  if (minutes <= 7*1440)   return 5
-  if (minutes <= 30*1440)  return 15
-  if (minutes <= 90*1440)  return 60
-  if (minutes <= 365*1440) return 360
-  return 720
-}
-
-function aggregate(rows: any[], bucketMin: number) {
-  if (bucketMin <= 1 || !rows.length) return rows
-  const bucketSec = bucketMin * 60
-  const buckets: Record<number, any> = {}
-  for (const r of rows) {
-    const ts = new Date(r.created_at)
-    const key = Math.floor(ts.getTime() / 1000 / bucketSec)
-    if (!buckets[key]) buckets[key] = { created_at: r.created_at, co2: [], temperature: [], humidity: [] }
-    if (r.co2 != null)          buckets[key].co2.push(+r.co2)
-    if (r.temperature != null)  buckets[key].temperature.push(+r.temperature)
-    if (r.humidity != null)     buckets[key].humidity.push(+r.humidity)
+// Eén rij naar buiten: gemiddelde per blok, plus laagste/hoogste (band in de grafiek) en
+// het aantal metingen. Oudere RPC-versies zonder min/max-kolommen geven undefined → null.
+function toRow(r: any): BucketedRow {
+  const num = (v: unknown) => (v == null ? null : +v)
+  return {
+    created_at: r.created_at,
+    co2: num(r.co2), temperature: num(r.temperature), humidity: num(r.humidity),
+    co2_min: num(r.co2_min), co2_max: num(r.co2_max),
+    temperature_min: num(r.temperature_min), temperature_max: num(r.temperature_max),
+    humidity_min: num(r.humidity_min), humidity_max: num(r.humidity_max),
+    n: r.n == null ? 1 : +r.n,
   }
-  return Object.values(buckets).sort((a,b) => a.created_at.localeCompare(b.created_at)).map(b => ({
-    created_at:  b.created_at,
-    co2:         b.co2.length         ? b.co2.reduce((s:number,v:number)=>s+v,0)/b.co2.length         : null,
-    temperature: b.temperature.length ? b.temperature.reduce((s:number,v:number)=>s+v,0)/b.temperature.length : null,
-    humidity:    b.humidity.length    ? b.humidity.reduce((s:number,v:number)=>s+v,0)/b.humidity.length    : null,
-  }))
 }
 
 // Only pass a UUID through to the RPC — anything else is ignored (falls back to
@@ -75,13 +61,8 @@ export async function GET(req: NextRequest) {
     bucketed = r.data; rpcError = r.error
   }
   if (!rpcError && bucketed) {
-    const bucketSec = bucketed[0]?.bucket_seconds ?? bucketMinutes(minutes) * 60
-    const rows = bucketed.map((r: any) => ({
-      created_at: r.created_at,
-      co2: r.co2,
-      temperature: r.temperature,
-      humidity: r.humidity,
-    }))
+    const bucketSec = bucketed[0]?.bucket_seconds ?? pickBucketSeconds(minutes, null)
+    const rows = bucketed.map(toRow)
     // A3: ask for the true raw count. Falls back to bucket count if the RPC isn't
     // deployed yet — no worse than today, never blocks the response.
     let rawCount = rows.length
@@ -92,7 +73,6 @@ export async function GET(req: NextRequest) {
 
   // Fallback: paginate raw rows and bucket in JS (used if the RPC is unavailable).
   const since = new Date(Date.now() - minutes * 60000).toISOString()
-  const bucketMin = bucketMinutes(minutes)
   const PAGE = 1000
   const MAX_ROWS = 600000
   const all: any[] = []
@@ -110,6 +90,8 @@ export async function GET(req: NextRequest) {
     all.push(...data)
     if (data.length < PAGE) break
   }
-  const rows = aggregate(all, bucketMin)
-  return NextResponse.json({ rows, bucketMinutes: bucketMin, rawCount: all.length })
+  // Zelfde keuze als de RPC: de spanne van de data bepaalt het blok, de periode het plafond.
+  const bucketSec = pickBucketSeconds(minutes, spanSeconds(all))
+  const rows = aggregateRows(all, bucketSec)
+  return NextResponse.json({ rows, bucketMinutes: Math.round(bucketSec / 60), rawCount: all.length })
 }

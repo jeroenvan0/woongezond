@@ -2,6 +2,8 @@
 import { withBase } from '@/lib/basePath'
 import type { HouseProfile } from '@/lib/houseProfile'
 import type { MouldInputs } from '@/lib/mouldRisk'
+import { getSeries, type SeriesError } from '@/lib/useSeries'
+import { reportFetchFailure } from '@/lib/clientLog'
 
 // Haalt de invoer voor lib/mouldRisk.ts op voor één sensor: 90 dagen binnenklimaat
 // (3-uursbuckets, zie air_quality_bucketed) en uurlijks buitenweer + huisprofiel.
@@ -15,13 +17,15 @@ export type MouldLoadResult =
 
 export async function fetchMouldInputs(device: string | null): Promise<MouldLoadResult> {
   const q = device ? '&device=' + encodeURIComponent(device) : ''
+  const weatherPath = '/api/weather/history?minutes=' + MOULD_WINDOW_MIN + q
   try {
-    const [r, wr] = await Promise.all([
-      fetch(withBase('/api/data?minutes=' + MOULD_WINDOW_MIN + q)),
-      fetch(withBase('/api/weather/history?minutes=' + MOULD_WINDOW_MIN + q)),
+    // De metingen via getSeries: dezelfde cache/dedupe als het dashboard, zodat dashboard,
+    // schimmelpagina en cockpit het 90-dagenvenster één keer ophalen in plaats van ieder apart.
+    const [d, wr] = await Promise.all([
+      getSeries(MOULD_WINDOW_MIN, false, device).catch((e: SeriesError) => { throw e }),
+      fetch(withBase(weatherPath)),
     ])
-    if (!r.ok) return { ok: false, status: r.status }
-    const d = await r.json()
+    if (!wr.ok) reportFetchFailure({ kind: wr.status === 429 ? 'rate-limited' : wr.status === 401 ? 'auth' : 'server', status: wr.status, path: weatherPath })
     const w = wr.ok ? await wr.json().catch(() => ({})) : {}
     const indoor = (d.rows ?? [])
       .filter((x: any) => x.temperature != null && x.humidity != null)
@@ -36,7 +40,9 @@ export async function fetchMouldInputs(device: string | null): Promise<MouldLoad
       spanDays,
       inputs: { indoor, outdoor, profile: (w.profile ?? null) as Partial<HouseProfile> | null, insulation: w.insulation ?? null },
     }
-  } catch {
-    return { ok: false, network: true }
+  } catch (e) {
+    const status = (e as SeriesError)?.status
+    if (status == null) return { ok: false, network: true }
+    return { ok: false, status }
   }
 }

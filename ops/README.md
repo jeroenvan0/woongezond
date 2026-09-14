@@ -93,4 +93,24 @@ ops/vps/cleanup-vostech-urls.sh   # retire the old *.vostech.group URLs + Dash a
 ```
 
 The nightly cloud→local Supabase mirror (`sync_runs`) lives in `/opt/supabase-sync/sync.py`
+
+## Rate limiting in nginx (`ops/vps/nginx-rate-limiting.conf`)
+
+`/admin/api/` op beide sites zat tot 2026-09-14 in zone `supabase_api` (60 r/min per IP),
+**dezelfde zone als de Supabase-proxy** op supabase.vostech.group. Auth-refresh, apparaatlijst,
+realtime en de dashboard-calls telden in één emmer; drie keer van sensor wisselen gaf een 429
+("Te veel verzoeken achter elkaar"). De app ziet zo'n 429 nooit — nginx kaatst hem vóór Next af —
+dus sinds die datum meldt de browser elke mislukte fetch aan `/api/client-log`, en staat hij in
+de journal: `journalctl -u woongezond-react -o cat | jq 'select(.scope=="client")'` (veld
+`origin: proxy-or-upstream` = niet onze eigen limiter). Nginx zelf logt hem in
+`/var/log/nginx/error.log` als `limiting requests, excess: … by zone "…"`.
+
+Eigen zone toepassen (eenmalig, als root op de VPS; de repo heeft de bestanden):
+
+```bash
+cp ops/vps/nginx-rate-limiting.conf /etc/nginx/conf.d/woongezond-rate-limiting.conf
+sed -i 's/zone=supabase_api burst=30 nodelay/zone=woongezond_api burst=60 nodelay/' \
+  /etc/nginx/sites-available/woongezond.com /etc/nginx/sites-available/dev.woongezond.com
+nginx -t && systemctl reload nginx
+```
 and is independent of the app.

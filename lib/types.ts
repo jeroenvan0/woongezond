@@ -3,6 +3,22 @@ export interface SensorRow {
   co2: number | null
   temperature: number | null
   humidity: number | null
+  // Per blok uit /api/data (lib/bucketing.ts): laagste en hoogste meting in het blok.
+  // Ontbreekt bij ruwe rijen (KPI-kaarten) en bij een oudere RPC.
+  co2_min?: number | null
+  co2_max?: number | null
+  temperature_min?: number | null
+  temperature_max?: number | null
+  humidity_min?: number | null
+  humidity_max?: number | null
+  n?: number
+}
+
+/** Laagste en hoogste meting binnen één grafiekblok, voor de band achter de lijn. */
+export interface RowBand {
+  co2: [number, number]
+  temp: [number, number]
+  rh: [number, number]
 }
 
 export interface ProcessedRow {
@@ -12,6 +28,7 @@ export interface ProcessedRow {
   rh: number
   mr: number        // mould risk
   dp: number        // dewpoint
+  band?: RowBand    // alleen bij samengevoegde blokken met echte spreiding
 }
 
 export interface DashboardData {
