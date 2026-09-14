@@ -49,6 +49,10 @@ const dayShort = (t: number) => new Date(t).toLocaleDateString('nl-NL', { weekda
 const f1 = (x: number) => x.toLocaleString('nl-NL', { minimumFractionDigits: 1, maximumFractionDigits: 1 })
 const f2 = (x: number) => x.toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 const achText = (a: { ach: number; lo: number; hi: number } | null) => (a ? `${f2(a.ach)}/h [${f2(a.lo)}–${f2(a.hi)}]` : '—')
+// Overal hetzelfde label: nummer, de naam tussen haakjes uit "Sensor 3 (Daan)", en de kamer uit
+// de vragenlijst als die bekend is. Zo wisselt het niet tussen kamer en apparaatnaam.
+const shortName = (name: string | null) => { const m = name?.match(/\(([^)]+)\)/); return m ? m[1] : (name ?? '').replace(/^Sensor \d+\s*/i, '') }
+const labelOf = (d: { device_number: number | null; name: string | null; room: string | null }) => [nr(d.device_number), shortName(d.name), d.room ? `· ${d.room}` : ''].filter(Boolean).join(' ')
 
 export default function AnalysePage() {
   const router = useRouter()
@@ -92,7 +96,6 @@ export default function AnalysePage() {
 
   const devices = useMemo(() => [...(data?.devices ?? [])].sort((a, b) => (a.device_number ?? 1e9) - (b.device_number ?? 1e9)), [data])
   const colorOf = useMemo(() => new Map(devices.map((d, i) => [d.id, PALETTE[i % PALETTE.length]])), [devices])
-  const labelOf = (d: Device) => `${nr(d.device_number)} ${d.room ?? d.name ?? ''}`.trim()
 
   const series: FleetSeries[] = useMemo(() => devices.filter((d) => d.series.length).map((d) => ({
     id: d.id, label: labelOf(d), color: colorOf.get(d.id)!,
@@ -216,7 +219,7 @@ export default function AnalysePage() {
                       <tr key={`${e.device.id}-${e.start}-${e.kind}`} style={{ background: i % 2 ? 'var(--surface-tint)' : undefined }}>
                         <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>
                           <span aria-hidden style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 999, background: colorOf.get(e.device.id), marginRight: 6 }} />
-                          <strong>{nr(e.device.device_number)}</strong> {e.device.room ?? ''}
+                          <strong>{nr(e.device.device_number)}</strong> {shortName(e.device.name)}{e.device.room ? ` · ${e.device.room}` : ''}
                         </td>
                         <td style={{ padding: '7px 10px', whiteSpace: 'nowrap' }}>{dayShort(e.start)} {hhmm(e.start)}–{hhmm(e.end)}</td>
                         <td style={{ padding: '7px 10px', whiteSpace: 'nowrap', color, fontWeight: 700 }}><Icon size={12} style={{ verticalAlign: -1, marginRight: 4 }} />{EVENT_LABEL[e.kind]}</td>
@@ -271,7 +274,7 @@ function DeviceSummary({ d, color, focused, onFocus }: { d: Device; color: strin
   return (
     <Card accent={color} style={{ display: 'grid', gap: 6, outline: focused ? `2px solid ${color}` : undefined, cursor: 'pointer' }} className="wz-devsum">
       <div role="button" tabIndex={0} onClick={onFocus} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onFocus() } }} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
-        <span style={{ fontWeight: 700, color: 'var(--text)' }}>{nr(d.device_number)} {d.room ?? d.name ?? 'kamer onbekend'}</span>
+        <span style={{ fontWeight: 700, color: 'var(--text)' }}>{labelOf(d)}</span>
         <span style={{ fontSize: 'var(--fs-2xs)', color: 'var(--muted)' }}>{d.readings.toLocaleString('nl-NL')} metingen{d.co2Floor != null ? ` · nullijn ${d.co2Floor} ppm` : ''}</span>
       </div>
       <Row Icon={Wind} label="Gelucht" value={total ? `${total}× · ${minutes} min` : 'niet gezien'} hint="Steile CO₂-dalingen (raam of deur)" />
