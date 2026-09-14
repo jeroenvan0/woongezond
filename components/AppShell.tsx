@@ -24,6 +24,7 @@ import {
   LogOut,
   PanelLeftClose,
   PanelLeftOpen,
+  Activity,
 } from 'lucide-react'
 
 type ThemePref = 'system' | 'light' | 'dark'
@@ -47,6 +48,8 @@ const FLEET_NAV = { href: '/vloot', label: 'Vloot', Icon: Building2 }
 const COCKPIT_NAV = { href: '/cockpit', label: 'Cockpit', Icon: Gauge }
 // Klantenservice-inbox (docs/support-assistant.md) — same audience as the cockpit.
 const INBOX_NAV = { href: '/cockpit/inbox', label: 'Inbox', Icon: Inbox }
+// Analyse: alle sensoren in één grafiek + gelabelde luchtmomenten (ongevalideerd) — org ADMINS only.
+const ANALYSE_NAV = { href: '/cockpit/analyse', label: 'Analyse', Icon: Activity }
 // Systeemstatus (backup, stille sensoren, deployments) — org ADMINS only.
 const BEHEER_NAV = { href: '/beheer', label: 'Beheer', Icon: Wrench }
 
@@ -100,7 +103,7 @@ export default function AppShell({ title, actions, children }: Props) {
     return () => { cancelled = true; sub.subscription.unsubscribe() }
   }, [supabase])
 
-  const nav = [...NAV, ...(isOrgMember ? [FLEET_NAV] : []), ...(isOrgAdmin ? [COCKPIT_NAV, INBOX_NAV, BEHEER_NAV] : [])]
+  const nav = [...NAV, ...(isOrgMember ? [FLEET_NAV] : []), ...(isOrgAdmin ? [COCKPIT_NAV, INBOX_NAV, ANALYSE_NAV, BEHEER_NAV] : [])]
 
   // While on "system", follow OS changes live (D8 — the toggle is no longer a
   // one-way door out of system).

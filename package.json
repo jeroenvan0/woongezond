@@ -15,6 +15,7 @@
     "dev:mock": "PILOT_MOCK=1 next dev -p 3005",
     "pilot:stickers": "node --env-file=.env.local node_modules/.bin/tsx scripts/pilot-stickers.mts",
     "report:preview": "node --env-file=.env.local node_modules/.bin/tsx scripts/report-preview.mts",
+    "analyse": "node --env-file=.env.local node_modules/.bin/tsx scripts/analyse-device.mts",
     "support:sim": "node --env-file=.env.local node_modules/.bin/tsx scripts/support-sim.mts"
   },
   "dependencies": {
