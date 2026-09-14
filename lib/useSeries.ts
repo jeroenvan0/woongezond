@@ -26,12 +26,18 @@ const inflight = new Map<string, Promise<SeriesData>>()
 
 const keyOf = (minutes: number, device: string | null) => `${minutes}:${device ?? ''}`
 
+export const seriesPath = (minutes: number, device: string | null) =>
+  `/api/data?minutes=${minutes}` + (device ? `&device=${encodeURIComponent(device)}` : '')
+
+export interface SeriesError extends Error { status?: number; retryAfterSec?: number }
+
 async function fetchSeries(minutes: number, device: string | null): Promise<SeriesData> {
-  const q = `/api/data?minutes=${minutes}` + (device ? `&device=${encodeURIComponent(device)}` : '')
-  const r = await fetch(withBase(q))
+  const r = await fetch(withBase(seriesPath(minutes, device)))
   if (!r.ok) {
-    const e = new Error(`HTTP ${r.status}`) as Error & { status?: number }
+    const e = new Error(`HTTP ${r.status}`) as SeriesError
     e.status = r.status
+    const ra = parseInt(r.headers.get('retry-after') ?? '', 10)
+    if (Number.isFinite(ra) && ra > 0) e.retryAfterSec = ra
     throw e
   }
   const d = await r.json()
@@ -79,8 +85,11 @@ export function useSeries(minutes: number, opts: Options = {}) {
   // eerste render (device nog null vóór hydration) of van de vorige periode NA het juiste
   // antwoord binnenkomen en de grafiek van sensor X met de data van sensor Y overschrijven.
   const ticket = useRef(0)
+  // Eén automatische herkansing na een 429: de banner zegt "even wachten", dus doe dat ook
+  // en probeer na Retry-After (minimaal 5 s) nog één keer, zonder dat de bewoner moet klikken.
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const run = useCallback(
-    async (force = false) => {
+    async (force = false, isRetry = false) => {
       if (!enabled) return
       const mine = ++ticket.current
       try {
@@ -90,14 +99,22 @@ export function useSeries(minutes: number, opts: Options = {}) {
         setError(null)
       } catch (e) {
         if (mine !== ticket.current) return
-        const status = (e as { status?: number })?.status
-        setError(describeError(status, status == null))
+        const err = e as SeriesError
+        const status = err?.status
+        setError(describeError(status, status == null, seriesPath(minutes, device)))
+        if (status === 429 && !isRetry) {
+          const wait = Math.max(5, err.retryAfterSec ?? 0) * 1000
+          if (retryTimer.current) clearTimeout(retryTimer.current)
+          retryTimer.current = setTimeout(() => { if (mine === ticket.current) run(true, true) }, wait)
+        }
       } finally {
         if (mine === ticket.current) setLoading(false)
       }
     },
     [minutes, enabled, device],
   )
+
+  useEffect(() => () => { if (retryTimer.current) clearTimeout(retryTimer.current) }, [])
 
   useEffect(() => {
     if (!enabled) return

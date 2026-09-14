@@ -1,8 +1,8 @@
 // Helpers for the dashboard's smoothing control.
 //
-// The subtlety this exists to contain: /api/data returns a series already bucketed by
-// period (1 min for ≤2 days, up to 720 min beyond a year) and reports the bucket size
-// as `bucketMinutes`. lib/calculations.ts::movingAverage takes a window in ARRAY
+// The subtlety this exists to contain: /api/data returns a series already bucketed
+// (lib/bucketing.ts — 1 min up to 1 day, chosen from the data that is actually there) and
+// reports the bucket size as `bucketMinutes`. lib/calculations.ts::movingAverage takes a window in ARRAY
 // ELEMENTS. So a control labelled in minutes has to divide by the bucket size, and a
 // control valued in points has to multiply to describe itself.
 //

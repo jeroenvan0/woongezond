@@ -20,7 +20,7 @@ import Stat from '@/components/ui/Stat'
 import InfoHint from '@/components/ui/InfoHint'
 import ChartTable from '@/components/ui/ChartTable'
 import { MetricCardSkeleton } from '@/components/ui/Skeleton'
-import { ProcessedRow, SensorRow } from '@/lib/types'
+import { ProcessedRow, RowBand, SensorRow } from '@/lib/types'
 import { dewpoint, mouldRisk, co2Status, rhStatus, tempStatus, movingAverage, healthScore, healthLabel, absHumidityGkg } from '@/lib/calculations'
 import { windowMinutes, maxWindowPoints, formatWindow } from '@/lib/smoothing'
 import { toSeries, buildDiagnosis } from '@/lib/reportAnalytics'
@@ -69,7 +69,13 @@ function processRows(raw: SensorRow[]): ProcessedRow[] {
       const ts = new Date(r.created_at)
       const t = +r.temperature!,
         rh = +r.humidity!
-      return { ts, co2: +r.co2!, temp: t, rh, mr: mouldRisk(t, rh), dp: dewpoint(t, rh) }
+      const row: ProcessedRow = { ts, co2: +r.co2!, temp: t, rh, mr: mouldRisk(t, rh), dp: dewpoint(t, rh) }
+      // Band: laagste–hoogste in het blok. Alleen als de server ze meestuurt (samengevoegde
+      // blokken); een blok met één meting heeft geen spreiding en krijgt geen band.
+      if (r.co2_min != null && r.co2_max != null && r.temperature_min != null && r.temperature_max != null && r.humidity_min != null && r.humidity_max != null && (r.n ?? 1) > 1) {
+        row.band = { co2: [+r.co2_min, +r.co2_max], temp: [+r.temperature_min, +r.temperature_max], rh: [+r.humidity_min, +r.humidity_max] }
+      }
+      return row
     })
 }
 
@@ -77,8 +83,9 @@ function processRows(raw: SensorRow[]): ProcessedRow[] {
  * Smooth the series over `points` samples.
  *
  * The window is in SAMPLES, not minutes, because that is what movingAverage takes.
- * /api/data has already bucketed the series by period (1 min at 24 h, up to 720 min
- * beyond a year), so one sample is `bucketMinutes` of wall-clock time — which is why
+ * /api/data has already bucketed the series (lib/bucketing.ts: the data that is actually
+ * there picks the block, 1 min up to 1 day), so one sample is `bucketMinutes` of wall-clock
+ * time — which is why
  * the UI must convert rather than pass a minute count straight through. It used to,
  * and "60 min" on the 1-year view silently meant 15 days.
  */
@@ -89,7 +96,15 @@ function applyMA(rows: ProcessedRow[], points: number): ProcessedRow[] {
   const temp = movingAverage(rows.map((x) => x.temp), n)
   const rh = movingAverage(rows.map((x) => x.rh), n)
   const mr = movingAverage(rows.map((x) => x.mr), n)
-  return rows.map((r, i) => ({ ...r, co2: co2[i], temp: temp[i], rh: rh[i], mr: mr[i] }))
+  // De band schuift mee met de lijn: dezelfde afvlakking op de onder- en bovengrens, anders
+  // blijft een rafelige band om een gladde lijn staan en lijkt de spreiding groter dan hij is.
+  const hasBand = rows.some((x) => x.band)
+  const edge = (k: keyof RowBand, i: 0 | 1) => movingAverage(rows.map((x) => x.band?.[k][i] ?? x[k]), n)
+  const b = hasBand ? { co2: [edge('co2', 0), edge('co2', 1)], temp: [edge('temp', 0), edge('temp', 1)], rh: [edge('rh', 0), edge('rh', 1)] } : null
+  return rows.map((r, i) => ({
+    ...r, co2: co2[i], temp: temp[i], rh: rh[i], mr: mr[i],
+    band: b && r.band ? { co2: [b.co2[0][i], b.co2[1][i]], temp: [b.temp[0][i], b.temp[1][i]], rh: [b.rh[0][i], b.rh[1][i]] } : r.band,
+  }))
 }
 
 
@@ -481,7 +496,7 @@ export default function DashboardPage() {
         </span>
         <span className="wz-hide-mobile" style={{ fontSize: 'var(--fs-2xs)', color: 'var(--subtle)', flexBasis: '100%', textAlign: 'right' }}>
           Alleen de grafieken — de waarden bovenaan blijven ongewijzigde metingen.
-          {rows.length > 0 && ` 1 punt = ${formatWindow(bucketMinutes)}.`}
+          {rows.length > 0 && ` 1 punt = ${formatWindow(bucketMinutes)}${bucketMinutes > 1 ? ' (lijn = gemiddelde, band = laagste–hoogste in dat blok)' : ''}.`}
         </span>
       </div>
 

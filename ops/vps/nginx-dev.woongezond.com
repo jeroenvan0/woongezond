@@ -15,8 +15,10 @@ server {
         return 302 /admin;
     }
 
+    # Eigen zone (ops/vps/nginx-rate-limiting.conf), NIET supabase_api: die deelt de
+    # emmer met de Supabase-proxy en gaf bewoners een 429 na drie sensorwissels.
     location /admin/api/ {
-        limit_req zone=supabase_api burst=30 nodelay;
+        limit_req zone=woongezond_api burst=60 nodelay;
         limit_req_status 429;
         proxy_pass http://127.0.0.1:3002;
         proxy_http_version 1.1;

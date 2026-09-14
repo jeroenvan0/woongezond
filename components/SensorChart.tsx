@@ -19,16 +19,27 @@ interface Props {
 
 function CustomTooltip({ active, payload, unit, color }: any) {
   if (!active || !payload?.length) return null
-  const val = payload[0]?.value
-  const t: number = payload[0]?.payload?.t
+  const row = payload[0]?.payload
+  const val = row?.v
+  const band: [number, number] | undefined = row?.band
+  const t: number = row?.t
   const label = tooltipLabel(t)
   return (
     <div className="custom-tooltip">
       <div style={{ color: 'var(--muted)', fontSize: 11, marginBottom: 2 }}>{label}</div>
       <div style={{ fontWeight: 700, color }}>{typeof val === 'number' ? val.toFixed(1) : val} {unit}</div>
+      {band && band[1] > band[0] && (
+        <div style={{ color: 'var(--muted)', fontSize: 11, marginTop: 2 }}>
+          laagste {band[0].toFixed(1)} · hoogste {band[1].toFixed(1)} {unit}
+        </div>
+      )}
     </div>
   )
 }
+
+// Reeksen waarvoor de server een laagste/hoogste per blok meestuurt. Dauwpunt en
+// schimmelrisico zijn afgeleid en hebben geen eigen min/max — daar blijft het bij de lijn.
+const BANDED = new Set(['co2', 'temp', 'rh'])
 
 export default function SensorChart({ data, dataKey, color, fillColor, unit, height = 200, refLines, syncId }: Props) {
   const c = useChartColors()
@@ -42,12 +53,17 @@ export default function SensorChart({ data, dataKey, color, fillColor, unit, hei
       </div>
     )
 
+  // Band = laagste–hoogste meting in een samengevoegd blok (lib/bucketing.ts). Een gemiddelde
+  // per 12 uur vlakt een CO₂-piek van een avond weg; de band laat zien hoe hoog het echt kwam.
+  const bandKey = BANDED.has(dataKey) ? (dataKey as 'co2' | 'temp' | 'rh') : null
+  const hasBand = !!bandKey && data.some(r => r.band && r.band[bandKey][1] > r.band[bandKey][0])
   const chartData = data.map(r => ({
     t: r.ts.getTime(),          // numeric epoch ms → Recharts time scale
     v: +r[dataKey].toFixed(1),
+    band: hasBand && bandKey && r.band ? [+r.band[bandKey][0].toFixed(1), +r.band[bandKey][1].toFixed(1)] : null,
   }))
   const { ticks, step } = buildTimeAxis(chartData)
-  const plotData = insertGaps(chartData, ['v'])
+  const plotData = insertGaps(chartData, ['v', 'band'])
 
   return (
     <ResponsiveContainer width="100%" height={height}>
@@ -77,7 +93,10 @@ export default function SensorChart({ data, dataKey, color, fillColor, unit, hei
           <ReferenceLine key={l.value} y={l.value} stroke={l.color} strokeDasharray="4 3" strokeWidth={1.2}
             label={{ value: l.label, position: 'insideTopLeft', fontSize: 10, fill: l.color }} />
         ))}
-        <Area type="monotone" dataKey="v" stroke={color} strokeWidth={2} fill={`url(#fill-${dataKey})`} dot={false} activeDot={{ r: 4, fill: color }} connectNulls={false} />
+        {hasBand && (
+          <Area type="monotone" dataKey="band" stroke="none" fill={color} fillOpacity={0.14} dot={false} activeDot={false} connectNulls={false} isAnimationActive={false} legendType="none" />
+        )}
+        <Area type="monotone" dataKey="v" stroke={color} strokeWidth={2} fill={hasBand ? 'none' : `url(#fill-${dataKey})`} dot={false} activeDot={{ r: 4, fill: color }} connectNulls={false} />
       </AreaChart>
     </ResponsiveContainer>
   )
