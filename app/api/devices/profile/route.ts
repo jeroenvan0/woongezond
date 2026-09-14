@@ -4,9 +4,14 @@ import { parseHouseProfile, deriveDeviceColumns } from '@/lib/houseProfile'
 import { pilotStore, bootedRecently, OVERWRITE_WINDOW_MIN } from '@/lib/pilot/store'
 import { verifySession } from '@/lib/pilot/session'
 import { TERMS_VERSION } from '@/lib/pilot/terms'
+import { parsePlaceInput, resolvePlace } from '@/lib/geocode'
+import { log } from '@/lib/logger'
 
-// POST /api/devices/profile { session, answers, overwrite? } — the resident's house
-// questions from /start (docs/pilot-cockpit-plan.md §2b).
+// POST /api/devices/profile { session, answers, overwrite?, place? } — the resident's house
+// questions from /start (docs/pilot-cockpit-plan.md §2b). `place` = { city?, lat?, lon? }:
+// the town (typed, or the phone's GPS) for the outdoor weather; it is resolved to a city row
+// and the exact coordinates are dropped (lib/geocode.ts). A place that cannot be resolved
+// never blocks the save: the answer comes back with place: null so the wizard can say so.
 //
 // Auth is the signed 30-minute session from /api/devices/status, bound to one device —
 // never the sticker code itself. A device that is already registered is only overwritten
@@ -40,5 +45,13 @@ export async function POST(req: NextRequest) {
 
   const result = await store.saveProfile(dev.id, parsed.profile, TERMS_VERSION, dev.registered_at != null)
   if (result !== 'ok') return NextResponse.json({ error: 'error' }, { status: 500 })
-  return NextResponse.json({ ok: true, overwritten: dev.registered_at != null, derived: deriveDeviceColumns(parsed.profile) })
+
+  let place: { name: string } | null = null
+  const placeInput = parsePlaceInput(body?.place)
+  if (placeInput) {
+    const resolved = await resolvePlace(placeInput)
+    if (resolved && (await store.savePlace(dev.id, resolved)) === 'ok') place = { name: resolved.name }
+    else log.warn('devices', 'place not resolved', { device_id: dev.id, city: placeInput.city, gps: placeInput.lat != null })
+  }
+  return NextResponse.json({ ok: true, overwritten: dev.registered_at != null, derived: deriveDeviceColumns(parsed.profile), place })
 }

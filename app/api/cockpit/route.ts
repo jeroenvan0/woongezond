@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
 
   const s = createServiceClient()
   const { data: devices, error } = await s.from('devices')
-    .select('id, name, device_number, location, house_profile, active, last_seen_at, fw_version, boot_count, last_rssi, profile_completed_at, device_contacts(name, email, address_note, report_consent_at, report_frequency), device_claim_codes(code, used_at, created_at)')
+    .select('id, name, device_number, location, city, house_profile, active, last_seen_at, fw_version, boot_count, last_rssi, profile_completed_at, device_contacts(name, email, address_note, report_consent_at, report_frequency), device_claim_codes(code, used_at, created_at)')
     .eq('org_id', org.id).order('device_number', { ascending: true, nullsFirst: false })
   if (error) return NextResponse.json({ error: 'query_failed' }, { status: 500 })
 
@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
     const c = Array.isArray(d.device_contacts) ? d.device_contacts[0] : d.device_contacts
     const mins = d.last_seen_at ? Math.round((now - new Date(d.last_seen_at).getTime()) / 60000) : null
     return {
-      id: d.id, device_number: d.device_number, name: d.name, active: d.active !== false,
+      id: d.id, device_number: d.device_number, name: d.name, active: d.active !== false, city: d.city ?? null,
       room: roomLabel(d.house_profile?.room) ?? d.location ?? null, registered_at: d.profile_completed_at,
       // Stickercode: opent de vragenlijst (/start) zonder QR. /start kijkt niet naar used_at, dus
       // ook een handmatig gekoppelde sensor kan zo nog invullen. Nieuwste ongebruikte eerst.

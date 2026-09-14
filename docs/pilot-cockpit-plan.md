@@ -135,6 +135,16 @@ op de sticker en in de database, **niet** in de firmware.
 | Iemand raadt een code | 32^4 ≈ 1M combinaties + rate limit op `/start`-API's + code alleen geldig voor niet-ingevulde apparaten of met `expires_at`. |
 | Twee huizen delen een sensor-naam | AP-naam bevat het device-nummer; nummer staat ook op de sticker. |
 
+### Plaats van de woning (gebouwd 2026-09-14)
+
+Na de huisvragen vraagt de wizard in welke plaats de woning staat: één knop *Gebruik mijn
+locatie* (GPS van de telefoon, eenmalige toestemming) of de plaatsnaam typen. De server
+vertaalt GPS of naam via OpenWeather-geocoding naar een plaats, hergebruikt een bestaande
+`cities`-rij (zelfde naam of binnen 12 km) of maakt er één aan, en zet `city`/`city_id`/
+`lat`/`lon` op het device op de positie van de **stad**, niet van het huis. De exacte
+coördinaten worden niet bewaard. Zonder plaats is er geen buitenweer voor die sensor
+(vochtoverschot, koude-plekmodel, luchtmomentweging); de cockpit waarschuwt dan bij de sensor.
+
 ## 2c. Wie woont achter sensor N — herleidbaar voor het rapport, privacy intact
 
 **Vraag (Jeroen, 5 sep):** ieder huishouden moet een eigen, specifiek rapport krijgen. Nu is

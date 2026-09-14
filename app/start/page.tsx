@@ -5,13 +5,13 @@ import Logo from '@/components/Logo'
 import { withBase } from '@/lib/basePath'
 import { QUESTIONS, CLAIM_CODE_RE, normalizeCode, type HouseProfile } from '@/lib/houseProfile'
 import { TERMS_VERSION } from '@/lib/pilot/terms'
-import { Plug, Wifi, CheckCircle2, Home, ArrowRight, ArrowLeft, Loader2, PartyPopper, Check, RotateCcw, ShieldCheck, Pencil, Mail, KeyRound, UserRoundPlus, Eraser } from 'lucide-react'
+import { Plug, Wifi, CheckCircle2, Home, ArrowRight, ArrowLeft, Loader2, PartyPopper, Check, RotateCcw, ShieldCheck, Pencil, Mail, KeyRound, UserRoundPlus, Eraser, MapPin, LocateFixed } from 'lucide-react'
 
 // Resident self-service: the QR on the sensor opens /start?code=DEVICE-XXXXXX.
 // No account (docs/pilot-cockpit-plan.md §2b):
 //   0 start (or "already registered — overwrite?")  →  1 Wi-Fi via the sensor's own setup
-//   network (we poll until it is online)  →  2 ten house questions  →  3 summary + terms
-//   →  4 done. The sticker code is exchanged once for a 30-minute session; every later
+//   network (we poll until it is online)  →  2 house questions  →  3 place (typed or the
+//   phone's GPS, for the outdoor weather)  →  4 summary + terms  →  5 contact  →  6 done. The sticker code is exchanged once for a 30-minute session; every later
 //   call uses the session. Overwriting an existing registration needs a recent replug.
 
 type Status = { session: string; device_number: number | null; name: string; ap_name: string; online: boolean; minutes_since: number | null; registered_at: string | null; recent_boot: boolean }
@@ -27,7 +27,7 @@ const ERR: Record<string, string> = {
   error: 'Er ging iets mis. Probeer het opnieuw.',
 }
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' })
-const STEPS = ['Start', 'WiFi', 'Huis', 'Check', 'Mail', 'Klaar']
+const STEPS = ['Start', 'WiFi', 'Huis', 'Plaats', 'Check', 'Mail', 'Klaar']
 const GRADIENT = 'linear-gradient(135deg, var(--brand-mark) 0%, var(--brand-700) 100%)'
 
 function StartInner() {
@@ -47,6 +47,11 @@ function StartInner() {
   const [resetMode, setResetMode] = useState<'ask' | 'done' | null>(null)
   const [locked, setLocked] = useState(false)
   const [contact, setContact] = useState({ name: '', email: '', address_note: '' })
+  // Plaats: getypt of via GPS. Coördinaten gaan op 3 decimalen (~100 m) naar de server, die er
+  // alleen de plaatsnaam van overhoudt (lib/geocode.ts).
+  const [place, setPlace] = useState<{ city: string; lat: number | null; lon: number | null }>({ city: '', lat: null, lon: null })
+  const [placeBusy, setPlaceBusy] = useState(false)
+  const [placeSaved, setPlaceSaved] = useState<string | null>(null)
   const [contactSaved, setContactSaved] = useState<boolean | null>(null)
   const sessionRef = useRef<string | null>(null)
   const wifiDoneRef = useRef(false)
@@ -81,7 +86,7 @@ function StartInner() {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
     if (step === 1 && wifiOnly && !wifiEnteredAt.current) { wifiEnteredAt.current = Date.now(); wifiDoneRef.current = false }
     if (step !== 1) wifiEnteredAt.current = 0
-    const needPoll = (step === 1 && (!(status?.online) || (wifiOnly && !wifiDoneRef.current))) || (step === 3 && locked && !(status?.recent_boot)) || (resetMode === 'ask' && !(status?.recent_boot))
+    const needPoll = (step === 1 && (!(status?.online) || (wifiOnly && !wifiDoneRef.current))) || (step === 4 && locked && !(status?.recent_boot)) || (resetMode === 'ask' && !(status?.recent_boot))
     if (code && needPoll) pollRef.current = setInterval(() => fetchStatus(code), 5000)
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [step, code, status?.online, status?.recent_boot, locked, wifiOnly, resetMode, fetchStatus])
@@ -90,23 +95,33 @@ function StartInner() {
     if (!terms) { setErr(ERR.terms_required); return }
     setSaving(true); setErr(null)
     try {
-      const r = await fetch(withBase('/api/devices/profile'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session: sessionRef.current, answers, overwrite, terms_accepted: terms, terms_version: TERMS_VERSION }) })
+      const r = await fetch(withBase('/api/devices/profile'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session: sessionRef.current, answers, overwrite, terms_accepted: terms, terms_version: TERMS_VERSION, place: place.city || place.lat != null ? { city: place.city || undefined, lat: place.lat ?? undefined, lon: place.lon ?? undefined } : undefined }) })
       const d = await r.json()
       if (r.status === 423) { setLocked(true); await fetchStatus(code); return }
       if (r.status === 401) { await fetchStatus(code); setErr('Even opnieuw verbonden. Druk nog een keer op Opslaan.'); return }
       if (!r.ok) { setErr(ERR[d.error] ?? ERR.error); return }
-      setLocked(false); setSaved(true); setStep(4)
+      setLocked(false); setSaved(true); setPlaceSaved(d.place?.name ?? null); setStep(5)
     } catch { setErr(ERR.error) } finally { setSaving(false) }
   }
 
+  function useMyLocation() {
+    if (!('geolocation' in navigator)) { setErr('Je telefoon geeft geen locatie door. Typ de plaats hieronder.'); return }
+    setPlaceBusy(true); setErr(null)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => { setPlace({ city: '', lat: Math.round(pos.coords.latitude * 1000) / 1000, lon: Math.round(pos.coords.longitude * 1000) / 1000 }); setPlaceBusy(false) },
+      () => { setErr('Locatie niet gekregen. Typ de plaats hieronder.'); setPlaceBusy(false) },
+      { enableHighAccuracy: false, timeout: 12000, maximumAge: 600000 },
+    )
+  }
+
   async function submitContact(skip: boolean) {
-    if (skip || (!contact.name && !contact.email && !contact.address_note)) { setContactSaved(false); setStep(5); return }
+    if (skip || (!contact.name && !contact.email && !contact.address_note)) { setContactSaved(false); setStep(6); return }
     setSaving(true); setErr(null)
     try {
       const r = await fetch(withBase('/api/devices/contact'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session: sessionRef.current, ...contact }) })
       const d = await r.json()
       if (!r.ok) { setErr(d.error === 'email_invalid' ? 'Dat e-mailadres klopt niet helemaal.' : ERR[d.error] ?? ERR.error); return }
-      setContactSaved(!!d.report_by_email); setStep(5)
+      setContactSaved(!!d.report_by_email); setStep(6)
     } catch { setErr(ERR.error) } finally { setSaving(false) }
   }
 
@@ -195,7 +210,7 @@ function StartInner() {
           )}
           {step === 0 && status && !registeredChoice && !resetMode && (
             <Panel icon={<Plug />} title={`Welkom! Dit is sensor ${nr}.`} lead="In een paar minuten meet deze sensor de lucht in je huis. Je hebt geen account nodig.">
-              <Steps items={['Sensor in het stopcontact', 'Sensor op je WiFi zetten', 'Tien korte vragen over je huis']} />
+              <Steps items={['Sensor in het stopcontact', 'Sensor op je WiFi zetten', 'Korte vragen over je huis en de plaats']} />
               <Primary onClick={() => setStep(1)} icon={<ArrowRight size={17} />}>Beginnen</Primary>
             </Panel>
           )}
@@ -260,13 +275,32 @@ function StartInner() {
                 <Ghost inline onClick={() => (q > 0 ? setQ(q - 1) : setStep(1))} icon={<ArrowLeft size={15} />}>Terug</Ghost>
                 {q < QUESTIONS.length - 1
                   ? <Ghost inline onClick={() => setQ(q + 1)} disabled={!answers[question.key]} iconRight={<ArrowRight size={15} />}>Volgende</Ghost>
-                  : <Ghost inline onClick={() => setStep(3)} disabled={!allAnswered} iconRight={<ArrowRight size={15} />}>Controleren</Ghost>}
+                  : <Ghost inline onClick={() => setStep(3)} disabled={!allAnswered} iconRight={<ArrowRight size={15} />}>Volgende</Ghost>}
               </div>
             </div>
           )}
 
-          {/* 3 · summary + terms */}
+          {/* 3 · place (typed or GPS) — for the outdoor weather */}
           {step === 3 && (
+            <Panel icon={<MapPin />} title="In welke plaats staat de woning?" lead="Met de plaats halen we het buitenweer op. Dat hebben we nodig om vocht en schimmel goed in te schatten.">
+              <button type="button" onClick={useMyLocation} disabled={placeBusy} style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', minHeight: 52, padding: '11px 14px', borderRadius: 'var(--r-md)', fontFamily: 'inherit', cursor: placeBusy ? 'wait' : 'pointer', border: `1.5px solid ${place.lat != null ? 'var(--brand)' : 'var(--border)'}`, background: place.lat != null ? 'var(--brand-fill)' : 'var(--surface-2)', color: 'var(--text)' }}>
+                <span aria-hidden style={{ flex: '0 0 40px', height: 40, borderRadius: 12, background: 'var(--brand-fill)', color: 'var(--brand)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{placeBusy ? <Loader2 size={20} style={{ animation: 'wg-spin 1.2s linear infinite' }} /> : <LocateFixed size={20} />}</span>
+                <span><span style={{ display: 'block', fontSize: 'var(--fs-lg)', fontWeight: 700 }}>{place.lat != null ? 'Locatie ontvangen ✓' : 'Gebruik mijn locatie'}</span><span style={{ display: 'block', fontSize: 'var(--fs-sm)', color: 'var(--muted)', lineHeight: 1.5 }}>{place.lat != null ? 'We zoeken de plaats erbij als je opslaat. Je adres bewaren we niet.' : 'Je telefoon vraagt eenmalig om toestemming.'}</span></span>
+              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '16px 0 10px', color: 'var(--subtle)', fontSize: 'var(--fs-sm)', fontWeight: 600 }}><span style={{ flex: 1, height: 1, background: 'var(--border)' }} />of typ de plaats<span style={{ flex: 1, height: 1, background: 'var(--border)' }} /></div>
+              <label htmlFor="place" style={labelStyle}>Plaats</label>
+              <input id="place" value={place.city} onChange={(e) => setPlace({ city: e.target.value, lat: null, lon: null })} placeholder="bijv. Amsterdam" autoComplete="address-level2" style={inputStyle} />
+              <Note icon={<ShieldCheck size={16} />}>We bewaren alleen de plaats, niet je adres of je precieze locatie.</Note>
+              <Primary onClick={() => setStep(4)} disabled={!place.city.trim() && place.lat == null} icon={<ArrowRight size={17} />}>Verder</Primary>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+                <Ghost inline onClick={() => { setQ(QUESTIONS.length - 1); setStep(2) }} icon={<ArrowLeft size={15} />}>Terug</Ghost>
+                <Ghost inline onClick={() => { setPlace({ city: '', lat: null, lon: null }); setStep(4) }} iconRight={<ArrowRight size={15} />}>Overslaan</Ghost>
+              </div>
+            </Panel>
+          )}
+
+          {/* 4 · summary + terms */}
+          {step === 4 && (
             <Panel icon={<Home />} title="Klopt dit?" lead="Tik op een antwoord om het aan te passen.">
               <dl style={{ margin: '4px 0 0', display: 'grid', gap: 0, border: '1px solid var(--border)', borderRadius: 'var(--r-md)', overflow: 'hidden' }}>
                 {QUESTIONS.map((x, i) => {
@@ -281,6 +315,13 @@ function StartInner() {
                     </button>
                   )
                 })}
+                <button type="button" onClick={() => setStep(3)} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', padding: '9px 12px', background: QUESTIONS.length % 2 ? 'var(--surface-2)' : 'var(--surface)', border: 'none', borderTop: '1px solid var(--border-soft)', fontFamily: 'inherit', cursor: 'pointer', color: 'var(--text)' }}>
+                  <span style={{ minWidth: 0 }}>
+                    <dt style={{ fontSize: 'var(--fs-xs)', color: 'var(--muted)', margin: '0 0 2px', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>Plaats (voor het buitenweer)</dt>
+                    <dd style={{ margin: 0, fontSize: 'var(--fs-md)', fontWeight: 700, color: place.city || place.lat != null ? 'var(--text)' : 'var(--muted)' }}>{place.city || (place.lat != null ? 'Via de locatie van je telefoon' : 'Niet ingevuld')}</dd>
+                  </span>
+                  <Pencil size={14} color="var(--subtle)" style={{ flex: '0 0 auto' }} />
+                </button>
               </dl>
 
               <label style={{ display: 'flex', gap: 12, alignItems: 'flex-start', marginTop: 20, padding: '13px 14px', borderRadius: 'var(--r-md)', border: `1.5px solid ${terms ? 'var(--brand)' : 'var(--border)'}`, background: terms ? 'var(--brand-fill)' : 'var(--surface-2)', cursor: 'pointer' }}>
@@ -298,12 +339,12 @@ function StartInner() {
                 </Note>
               )}
               <Primary onClick={submitProfile} disabled={!allAnswered || !terms || saving} icon={saving ? <Loader2 size={17} style={{ animation: 'wg-spin 1.2s linear infinite' }} /> : <Check size={17} strokeWidth={3} />}>{saving ? 'Opslaan…' : overwrite ? 'Overdragen en opslaan' : 'Opslaan'}</Primary>
-              <Ghost onClick={() => { setQ(QUESTIONS.length - 1); setStep(2) }} icon={<ArrowLeft size={15} />}>Terug</Ghost>
+              <Ghost onClick={() => setStep(3)} icon={<ArrowLeft size={15} />}>Terug</Ghost>
             </Panel>
           )}
 
-          {/* 4 · contact for the household report (optional) */}
-          {step === 4 && (
+          {/* 5 · contact for the household report (optional) */}
+          {step === 5 && (
             <Panel icon={<Mail />} title="Wil je een rapport over je eigen huis?" lead="Dan sturen we je af en toe een overzicht van de lucht in jouw kamer, met tips. Dit is optioneel.">
               <label htmlFor="c-name" style={labelStyle}>Naam</label>
               <input id="c-name" value={contact.name} onChange={(e) => setContact({ ...contact, name: e.target.value })} placeholder="bijv. Fam. Jansen" autoComplete="name" style={inputStyle} />
@@ -317,10 +358,11 @@ function StartInner() {
             </Panel>
           )}
 
-          {/* 5 · done */}
-          {step === 5 && (
+          {/* 6 · done */}
+          {step === 6 && (
             <Panel icon={<PartyPopper />} tone="ok" title="Klaar, bedankt!" lead={`${saved ? (overwrite ? 'De sensor is overgedragen; de vorige bewoner is losgekoppeld. ' : 'Je antwoorden zijn opgeslagen. ') : ''}${status?.online ? `Sensor ${nr} meet en stuurt zijn metingen door.` : `Zodra sensor ${nr} op WiFi zit, begint hij vanzelf met meten.`}`}>
               {contactSaved && <P><b style={{ color: 'var(--text)' }}>Je krijgt het rapport per e-mail.</b></P>}
+              {saved && (placeSaved ? <P>Buitenweer: <b style={{ color: 'var(--text)' }}>{placeSaved}</b>.</P> : (place.city || place.lat != null) ? <P>De plaats konden we niet vinden; de beheerder kan hem later invullen.</P> : null)}
               <P>Je hoeft verder niets te doen. Wil je zelf zien hoe de lucht in je huis is? Dan kun je een account maken en de sensor aan jezelf koppelen. Dat is helemaal optioneel.</P>
               <a href={withBase(`/koppel?code=${encodeURIComponent(code)}`)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--brand)', fontWeight: 700, fontSize: 'var(--fs-md)', marginTop: 4 }}>Eigen account maken en koppelen <ArrowRight size={15} /></a>
             </Panel>

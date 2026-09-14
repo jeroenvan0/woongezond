@@ -56,7 +56,10 @@ export default function AnalysePage() {
   const [data, setData] = useState<Payload | null>(null)
   const [days, setDays] = useState<1 | 2 | 7>(2)
   const [metric, setMetric] = useState<Metric>('co2')
-  const [focus, setFocus] = useState<string | null>(null)
+  // Meerdere sensoren tegelijk: leeg = alle. Bij precies één gekozen sensor verschijnen de
+  // gelabelde momenten als vlakken.
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const toggle = (id: string) => setSelected((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n })
   const [orgId, setOrgId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [forbidden, setForbidden] = useState(false)
@@ -104,13 +107,14 @@ export default function AnalysePage() {
     return (data.outdoor[cities[0]] ?? []).map((w) => ({ t: w.t, v: metric === 'temperature' ? w.temp : w.humidity }))
   }, [data, devices, metric])
 
-  const focused = devices.find((d) => d.id === focus) ?? null
+  const focused = selected.size === 1 ? devices.find((d) => selected.has(d.id)) ?? null : null
+  const chosen = useMemo(() => (selected.size ? devices.filter((d) => selected.has(d.id)) : devices), [devices, selected])
   const bands: FleetBand[] | undefined = useMemo(() => focused?.events.map((e) => ({ start: e.start, end: e.end, color: KIND_COLOR[e.kind], label: e.kind === 'luchten' ? `gelucht ${Math.round(e.confidence * 100)}%` : EVENT_LABEL[e.kind].split(' ')[0].toLowerCase() })), [focused])
 
   const events = useMemo(() => {
-    const list = (focused ? [focused] : devices).flatMap((d) => d.events.map((e) => ({ ...e, device: d })))
+    const list = chosen.flatMap((d) => d.events.map((e) => ({ ...e, device: d })))
     return list.sort((a, b) => b.start - a.start).slice(0, 300)
-  }, [devices, focused])
+  }, [chosen])
 
   const m = METRIC[metric]
   return (
@@ -159,23 +163,23 @@ export default function AnalysePage() {
           <Card style={{ marginBottom: 'var(--sp-4)' }}>
             <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 'var(--sp-2)' }}>
               {devices.map((d) => {
-                const active = focus === d.id
+                const active = selected.has(d.id)
                 const color = colorOf.get(d.id)!
                 return (
-                  <button key={d.id} type="button" onClick={() => setFocus(active ? null : d.id)} aria-pressed={active}
+                  <button key={d.id} type="button" onClick={() => toggle(d.id)} aria-pressed={active}
                     style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 9px', borderRadius: 999, border: `1px solid ${active ? color : 'var(--border)'}`, background: active ? color : 'var(--surface)', color: active ? '#fff' : 'var(--text)', fontSize: 'var(--fs-xs)', fontWeight: 600, cursor: 'pointer', opacity: d.series.length ? 1 : 0.5, fontFamily: 'inherit' }}>
                     <span aria-hidden style={{ width: 10, height: 10, borderRadius: 999, background: active ? '#fff' : color }} />
                     {labelOf(d)}{!d.series.length ? ' · geen data' : ''}
                   </button>
                 )
               })}
-              {focus && <button type="button" onClick={() => setFocus(null)} style={{ padding: '4px 9px', borderRadius: 999, border: '1px solid var(--border)', background: 'none', color: 'var(--muted)', fontSize: 'var(--fs-xs)', cursor: 'pointer', fontFamily: 'inherit' }}>Alle sensoren</button>}
+              {selected.size > 0 && <button type="button" onClick={() => setSelected(new Set())} style={{ padding: '4px 9px', borderRadius: 999, border: '1px solid var(--border)', background: 'none', color: 'var(--muted)', fontSize: 'var(--fs-xs)', cursor: 'pointer', fontFamily: 'inherit' }}>Alle sensoren</button>}
             </div>
             {loading && !data ? <ChartSkeleton height={320} /> : (
-              <FleetChart series={series} unit={m.unit} decimals={m.decimals} height={320} focus={focus} bands={bands} refLine={m.ref} outdoor={outdoor} outdoorLabel={metric === 'temperature' ? 'buiten (°C)' : 'buiten (RV)'} />
+              <FleetChart series={series} unit={m.unit} decimals={m.decimals} height={320} highlight={selected} bands={bands} refLine={m.ref} outdoor={outdoor} outdoorLabel={metric === 'temperature' ? 'buiten (°C)' : 'buiten (RV)'} />
             )}
             <div style={{ fontSize: 'var(--fs-2xs)', color: 'var(--subtle)', marginTop: 6 }}>
-              Klik op een sensor om die uit te lichten; de gelabelde momenten van die sensor verschijnen dan als vlakken.
+              Klik op sensoren om ze uit te lichten (meerdere kan). Bij precies één gekozen sensor verschijnen de gelabelde momenten als vlakken.
               {metric === 'dv' ? ' Vochtoverschot = absolute vochtigheid binnen − buiten (uurwaarde van de stad).' : ''}
             </div>
           </Card>
@@ -185,11 +189,11 @@ export default function AnalysePage() {
             <div style={{ display: 'grid', gap: 'var(--sp-3)', marginBottom: 'var(--sp-4)' }}>{[0, 1, 2].map((i) => <MetricCardSkeleton key={i} />)}</div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 'var(--sp-3)', marginBottom: 'var(--sp-4)' }}>
-              {devices.map((d) => <DeviceSummary key={d.id} d={d} color={colorOf.get(d.id)!} focused={focus === d.id} onFocus={() => setFocus(focus === d.id ? null : d.id)} />)}
+              {devices.map((d) => <DeviceSummary key={d.id} d={d} color={colorOf.get(d.id)!} focused={selected.has(d.id)} onFocus={() => toggle(d.id)} />)}
             </div>
           )}
 
-          <SectionHeading right={<span style={{ fontSize: 'var(--fs-xs)', color: 'var(--muted)' }}>{events.length} momenten{focused ? ` · ${labelOf(focused)}` : ''}</span>}>
+          <SectionHeading right={<span style={{ fontSize: 'var(--fs-xs)', color: 'var(--muted)' }}>{events.length} momenten{selected.size ? ` · ${chosen.map(labelOf).join(', ')}` : ''}</span>}>
             Gelabelde momenten
           </SectionHeading>
           <Card pad={0} style={{ overflowX: 'auto' }}>
