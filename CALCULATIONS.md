@@ -198,7 +198,12 @@ The new model, all pure functions with tests in `tests/mouldRisk.test.ts`:
    mean θ_e ≤ 15 °C and ≥ 16 h coverage; otherwise per cool night (biased high, reliability
    `laag`); with neither, a prior from the questionnaire (household size, laundry indoors,
    ventilation, reported moisture). Classes: < 3 laag, 3–5 normaal, 5–7 hoog, ≥ 7 zeer hoog
-   (ISO 13788 dwelling classes ≈ 4 and ≈ 6 g/m³ — **check these against the standard**).
+   (ISO 13788 dwelling classes ≈ 4 and ≈ 6 g/m³ — confirmed 2026-09-14 against ISO 13788:2012
+   Annex A / IEA Annex 24: class 2 ≈ 4, class 3 ≈ 6, class 4 ≈ 8 g/m³ at ≤ 0 °C, linear to 0 at
+   20 °C; BS 5250:2021 uses revised values. Sources in
+   [docs/huisprofiel-luchtgedrag-plan.md §5.3](docs/huisprofiel-luchtgedrag-plan.md)).
+   Why Δv0 is high (production, too little ventilation, or a building moisture source) is not
+   resolved here; that split is the plan in the same document.
    Honest limitation: at θ_e = 15 °C the scale factor is 4, so an SCD41 RH error of a few percent
    becomes several g/m³. Summer estimates are flagged `laag` and improve from October.
 5. **Winter projection.** January normal (3.5 °C, 88% RH) + Δv0 + f; indoor temperature measured
@@ -465,3 +470,49 @@ None of the above are "bugs" in the sense of the code not matching its own state
 port from the Flask app looks faithful everywhere it was checked. They are, instead, exactly the
 kind of real-world calibration questions that only 10 real homes' worth of data — and, ideally,
 a little outside expertise on the legal/building-physics claims in §6 — can actually answer.
+
+---
+
+## 11. Luchtmomenten met betrouwbaarheid (`lib/ventilationEvents.ts`, admin-only, since 2026-09-14)
+
+Plan and literature: [docs/huisprofiel-luchtgedrag-plan.md](docs/huisprofiel-luchtgedrag-plan.md).
+Shown only on Cockpit › Analyse (org admins); **unvalidated** against window contacts, so not
+in the dashboard, report or weekly mail yet. All pilot sensors hang in a bedroom; the
+assumptions below follow from that.
+
+- **Pre-processing.** 5-minute means of the raw minute rows; segments break at gaps > 15 min.
+  Baseline `C_out` = 2nd percentile of the window, clamped to 380–460 ppm (a room that is never
+  aired does not reach outdoor level; a sensor with ASC drift reads low).
+- **Runs.** A falling run starts at a real step (≥ 12 ppm per 5 min, ≥ 24 ppm over 10 min),
+  continues while no counter-step > 15 ppm, and loses its flat tail. Rising runs likewise.
+- **Gelucht (raam of deur).** The steep part of a falling run (from the first step ≥ 40 % of
+  the largest step, cut where the per-bucket drop falls below 25 % of it) is fitted as
+  `ln(C − C_out) = a − t/τ` **on the raw minute rows inside that window** (15 min = 15 points
+  instead of 3 buckets; buckets only when fewer than 6 raw rows exist); label if the drop
+  ≥ 120 ppm and `ACH = 60/τ ≥ 1.5`. **95 % interval on ACH**: `−60·(slope ± t₀.₉₇₅·SE)`,
+  then widened by refitting at `C_out ± 30 ppm` (envelope). On sensor 1 this took a typical
+  15-minute event from `[0–64]` (3 buckets, df = 1) to `[4.4–11.6]`. Confidence 0.05–0.98 built from:
+  drop ≥ 300 (+0.15) or smaller (+0.08); R² ≥ 0.9 (+0.15) / ≥ 0.75 (+0.08); interval lower
+  bound ≥ 1.0 (+0.15); with outdoor < 12 °C a temperature dip ≥ 0.5 °C (+0.2) or none
+  (−0.15); moisture excess drop ≥ 0.5 g/m³ (+0.1) or rise (−0.05); at night with sleepers
+  (+0.1). Evidence strings carry each part. Window vs door is not separable with one sensor;
+  the evidence notes whether CO₂ falls to outdoor level (window) or levels off at house level
+  (door). The slow tail after the steep part stays unlabelled.
+- **Achtergrond (raam dicht).** A falling run with ACH < 1.5 lasting ≥ 45 min (source removed):
+  the background air-change rate of the room. Confidence from R², duration ≥ 90 min, a
+  temperature dip ≥ 0.7 °C (−0.15, may be a gap) and interval width.
+- **Bezetting.** Rising run ≥ 200 ppm within ≤ 180 min; linear R² ≥ 0.9 → constant source.
+- **Vochtpiek.** Absolute humidity rises ≥ 1.0 g/m³ in 20 min while CO₂ changes < 100 ppm.
+  Humid outdoor air (outdoor v ≥ indoor v) raises indoor absolute humidity too, so in that case
+  the label loses 0.15 and says it may have been airing.
+- **Night ACH from the plateau.** Median CO₂ 01:00–05:00 local; with `occupants` from the
+  questionnaire, `n = G / (V·ΔC)` with G = sleepers × 10 L/h (Persily & De Jonge 2017, sleeping
+  adult ≈ 0.0028 L/s) and V from the room (bedroom 30 m³); reported as ×0.6–×1.6 because G and V
+  are each ±30 %. Not computed when sleepers are unknown or ΔC < 150 ppm. Cross-check on
+  sensor 2 (2026-09-09/10): plateau 1988 ppm → 0.42/h [0.25–0.68]; the slow decay of the day
+  before gave 0.45/h [0.22–0.64].
+- **Op buitenniveau.** Minutes per day with CO₂ ≤ `C_out` + 60 ppm. Many hours and no events
+  = window permanently open (or an empty room): sensor 1 sat there 23.7 h/day on 21–22 Aug.
+- **Known limits.** Imperfect mixing biases CO₂-derived ACH low (0–51 % in simulations);
+  neighbouring flats leak CO₂ through party walls; no outdoor CO₂ measurement. Hence classes and
+  intervals, never a point value with two decimals.

@@ -155,3 +155,30 @@ om gaat.
 **Raakvlak.** Het punt uit de analyse-discussie van 2026-09-07 (analyses op ruwe minuutdata,
 serverkant, niet op de grafiekreeks) geldt hier ook: features per device uit ruwe rijen.
 
+---
+
+## 5. Huisprofiel: luchtgedrag meten en bewoner scheiden van woning
+
+**Requested 2026-09-14 (Jeroen).** Nu geven we open deuren: "we zien een piek om 23:00". Het
+onderscheidende vermogen ontbreekt: kan de bewoner het oplossen, of kan bewonersgedrag hier
+niet genoeg zijn?
+
+**Gewenst.**
+1. **Luchtmomentdetectie** uit de sensor zelf: CO₂ daalt steil (en in de winter de
+   temperatuur), dus de kamer wordt gelucht. Daaruit per huishouden *hoe vaak* en *hoe lang*.
+2. **Achtergrondwisseling** van de kamer bij gesloten raam (trage decays, nachtplateau met
+   bekend aantal slapers) als gebouweigenschap, los van het luchtgedrag.
+3. **Verwachting per woning**: bij dit gebouw (vragenlijst), dit buitenweer en dit luchtgedrag
+   zou de kamer op X moeten zitten. Ver eronder → woning (voorziening, vochtbron, koude
+   plekken); erop of erboven → goed huis, advies aan de bewoner.
+4. **Huisprofiel** met twee bewonersassen (luchten, vochtproductie) en drie woningassen
+   (ventilatievoorziening, vochtbron, koude plekken); vervangt de ongevalideerde CV-heuristiek
+   "LEKKAGE/GEDRAG/BOUWKUNDIG" uit het rapport (§3a hierboven).
+
+**Plan, feedback en literatuur:** [docs/huisprofiel-luchtgedrag-plan.md](docs/huisprofiel-luchtgedrag-plan.md).
+**Gebouwd 2026-09-14 (fase 0):** `lib/ventilationEvents.ts` labelt momenten met een
+95%-interval op de ACH en een zekerheid per label; admin-tab Cockpit › Analyse toont alle
+sensoren van de vloot in één grafiek plus de gelabelde momenten. Validatie vraagt
+raamcontacten in 2–3 pilotwoningen in de winter. **Vóór de volgende uitrol beslissen:** SCD41-zelfkalibratie (ASC)
+aan of uit; aan maskeert precies de nooit-geluchte slaapkamers.
+
