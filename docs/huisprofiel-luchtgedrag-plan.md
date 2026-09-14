@@ -230,7 +230,18 @@ gevalideerd is. In het rapport en de weekmail vervangt dit de CV-heuristiek.
   loopt nu op de ruwe minuutrijen. Een vochtpiek vlak vóór een luchtmoment in de zomer is
   vaak vochtige buitenlucht; dat staat nu als voorbehoud in het bewijs. **Sensor 2 heeft
   geen `city_id`**, dus geen buitenweer en geen temperatuurweging; zie open vraag 5.
-- [ ] Dagelijkse job (systemd-timer zoals de weekmail) → `device_daily_features`.
+- [ ] **Wegschrijven in de database (besloten 2026-09-14, nog te bouwen).** Nu wordt alles per
+  aanvraag berekend en nergens bewaard. Drie tabellen: `ventilation_events` (device, start, einde,
+  label, ACH + interval, zekerheid, bewijs, detectorversie), `device_daily_features` (luchtmomenten,
+  minuten, achtergrond-ACH, nachtplateau, nacht-ACH, uren op buitenniveau, vochtproductie) en
+  `event_feedback` ("klopt dit?" ja/nee/weet niet, door admin of bewoner). Dagelijkse job
+  (systemd-timer zoals de weekmail) vult de eerste twee; de Analyse-tab leest dan uit de tabellen.
+  Waarom: (1) het schimmelmodel gaat de gemeten achtergrondwisseling en vochtproductie van het huis
+  gebruiken in plaats van −1,5 g/m³ en vaste aannames; (2) de labelzekerheid is nu een handgemaakte
+  optelsom en kan pas geijkt worden (logistisch model op dezelfde bewijsonderdelen) als er
+  beoordeelde momenten liggen; (3) de vlootbenchmark (fase 3) heeft dagkenmerken per woning nodig.
+  De fysica (ACH uit de decay, het interval) blijft een regel, geen model. Detectorversie erbij,
+  zodat oude momenten herberekend kunnen worden als de regels veranderen.
 - [ ] Dashboardtegel "Gelucht" met "voorlopig" (pas na fase 1). ML-feature `window_open` vullen.
 - [ ] `berekenAch` in het rapport splitsen in achtergrond en luchtmomenten; de Bouwbesluit-
   vergelijking alleen nog tegen de achtergrond.
