@@ -1,6 +1,7 @@
 import { createServiceClient } from '@/lib/supabase/service'
 import type { HouseProfile } from '@/lib/houseProfile'
 import { deriveDeviceColumns } from '@/lib/houseProfile'
+import { pickCity, type Place } from '@/lib/geocode'
 
 // The /start wizard's view of a device, keyed by the claim code on the sticker.
 // Two implementations: Supabase (the real thing, needs migrations 20260806* + 20260905*)
@@ -27,6 +28,9 @@ export interface PilotStore {
   // device); reports use profile_completed_at as the start of the current placement.
   saveProfile(deviceId: string, profile: HouseProfile, termsVersion: string, handover?: boolean): Promise<'ok' | 'error'>
   saveContact(deviceId: string, contact: Contact): Promise<'ok' | 'error'>
+  // Stad voor het buitenweer: bestaande stad hergebruiken (naam of < 12 km), anders aanmaken;
+  // op het device komt de positie van de stad, nooit die van het huis (lib/geocode.ts).
+  savePlace(deviceId: string, place: Place): Promise<'ok' | 'error'>
   // Clear registration + contact and queue 'reset_wifi' for the device (see /api/devices/reset).
   resetDevice(deviceId: string): Promise<'ok' | 'error'>
   // Pop the pending one-shot command for a device (called by /api/ingest); null if none.
@@ -56,6 +60,7 @@ const mockStore: PilotStore = {
   async findById(id) { for (const r of mockRows().values()) if (r.id === id) return pub(r); return null },
   async saveProfile(id, profile) { for (const r of mockRows().values()) if (r.id === id) { r.profile = profile; r.registered_at = new Date().toISOString(); return 'ok' } return 'error' },
   async saveContact(id) { for (const r of mockRows().values()) if (r.id === id) return 'ok'; return 'error' },
+  async savePlace(id, place) { for (const r of mockRows().values()) if (r.id === id) { (r as any).place = place; return 'ok' } return 'error' },
   async resetDevice(id) { for (const r of mockRows().values()) if (r.id === id) { r.profile = null; r.registered_at = null; (r as any).cmd = 'reset_wifi'; return 'ok' } return 'error' },
   async takeCommand(id) { for (const r of mockRows().values()) if (r.id === id) { const c = (r as any).cmd ?? null; (r as any).cmd = null; return c } return null },
   mockIngest(token, t) {
@@ -110,6 +115,20 @@ const supabaseStore: PilotStore = {
       { device_id: id, name: c.name, email: c.email, address_note: c.address_note, report_consent_at: c.email ? now : null, source: 'wizard', updated_at: now },
       { onConflict: 'device_id' },
     )
+    return error ? 'error' : 'ok'
+  },
+  async savePlace(id, place) {
+    const s = createServiceClient()
+    const now = new Date().toISOString()
+    const { data: cities, error: cErr } = await s.from('cities').select('id, name, lat, lon')
+    if (cErr) return 'error'
+    let city = pickCity((cities ?? []) as { id: string; name: string | null; lat: number; lon: number }[], place)
+    if (!city) {
+      const { data: created, error } = await s.from('cities').insert({ name: place.name, lat: place.lat, lon: place.lon }).select('id, name, lat, lon').single()
+      if (error || !created) return 'error'
+      city = created
+    }
+    const { error } = await s.from('devices').update({ city: city.name ?? place.name, city_id: city.id, lat: city.lat, lon: city.lon, updated_at: now }).eq('id', id)
     return error ? 'error' : 'ok'
   },
   async resetDevice(id) {

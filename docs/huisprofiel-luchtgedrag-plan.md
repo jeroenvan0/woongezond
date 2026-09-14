@@ -410,7 +410,9 @@ kunnen, is op zichzelf al onderscheidend richting corporaties.
 3. **Kamervolume** als extra vraag op /start (drie knoppen)? Halveert de onzekerheid van §3.2.
 4. **Wie leest de profieltekst mee** voordat het in het rapport gaat (corporatiecontact,
    bouwfysicus)? Dit raakt de positionering uit [WISHLIST §3a](../WISHLIST.md).
-5. **Sensor 2 (en mogelijk andere via /start gekoppelde sensoren) heeft geen `city_id`.**
-   Zonder stad geen buitenweer, dus geen vochtoverschot, geen temperatuurdip-weging en een
-   schimmelmodel op maandnormalen. Zet de stad bij het koppelen (of in de cockpit) en vul
-   hem voor sensor 2 en 3 met de hand.
+5. ~~Sensor 2 heeft geen `city_id`.~~ **Opgelost 2026-09-14:** sensor 2 staat op Amsterdam en
+   de vragenlijst (/start) heeft nu een stap *Plaats* (getypt of via de GPS van de telefoon;
+   alleen de plaatsnaam wordt bewaard, `lib/geocode.ts`). **Sensor 3, 5 en 7 hebben nog geen
+   plaats**: de bewoner kan de vragenlijst opnieuw openen (cockpit › Vragenlijst openen), of
+   zet hem met de hand. Zonder plaats geen buitenweer, dus geen vochtoverschot en geen
+   temperatuurdip-weging; de cockpit waarschuwt daar nu bij de sensor.

@@ -21,7 +21,8 @@ interface Props {
   unit: string
   decimals?: number
   height?: number
-  focus?: string | null
+  /** Uitgelichte sensoren; leeg of null = alle even sterk. */
+  highlight?: Set<string> | null
   bands?: FleetBand[]
   refLine?: { value: number; label: string }
   outdoor?: { t: number; v: number | null }[]
@@ -45,7 +46,7 @@ function Tip({ active, payload, unit, decimals, names }: any) {
   )
 }
 
-export default function FleetChart({ series, unit, decimals = 0, height = 300, focus, bands, refLine, outdoor, outdoorLabel = 'buiten' }: Props) {
+export default function FleetChart({ series, unit, decimals = 0, height = 300, highlight, bands, refLine, outdoor, outdoorLabel = 'buiten' }: Props) {
   const c = useChartColors()
   const { data, keys, names } = useMemo(() => {
     const rows = new Map<number, Record<string, number | null>>()
@@ -90,9 +91,10 @@ export default function FleetChart({ series, unit, decimals = 0, height = 300, f
         {refLine && <ReferenceLine y={refLine.value} stroke={c.warn} strokeDasharray="4 3" strokeWidth={1.2} label={{ value: refLine.label, position: 'insideTopLeft', fontSize: 10, fill: c.warn }} />}
         {series.map((s) => {
           const k = `d_${s.id}`
-          const dim = focus != null && focus !== s.id
+          const on = !!highlight?.size && highlight.has(s.id)
+          const dim = !!highlight?.size && !on
           return (
-            <Line key={k} type="monotone" dataKey={k} name={s.label} stroke={s.color} strokeWidth={focus === s.id ? 2.4 : 1.6} strokeOpacity={dim ? 0.18 : 1} dot={false} activeDot={dim ? false : { r: 3, fill: s.color }} isAnimationActive={false} connectNulls={false} />
+            <Line key={k} type="monotone" dataKey={k} name={s.label} stroke={s.color} strokeWidth={on ? 2.4 : 1.6} strokeOpacity={dim ? 0.18 : 1} dot={false} activeDot={dim ? false : { r: 3, fill: s.color }} isAnimationActive={false} connectNulls={false} />
           )
         })}
         {outdoor?.length ? <Line type="monotone" dataKey="outdoor" name={outdoorLabel} stroke={c.muted} strokeWidth={1.4} strokeDasharray="5 4" dot={false} isAnimationActive={false} connectNulls={false} /> : null}

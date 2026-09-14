@@ -32,6 +32,7 @@ interface Device {
   name: string | null
   active: boolean
   room: string | null
+  city: string | null
   registered_at: string | null
   claim_code: string | null
   online: boolean
@@ -397,7 +398,7 @@ function DeviceRow({ device: d, messages, onChanged }: { device: Device; message
     }
   }
 
-  const meta = [d.fw_version ? `fw ${d.fw_version}` : null, d.boot_count != null ? `${d.boot_count}× gestart` : null, d.rssi != null ? `${d.rssi} dBm` : null].filter(Boolean).join(' · ')
+  const meta = [d.city ? d.city : null, d.fw_version ? `fw ${d.fw_version}` : null, d.boot_count != null ? `${d.boot_count}× gestart` : null, d.rssi != null ? `${d.rssi} dBm` : null].filter(Boolean).join(' · ')
 
   return (
     <Card accent={p.color} style={{ opacity: d.active ? 1 : 0.6 }}>
@@ -414,6 +415,7 @@ function DeviceRow({ device: d, messages, onChanged }: { device: Device; message
         </span>
       </div>
       {meta && <div style={{ fontSize: 'var(--fs-2xs)', color: 'var(--muted)', marginTop: 4 }}>{meta}{p.detail ? ` · ${p.detail}` : ''}</div>}
+      {!d.city && d.minutes_since != null && <div style={{ fontSize: 'var(--fs-2xs)', color: 'var(--warn)', marginTop: 2 }}>Geen plaats bekend: geen buitenweer voor deze sensor. De bewoner kan de plaats via de vragenlijst doorgeven.</div>}
 
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 'var(--sp-3)', flexWrap: 'wrap', marginTop: 'var(--sp-3)' }}>
         <div style={{ minWidth: 0, flex: '1 1 220px', display: 'grid', gap: 3 }}>
