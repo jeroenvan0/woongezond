@@ -4,7 +4,9 @@
 // stdout, so `journalctl -u woongezond-react` was empty exactly when it was needed.
 // One line of JSON per event, because journald keeps it intact and `jq` can filter it:
 //
-//   journalctl -u woongezond-react -o cat | jq 'select(.level=="error")'
+//   journalctl -u woongezond-react -o cat | grep '^{' | jq 'select(.level=="error")'
+//
+// (grep '^{' omdat Next bij het opstarten een paar niet-JSON-regels schrijft; jq stopt anders.)
 //
 // Never log secrets, tokens, or a resident's readings — device/user ids only.
 

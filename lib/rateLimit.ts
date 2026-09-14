@@ -45,8 +45,11 @@ export const LIMITS = {
   recommendations: { max: 10, windowMs: 5 * 60 * 1000 },
   // Expensive and rarely useful more than once an hour; the model barely moves.
   mlRetrain: { max: 3, windowMs: 60 * 60 * 1000 },
-  // The bell polls every 120s = 2.5/5min. 10 leaves headroom for several open tabs.
-  notifications: { max: 10, windowMs: 5 * 60 * 1000 },
+  // The bell polls every 120s = 2.5/5min per tab. 10 was not enough: after a deploy every
+  // open tab re-sweeps on focus and one user hit 10 polls in a minute (journal 2026-09-14,
+  // "notifications request rejected"). The sweep is a cheap DB read; 30 covers a handful
+  // of tabs plus a restart and still blocks a scripted loop.
+  notifications: { max: 30, windowMs: 5 * 60 * 1000 },
   // Sensors write ~1/min. 4/min per device leaves headroom for a retry/burst without
   // letting a stuck device hammer the ingest endpoint.
   ingest: { max: 4, windowMs: 60 * 1000 },
