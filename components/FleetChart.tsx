@@ -70,7 +70,9 @@ export default function FleetChart({ series, unit, decimals = 0, height = 300, h
       }
     }
     const data = [...rows.values()].sort((a, b) => (a.t as number) - (b.t as number)) as ({ t: number } & Record<string, number | null>)[]
-    return { data: insertGaps(data, keys), keys, names }
+    // De buitenlijn heeft één punt per uur tussen 5-minuutpunten van de sensoren; die krijgt
+    // geen gat-markering en wordt over de nulls heen verbonden (anders blijven het losse punten).
+    return { data: insertGaps(data, keys.filter((k) => k !== 'outdoor')), keys, names }
   }, [series, outdoor, outdoorLabel])
 
   if (!data.length) {
@@ -97,7 +99,7 @@ export default function FleetChart({ series, unit, decimals = 0, height = 300, h
             <Line key={k} type="monotone" dataKey={k} name={s.label} stroke={s.color} strokeWidth={on ? 2.4 : 1.6} strokeOpacity={dim ? 0.18 : 1} dot={false} activeDot={dim ? false : { r: 3, fill: s.color }} isAnimationActive={false} connectNulls={false} />
           )
         })}
-        {outdoor?.length ? <Line type="monotone" dataKey="outdoor" name={outdoorLabel} stroke={c.muted} strokeWidth={1.4} strokeDasharray="5 4" dot={false} isAnimationActive={false} connectNulls={false} /> : null}
+        {outdoor?.length ? <Line type="monotone" dataKey="outdoor" name={outdoorLabel} stroke={c.muted} strokeWidth={1.6} strokeDasharray="5 4" dot={false} isAnimationActive={false} connectNulls /> : null}
       </ComposedChart>
     </ResponsiveContainer>
   )
