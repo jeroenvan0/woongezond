@@ -48,12 +48,17 @@ function bucketSeries(readings: Reading[], outdoor: OutdoorReading[], stepMs: nu
     map.set(key, b)
   }
   const avg = (a: number[]) => (a.length ? Math.round((a.reduce((x, y) => x + y, 0) / a.length) * 100) / 100 : null)
-  // Vochtoverschot: binnen − buiten (dichtstbijzijnde uurwaarde).
+  // Vochtoverschot: binnen − buiten. Het buitenweer is een uurwaarde; lineair interpoleren
+  // tussen twee uren, anders tekent de grafiek een trap die niets met de kamer te maken heeft.
   const outV = outdoor.filter((o) => o.t != null && o.rh != null).map((o) => ({ ts: o.ts, v: vAbs(o.t!, o.rh!) }))
-  const outdoorV = (ts: number) => {
-    let best: { ts: number; v: number } | null = null
-    for (const o of outV) if (!best || Math.abs(o.ts - ts) < Math.abs(best.ts - ts)) best = o
-    return best && Math.abs(best.ts - ts) <= 2 * 3_600_000 ? best.v : null
+  const outdoorV = (ts: number): number | null => {
+    if (!outV.length) return null
+    let lo = 0, hi = outV.length - 1
+    while (lo < hi) { const m = (lo + hi) >> 1; if (outV[m].ts < ts) lo = m + 1; else hi = m }
+    const b = outV[lo], a = outV[lo - 1]
+    if (a && b && a.ts <= ts && ts <= b.ts && b.ts - a.ts <= 3 * 3_600_000) return a.v + ((b.v - a.v) * (ts - a.ts)) / (b.ts - a.ts)
+    const near = [a, b].filter(Boolean).sort((x, y) => Math.abs(x!.ts - ts) - Math.abs(y!.ts - ts))[0]
+    return near && Math.abs(near.ts - ts) <= 2 * 3_600_000 ? near.v : null
   }
   return [...map.entries()].sort((a, b) => a[0] - b[0]).map(([t, b]) => {
     const v = avg(b.v)

@@ -187,13 +187,20 @@ function segments(buckets: Bucket[], gapMs = GAP_MS): Bucket[][] {
 
 function outdoorAt(outdoor: OutdoorReading[] | undefined, ts: number): { t: number | null; v: number | null } {
   if (!outdoor?.length) return { t: null, v: null }
-  // Dichtstbijzijnde uurwaarde binnen 2 uur (lijst is gesorteerd op tijd).
+  // Lineair tussen de twee omliggende uurwaarden (lijst is gesorteerd); anders de
+  // dichtstbijzijnde binnen 2 uur.
   let lo = 0, hi = outdoor.length - 1
   while (lo < hi) { const mid = (lo + hi) >> 1; if (outdoor[mid].ts < ts) lo = mid + 1; else hi = mid }
-  const cands = [outdoor[lo], outdoor[lo - 1]].filter(Boolean) as OutdoorReading[]
-  const best = cands.sort((a, b) => Math.abs(a.ts - ts) - Math.abs(b.ts - ts))[0]
+  const b = outdoor[lo], a = outdoor[lo - 1]
+  const val = (o: OutdoorReading) => ({ t: o.t, v: o.t != null && o.rh != null ? vAbs(o.t, o.rh) : null })
+  if (a && b && a.ts <= ts && ts <= b.ts && b.ts - a.ts <= 3 * 3_600_000 && a.t != null && b.t != null) {
+    const w = (ts - a.ts) / (b.ts - a.ts)
+    const va = val(a), vb = val(b)
+    return { t: a.t + (b.t - a.t) * w, v: va.v != null && vb.v != null ? va.v + (vb.v - va.v) * w : null }
+  }
+  const best = [a, b].filter(Boolean).sort((x, y) => Math.abs(x!.ts - ts) - Math.abs(y!.ts - ts))[0]
   if (!best || Math.abs(best.ts - ts) > 2 * 3_600_000 || best.t == null) return { t: null, v: null }
-  return { t: best.t, v: best.rh != null ? vAbs(best.t, best.rh) : null }
+  return val(best)
 }
 
 // ── Detectie ──────────────────────────────────────────────────────────────────
