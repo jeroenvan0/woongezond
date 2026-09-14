@@ -12,13 +12,14 @@ import FleetChart, { type FleetBand, type FleetSeries } from '@/components/Fleet
 import { withBase } from '@/lib/basePath'
 import { Building2, ShieldAlert, Activity, Wind, Moon, Droplets, Users, FlaskConical } from 'lucide-react'
 import { EVENT_LABEL, type DaySummary, type EventKind, type VentEvent } from '@/lib/ventilationEvents'
+import { vAbs } from '@/lib/mouldRisk'
 
 // Cockpit › Analyse: alleen org-ADMINS. Alle sensoren van de vloot in één grafiek, en de
 // gelabelde momenten (gelucht / achtergrond / vochtpiek / bezetting) met betrouwbaarheid.
 // Onderzoeksweergave, ongevalideerd (docs/huisprofiel-luchtgedrag-plan.md): bewust niet
 // voor bewoners. Alle pilotsensoren hangen in een slaapkamer; de labels gaan daarvan uit.
 
-type Metric = 'co2' | 'temperature' | 'humidity' | 'dv'
+type Metric = 'co2' | 'temperature' | 'humidity' | 'v' | 'dv'
 interface Org { id: string; name: string }
 interface Point { t: number; co2: number | null; temperature: number | null; humidity: number | null; v: number | null; dv: number | null }
 interface Device {
@@ -36,6 +37,7 @@ const METRIC: Record<Metric, { label: string; unit: string; decimals: number; re
   co2: { label: 'CO₂', unit: 'ppm', decimals: 0, ref: { value: 1000, label: '1000 ppm' } },
   temperature: { label: 'Temperatuur', unit: '°C', decimals: 1 },
   humidity: { label: 'RV', unit: '%', decimals: 0, ref: { value: 70, label: '70 %' } },
+  v: { label: 'Abs. vocht', unit: 'g/m³', decimals: 1 },
   dv: { label: 'Vochtoverschot', unit: 'g/m³', decimals: 1, ref: { value: 4, label: '4 g/m³ (ISO 13788 klasse 2)' } },
 }
 // Tien onderscheidbare kleuren die in licht én donker leesbaar blijven.
@@ -102,12 +104,14 @@ export default function AnalysePage() {
     points: d.series.map((p) => ({ t: p.t, v: p[metric] })),
   })), [devices, colorOf, metric])
 
-  // Buitenlijn bij temperatuur/RV: alleen als alle sensoren in dezelfde stad hangen (anders misleidend).
+  // Buitenlijn bij temperatuur, RV en absolute vochtigheid: alleen als alle sensoren in dezelfde
+  // stad hangen (anders misleidend). Bij abs. vocht zie je binnen en buiten los van elkaar; een
+  // stilstaande kamer is dan een vlakke lijn en bewoning een eigen beweging.
   const outdoor = useMemo(() => {
-    if (!data || (metric !== 'temperature' && metric !== 'humidity')) return undefined
+    if (!data || (metric !== 'temperature' && metric !== 'humidity' && metric !== 'v')) return undefined
     const cities = [...new Set(devices.map((d) => data.cityOf[d.id]).filter(Boolean))] as string[]
     if (cities.length !== 1) return undefined
-    return (data.outdoor[cities[0]] ?? []).map((w) => ({ t: w.t, v: metric === 'temperature' ? w.temp : w.humidity }))
+    return (data.outdoor[cities[0]] ?? []).map((w) => ({ t: w.t, v: metric === 'temperature' ? w.temp : metric === 'humidity' ? w.humidity : w.temp != null && w.humidity != null ? Math.round(vAbs(w.temp, w.humidity) * 100) / 100 : null }))
   }, [data, devices, metric])
 
   const focused = selected.size === 1 ? devices.find((d) => selected.has(d.id)) ?? null : null
@@ -179,11 +183,11 @@ export default function AnalysePage() {
               {selected.size > 0 && <button type="button" onClick={() => setSelected(new Set())} style={{ padding: '4px 9px', borderRadius: 999, border: '1px solid var(--border)', background: 'none', color: 'var(--muted)', fontSize: 'var(--fs-xs)', cursor: 'pointer', fontFamily: 'inherit' }}>Alle sensoren</button>}
             </div>
             {loading && !data ? <ChartSkeleton height={320} /> : (
-              <FleetChart series={series} unit={m.unit} decimals={m.decimals} height={320} highlight={selected} bands={bands} refLine={m.ref} outdoor={outdoor} outdoorLabel={metric === 'temperature' ? 'buiten (°C)' : 'buiten (RV)'} />
+              <FleetChart series={series} unit={m.unit} decimals={m.decimals} height={320} highlight={selected} bands={bands} refLine={m.ref} outdoor={outdoor} outdoorLabel={metric === 'temperature' ? 'buiten (°C)' : metric === 'humidity' ? 'buiten (RV)' : 'buiten (g/m³)'} />
             )}
             <div style={{ fontSize: 'var(--fs-2xs)', color: 'var(--subtle)', marginTop: 6 }}>
               Klik op sensoren om ze uit te lichten (meerdere kan). Bij precies één gekozen sensor verschijnen de gelabelde momenten als vlakken.
-              {metric === 'dv' ? ' Vochtoverschot = absolute vochtigheid binnen − buiten (uurwaarde van de stad).' : ''}
+              {metric === 'dv' ? ' Vochtoverschot = absolute vochtigheid binnen − buiten. Lopen sensoren gelijk op, dan zie je het buitenweer (omgekeerd), niet de bewoning: kijk dan bij Abs. vocht.' : metric === 'v' ? ' Stippellijn = buitenlucht. Een gesloten kamer volgt die met uren vertraging; bewoning is een eigen beweging erbovenop.' : ''}
             </div>
           </Card>
 
