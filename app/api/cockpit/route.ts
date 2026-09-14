@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
 
   const s = createServiceClient()
   const { data: devices, error } = await s.from('devices')
-    .select('id, name, device_number, location, house_profile, active, last_seen_at, fw_version, boot_count, last_rssi, profile_completed_at, device_contacts(name, email, address_note, report_consent_at, report_frequency)')
+    .select('id, name, device_number, location, house_profile, active, last_seen_at, fw_version, boot_count, last_rssi, profile_completed_at, device_contacts(name, email, address_note, report_consent_at, report_frequency), device_claim_codes(code, used_at, created_at)')
     .eq('org_id', org.id).order('device_number', { ascending: true, nullsFirst: false })
   if (error) return NextResponse.json({ error: 'query_failed' }, { status: 500 })
 
@@ -55,6 +55,10 @@ export async function GET(req: NextRequest) {
     return {
       id: d.id, device_number: d.device_number, name: d.name, active: d.active !== false,
       room: roomLabel(d.house_profile?.room) ?? d.location ?? null, registered_at: d.profile_completed_at,
+      // Stickercode: opent de vragenlijst (/start) zonder QR. /start kijkt niet naar used_at, dus
+      // ook een handmatig gekoppelde sensor kan zo nog invullen. Nieuwste ongebruikte eerst.
+      claim_code: ((d.device_claim_codes ?? []) as { code: string; used_at: string | null; created_at: string }[])
+        .sort((a, b) => Number(!!a.used_at) - Number(!!b.used_at) || b.created_at.localeCompare(a.created_at))[0]?.code ?? null,
       profile: profileQA(d.house_profile),
       online: mins != null && mins < ONLINE_MIN, minutes_since: mins, fw_version: d.fw_version, boot_count: d.boot_count, rssi: d.last_rssi,
       contact: c ? { name: c.name, email: c.email, address_note: c.address_note, report_consent: !!c.report_consent_at, report_frequency: isFrequency(c.report_frequency) ? c.report_frequency : 'weekly' } : null,

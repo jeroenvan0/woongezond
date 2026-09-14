@@ -11,7 +11,7 @@ import DataBanner, { DataError, describeError } from '@/components/DataBanner'
 import { MetricCardSkeleton } from '@/components/ui/Skeleton'
 import { withBase } from '@/lib/basePath'
 import Link from 'next/link'
-import { Building2, ShieldAlert, Wifi, WifiOff, CircleDashed, Mail, Send, Check, FileText, Inbox, AlertTriangle, ArrowRight, Droplets } from 'lucide-react'
+import { Building2, ShieldAlert, Wifi, WifiOff, CircleDashed, Mail, Send, Check, FileText, Inbox, AlertTriangle, ArrowRight, Droplets, ClipboardList } from 'lucide-react'
 import { assessMould, type Level, type MouldAssessment } from '@/lib/mouldRisk'
 import { fetchMouldInputs } from '@/lib/mouldLoad'
 import { setSelectedDevice } from '@/lib/useSelectedDevice'
@@ -33,6 +33,7 @@ interface Device {
   active: boolean
   room: string | null
   registered_at: string | null
+  claim_code: string | null
   online: boolean
   minutes_since: number | null
   fw_version: string | null
@@ -268,6 +269,33 @@ function Tile({ Icon, color, value, label }: { Icon: typeof Wifi; color: string;
 
 // ── Sectie A: één kaart per sensor ───────────────────────────────────────────
 
+// Vragenlijst zonder QR: na het WiFi-portaal weet de sensor niet wie de bewoner is, dus er komt
+// niets vanzelf. De installateur opent de vragenlijst hier (op zijn eigen telefoon of die van
+// de bewoner) of kopieert de link om hem te sturen.
+function QuestionnaireLine({ code, done, online }: { code: string; done: boolean; online: boolean }) {
+  const [copied, setCopied] = useState(false)
+  const path = `/start?code=${encodeURIComponent(code)}`
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(`${window.location.origin}${withBase(path)}`); setCopied(true); setTimeout(() => setCopied(false), 2000) } catch { /* geen klembord: link staat er ook als knop */ }
+  }
+  const warn = !done && online
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', flexWrap: 'wrap', marginTop: 'var(--sp-2)', fontSize: 'var(--fs-xs)' }}>
+      <ClipboardList size={13} style={{ flexShrink: 0, color: warn ? 'var(--warn)' : 'var(--muted)' }} />
+      <span style={{ fontWeight: 600, color: warn ? 'var(--warn)' : 'var(--muted)' }}>
+        {done ? 'Vragenlijst ingevuld' : online ? 'Vragenlijst nog niet ingevuld' : 'Vragenlijst nog niet ingevuld (sensor nog niet online)'}
+      </span>
+      <Link href={path} target="_blank" style={{ color: 'var(--brand)', fontWeight: 600, textDecoration: 'none' }}>
+        {done ? 'Opnieuw openen' : 'Vragenlijst openen'}
+      </Link>
+      <button type="button" onClick={copy} style={{ padding: 0, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--brand)', fontWeight: 600, fontSize: 'inherit', fontFamily: 'inherit' }}>
+        {copied ? 'Gekopieerd ✓' : 'Link kopiëren'}
+      </button>
+      <span style={{ color: 'var(--subtle)' }}>{code}</span>
+    </div>
+  )
+}
+
 // Schimmelrisico per sensor, zelfde berekening als /schimmelrisico (lib/mouldRisk.ts).
 // Per rij los geladen: 90 dagen metingen + weer, dus de cockpit zelf wacht er niet op.
 const LEVEL_COLOR: Record<Level, string> = { laag: 'var(--ok)', verhoogd: 'var(--warn)', hoog: 'var(--crit)' }
@@ -434,6 +462,7 @@ function DeviceRow({ device: d, messages, onChanged }: { device: Device; message
           </div>
         )}
       </div>
+      {d.claim_code && <QuestionnaireLine code={d.claim_code} done={!!d.registered_at} online={d.minutes_since != null} />}
       {d.minutes_since != null && <MouldLine deviceId={d.id} />}
       {d.profile?.length > 0 && (
         <details style={{ marginTop: 'var(--sp-3)', fontSize: 'var(--fs-xs)' }}>

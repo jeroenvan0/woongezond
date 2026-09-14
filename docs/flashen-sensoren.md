@@ -41,7 +41,7 @@ sensor). Tokens niet in docs of chats plakken; ze zijn de identiteit van de sens
 |---|---|---|
 | 1 | DEVICE-2LEMY4 | draait (Jeroen) |
 | 2 | DEVICE-NPNCNF | draait (Faber/Lemke, faber@test.nl) |
-| 3 | DEVICE-A9BB94 | draait sinds 2026-09-11 (Daan, daan@hiemstratech.nl), fw 2.1.1 |
+| 3 | DEVICE-A9BB94 | draait sinds 2026-09-11 (Daan, daan@hiemstratech.nl), fw 2.1.1; vragenlijst nog niet ingevuld |
 | 4 | DEVICE-94R25R | te flashen |
 | 5 | DEVICE-VVLY3Z | te flashen |
 | 6 | DEVICE-B6RGC5 | te flashen |
@@ -69,12 +69,19 @@ export ARDUINO_DIRECTORIES_USER=$HOME/Arduino
 ## 3. Per sensor: nummer, URL en token zetten
 
 In de Serial Monitor, regel voor regel (Enter na elke regel), met het nummer en token van
-die sensor uit stap 1:
+die sensor uit stap 1. Dit commando print die regels per sensor met de token al ingevuld
+(zet het nummer achter `n=`), zodat je niets hoeft over te typen:
 
 ```
-SET NUMBER 3
+npm run -s pilot:seed -- --admin woongezond@vostech.group --count 8 | awk -v n=5 '$1==n {print "SET NUMBER " n; print "SET URL https://woongezond.com/admin"; print "SET TOKEN " $NF; print "SHOW"}'
+```
+
+Dat geeft (voor n=5):
+
+```
+SET NUMBER 5
 SET URL https://woongezond.com/admin
-SET TOKEN wgd_<token van nummer 3>
+SET TOKEN wgd_<token van nummer 5>
 SHOW
 ```
 
@@ -86,8 +93,15 @@ SHOW
   `No wifi saved, skipping` is normaal: het thuisnetwerk kiest de bewoner zelf.
 - Verkeerd geplakt token: 3× knipperen + `401` in de monitor → `SET TOKEN` opnieuw.
 
-Sticker met het nummer en de QR (`npm run pilot:stickers` of `npm run pilot:qr -- --code DEVICE-… --number 3`)
-op de sensor. USB los, volgende sensor.
+Sticker met het nummer en de QR op de sensor. **Altijd met `--base`**, anders wijst de QR naar
+de dev-server op deze laptop (LAN-IP, poort 3005):
+
+```
+npm run pilot:stickers -- --base https://woongezond.com/admin          # alle sensoren, printvel
+npm run pilot:qr -- --code DEVICE-… --number 5 --base https://woongezond.com/admin   # één sensor
+```
+
+USB los, volgende sensor.
 
 ## 4. Testen aan het bureau (aanrader, 2 minuten)
 
@@ -99,8 +113,14 @@ sensor is weer "schoon" voor de bewoner.
 ## 5. Bij de bewoner
 
 1. Stekker erin → telefoon op **Woongezond-0N** → portal → thuisnetwerk + wachtwoord (alleen 2,4 GHz).
-2. QR scannen → `/start?code=…` → wizard (naam, e-mail voor het weekrapport, vragenlijst).
-   Het weekrapport gaat elke **vrijdag 08:00** naar dat adres.
+2. **De vragenlijst komt niet vanzelf**: na het portaal weet de sensor niet wie de bewoner is.
+   Open hem op één van deze manieren (allemaal dezelfde pagina, `/start?code=…`):
+   - QR op de sticker scannen (telefoon eerst terug op het eigen WiFi). Het portaal zegt dat
+     sinds firmware 2.2.1 ook.
+   - Cockpit → bij de sensor **Vragenlijst openen** (op je eigen telefoon of die van de bewoner),
+     of **Link kopiëren** en per WhatsApp/mail sturen.
+   Wizard: naam, e-mail voor het weekrapport, vragenlijst. Het weekrapport gaat elke
+   **vrijdag 08:00** naar dat adres.
 3. Account voor de bewoner: normaal maakt hij die zelf via de wizard. Voor sensor 2 is het
    handmatig gedaan (auth-user aangemaakt, `devices.user_id` gezet, koppelcode op gebruikt).
    Een bewoner ziet alleen zijn eigen sensor; het admin-account (woongezond@vostech.group) ziet

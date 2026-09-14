@@ -32,7 +32,7 @@
 #include <Preferences.h>
 #include <SensirionI2cScd4x.h>
 
-#define FW_VERSION "2.2.0"
+#define FW_VERSION "2.2.1"
 
 // ── pinnen (Feather ESP32-S3) ─────────────────────────
 static const int SDA_PIN    = 3;
@@ -68,7 +68,7 @@ a{color:#0B7A5C;font-weight:600;text-decoration:none} .q{color:#0B7A5C;font-weig
 static const char PORTAL_HOME[] PROGMEM = R"HTML(
 <p class="wg-help">Kies hieronder je eigen WiFi-netwerk en vul het wachtwoord in. De sensor onthoudt het en verbindt daarna zelf. Werkt alleen op 2,4 GHz.</p>
 <form action="/wifi" method="get"><button>WiFi instellen</button></form>
-<p class="wg-help" style="margin-top:14px">Klaar? Ga terug naar de Woongezond-pagina op je telefoon; die springt op groen zodra de sensor meet.</p>)HTML";
+<p class="wg-help" style="margin-top:14px"><b>Daarna:</b> zet je telefoon terug op je eigen WiFi en scan de QR-code op de sensor. Dan krijg je tien korte vragen over je huis (2 minuten). Die maken de metingen veel preciezer.</p>)HTML";
 
 Preferences      prefs;                       // namespace "wg"
 SensirionI2cScd4x scd4x;
