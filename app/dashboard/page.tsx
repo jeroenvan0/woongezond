@@ -11,6 +11,7 @@ import ChartCard from '@/components/ChartCard'
 import ChatWidget from '@/components/ChatWidget'
 import MLPredictionCard from '@/components/MLPredictionCard'
 import NightOutlookCard from '@/components/NightOutlookCard'
+import Co2Explainer from '@/components/Co2Explainer'
 import ContinuityChip from '@/components/ContinuityChip'
 import DataBanner from '@/components/DataBanner'
 import FirstRunNotice from '@/components/FirstRunNotice'
@@ -39,6 +40,7 @@ const PERIOD_OPTIONS = [
   { label: '1 uur', value: 60 },
   { label: '6 uur', value: 360 },
   { label: '24 uur', value: 1440 },
+  { label: '3 dagen', value: 4320 },
   { label: '7 dagen', value: 10080 },
   { label: '30 dagen', value: 43200 },
   { label: '1 jaar', value: 525600 },
@@ -567,6 +569,7 @@ export default function DashboardPage() {
                     columns={[{ key: 't', label: 'Tijd' }, { key: 'v', label: c.col }]}
                     rows={displayed.map((r) => ({ t: fmtTs(r.ts), v: r[c.key].toFixed(c.digits) }))}
                   />
+                  {c.key === 'co2' && <Co2Explainer rows={rows} />}
                 </ChartCard>
                 </div>
               ))}

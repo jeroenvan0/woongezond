@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   pSat, vAbs, surfaceConditions, coldSpotFactor, vttRhCrit, vttAdvance, vttDaysTo,
   assessMould, loadLevel, profileMoisturePrior, groundTemp, demoInputs, MONTH_NORMAL_C,
-  houseProfileType, growthSentence,
+  houseProfileType, growthSentence, monthLevel, heatingShare,
   type IndoorSample, type OutdoorSample, type VttState,
 } from '@/lib/mouldRisk'
 
@@ -234,6 +234,35 @@ describe('schimmelprofiel en jaarverwachting', () => {
     expect(r.year.find((m) => m.isNow)!.measured).not.toBeNull() // er zijn metingen deze maand
     expect(r.yearGrowth.start).not.toBeNull()
     expect(growthSentence(r.yearGrowth)).toMatch(/begint|begonnen/)
+  })
+
+  it('jaar: kleur volgt het vocht van de maand, zichtbaar blijft apart staan', () => {
+    expect(monthLevel(79)).toBe('laag')
+    expect(monthLevel(80)).toBe('verhoogd')
+    expect(monthLevel(94)).toBe('verhoogd')
+    expect(monthLevel(95)).toBe('hoog')
+    const h = house({ ti: 18, dv: 7, te: 8, rhe: 88, days: 30 })
+    const r = assessMould({ ...h, profile: { build_period: 'voor_1945', room: 'slaapkamer' } })
+    for (const m of r.year) expect(m.level).toBe(monthLevel(m.rhSurface))
+    const vis = r.year.filter((m) => m.visible)
+    expect(vis.length).toBeGreaterThan(0)
+    expect(r.year.filter((m) => m.isPast).every((m) => !m.visible)).toBe(true)
+    // Eenmaal zichtbaar blijft het zichtbaar, ook in een droge maand: groen en zichtbaar tegelijk.
+    const first = r.year.findIndex((m) => m.visible)
+    expect(r.year.slice(first).every((m) => m.visible)).toBe(true)
+    expect(r.year.slice(first).some((m) => m.level === 'laag')).toBe(true)
+  })
+
+  it('stoken gaat geleidelijk over tussen 12 en 17 °C buiten', () => {
+    expect(heatingShare(5)).toBe(1)
+    expect(heatingShare(12)).toBe(1)
+    expect(heatingShare(14.5)).toBeCloseTo(0.5)
+    expect(heatingShare(17)).toBe(0)
+    const h = house({ ti: 18, dv: 5, te: 8, rhe: 88, days: 30 })
+    const r = assessMould({ ...h, profile: { build_period: 'voor_1945', room: 'slaapkamer' } })
+    const ti = (label: string) => r.year.find((m) => m.label === label)!.ti
+    expect(ti('mei')).toBeGreaterThan(ti('apr'))
+    expect(ti('mei')).toBeLessThan(ti('jun'))
   })
 
   it('wat helpt: elke maatregel verlaagt de hoek, alles samen het meest', () => {
