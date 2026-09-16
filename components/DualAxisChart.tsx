@@ -10,7 +10,7 @@ import {
   ReferenceLine,
   Legend,
 } from 'recharts'
-import { buildTimeAxis, makeTimeTick, tooltipLabel, insertGaps } from '@/components/chartAxis'
+import { buildTimeAxis, makeTimeTick, tooltipLabel, insertGaps, dayNight, dayNightMarks } from '@/components/chartAxis'
 import { useChartColors } from '@/lib/useChartColors'
 
 export interface DualPoint {
@@ -31,10 +31,10 @@ interface Props {
   bRefLine?: { value: number; label: string; color: string }
 }
 
-function Tip({ active, payload, aLabel, bLabel, aUnit, bUnit, aColor, bColor }: any) {
+function Tip({ active, payload, aLabel, bLabel, aUnit, bUnit, aColor, bColor, withPart }: any) {
   if (!active || !payload?.length) return null
   const t: number = payload[0]?.payload?.t
-  const label = tooltipLabel(t)
+  const label = tooltipLabel(t, withPart)
   const a = payload.find((p: any) => p.dataKey === 'a')?.value
   const b = payload.find((p: any) => p.dataKey === 'b')?.value
   return (
@@ -74,10 +74,12 @@ export default function DualAxisChart({
     )
   const { ticks, step } = buildTimeAxis(data)
   const plotData = insertGaps(data, ['a', 'b'])
+  const dn = dayNight(data[0].t, data[data.length - 1].t)
 
   return (
     <ResponsiveContainer width="100%" height={height}>
       <ComposedChart data={plotData} margin={{ top: 8, right: 8, left: 0, bottom: 12 }}>
+        {dayNightMarks(dn, c, 'a')}
         <CartesianGrid strokeDasharray="3 3" stroke={c.grid} vertical={false} />
         <XAxis
           dataKey="t"
@@ -109,6 +111,7 @@ export default function DualAxisChart({
               bUnit={bUnit}
               aColor={aColor}
               bColor={bColor}
+              withPart={!!dn}
             />
           }
         />

@@ -8,6 +8,9 @@
 //   step ≥ 1 day  → just the date (3 jun) so multi-day periods read as days
 //   step ≥ ~1 mo  → month + year
 
+import { ReferenceArea, ReferenceLine } from 'recharts'
+import { alpha, type ChartColors } from '@/lib/useChartColors'
+
 const TZ = 'Europe/Amsterdam'
 const H = 3_600_000
 const D = 24 * H
@@ -80,9 +83,79 @@ export function insertGaps<T extends { t: number }>(data: T[], nullKeys: string[
   return out
 }
 
-/** Full date + time label for tooltips (Amsterdam), e.g. "wo 3 jun 14:30". */
-export function tooltipLabel(t: number): string {
-  return new Date(t).toLocaleString('nl-NL', {
+// ── Dag en nacht ──────────────────────────────────────────────────────────────
+// Een lijn met alleen tijden eronder zegt niet waar de nacht zit of waar een dag ophoudt.
+// Tot 15 dagen krijgt elke tijdgrafiek daarom een grijze band voor de nacht en een lijn op
+// middernacht, tot 8 dagen met weekdag en datum erbij (daarboven lopen de labels door elkaar).
+// De nacht is 23:00–07:00, dezelfde uren als het nachtadvies (lib/reportAnalytics.ts,
+// nachtCo2). Langer dan 15 dagen wordt het streepjescode: dan niet.
+
+export const NIGHT_FROM_H = 23
+export const NIGHT_TO_H = 7
+const DAYNIGHT_MAX_SPAN = 15 * D
+const DAY_LABEL_MAX_SPAN = 8 * D
+
+const localHourOf = (t: number) => +new Date(t).toLocaleString('en-GB', { hour: '2-digit', hour12: false, timeZone: TZ }) % 24
+
+/** Dagdeel in Amsterdamse tijd, zoals de nachtbanden het tekenen. */
+export function dayPart(t: number): 'nacht' | 'ochtend' | 'middag' | 'avond' {
+  const h = localHourOf(t)
+  if (h >= NIGHT_FROM_H || h < NIGHT_TO_H) return 'nacht'
+  if (h < 12) return 'ochtend'
+  if (h < 18) return 'middag'
+  return 'avond'
+}
+
+export interface DayNight {
+  nights: [number, number][] // 23:00–07:00, afgekapt op het venster
+  midnights: { t: number; label: string | null }[]
+}
+
+/** Nachtbanden en middernachten (UTC ms) binnen [t0, t1]; null als het venster te lang is. */
+export function dayNight(t0: number, t1: number): DayNight | null {
+  const span = t1 - t0
+  if (!(span > 0) || span > DAYNIGHT_MAX_SPAN) return null
+  // Lokale kloktijd (als "UTC" gerekend) → echte UTC. De offset wisselt alleen bij zomertijd.
+  const toUtc = (local: number) => local - amsOffsetMs(local - amsOffsetMs(local))
+  const short = span > 3 * D
+  const firstDay = Math.floor((t0 + amsOffsetMs(t0)) / D) * D - D // ook de nacht die vóór t0 begon
+  const nights: [number, number][] = []
+  const midnights: { t: number; label: string | null }[] = []
+  for (let day = firstDay; toUtc(day) <= t1; day += D) {
+    const mid = toUtc(day)
+    if (mid > t0 && mid < t1) {
+      const label = span > DAY_LABEL_MAX_SPAN ? null : new Date(mid).toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', ...(short ? {} : { month: 'short' }), timeZone: TZ })
+      midnights.push({ t: mid, label })
+    }
+    const s = Math.max(t0, toUtc(day + NIGHT_FROM_H * H))
+    const e = Math.min(t1, toUtc(day + D + NIGHT_TO_H * H))
+    if (e > s) nights.push([s, e])
+  }
+  return { nights, midnights }
+}
+
+/**
+ * Nachtbanden + middernachtlijnen als Recharts-kinderen. Plaats ze vóór de lijnen, zodat de
+ * lijn erboven ligt. `yAxisId` alleen bij grafieken met meerdere y-assen.
+ */
+export function dayNightMarks(dn: DayNight | null, c: ChartColors, yAxisId?: string) {
+  if (!dn) return null
+  const y = yAxisId ? { yAxisId } : {}
+  return [
+    ...dn.nights.map(([x1, x2]) => (
+      <ReferenceArea key={`n${x1}`} {...y} x1={x1} x2={x2} fill={alpha(c.muted, 0.09)} fillOpacity={1} stroke="none" ifOverflow="hidden" />
+    )),
+    ...dn.midnights.map((m) => (
+      <ReferenceLine key={`m${m.t}`} {...y} x={m.t} stroke={alpha(c.muted, 0.55)} strokeWidth={1}
+        label={m.label ? { value: m.label, position: 'insideTopLeft', fontSize: 9.5, fontWeight: 600, fill: c.muted, offset: 4 } : undefined} />
+    )),
+  ]
+}
+
+/** Datum + tijd voor tooltips (Amsterdam), e.g. "wo 3 jun 14:30"; met `withPart` ook het dagdeel
+ *  ("· middag") — alleen zinvol als de grafiek dag en nacht tekent (korte vensters, kleine blokken). */
+export function tooltipLabel(t: number, withPart = false): string {
+  const when = new Date(t).toLocaleString('nl-NL', {
     weekday: 'short',
     day: 'numeric',
     month: 'short',
@@ -90,6 +163,7 @@ export function tooltipLabel(t: number): string {
     minute: '2-digit',
     timeZone: TZ,
   })
+  return withPart ? `${when} · ${dayPart(t)}` : when
 }
 
 const timeStr = (d: Date) => d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', timeZone: TZ })

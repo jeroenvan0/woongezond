@@ -1,8 +1,8 @@
 'use client'
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceArea } from 'recharts'
 import { ProcessedRow } from '@/lib/types'
-import { buildTimeAxis, makeTimeTick, tooltipLabel, insertGaps } from '@/components/chartAxis'
-import { useChartColors } from '@/lib/useChartColors'
+import { buildTimeAxis, makeTimeTick, tooltipLabel, insertGaps, dayNight, dayNightMarks } from '@/components/chartAxis'
+import { useChartColors, alpha } from '@/lib/useChartColors'
 
 interface Props {
   data: ProcessedRow[]
@@ -12,18 +12,20 @@ interface Props {
   unit: string
   height?: number
   refLines?: { value: number; label: string; color: string }[]
+  /** Kleurvlakken achter de lijn (bv. CO₂ goed/verhoogd/hoog), zodat je zonder getallen ziet of het goed zit. */
+  zones?: { from: number; to: number; color: string }[]
   maWindow?: number
   /** Recharts syncId — charts sharing one move their cursor/tooltip together (4.3). */
   syncId?: string
 }
 
-function CustomTooltip({ active, payload, unit, color }: any) {
+function CustomTooltip({ active, payload, unit, color, withPart }: any) {
   if (!active || !payload?.length) return null
   const row = payload[0]?.payload
   const val = row?.v
   const band: [number, number] | undefined = row?.band
   const t: number = row?.t
-  const label = tooltipLabel(t)
+  const label = tooltipLabel(t, withPart)
   return (
     <div className="custom-tooltip">
       <div style={{ color: 'var(--muted)', fontSize: 11, marginBottom: 2 }}>{label}</div>
@@ -41,7 +43,7 @@ function CustomTooltip({ active, payload, unit, color }: any) {
 // schimmelrisico zijn afgeleid en hebben geen eigen min/max — daar blijft het bij de lijn.
 const BANDED = new Set(['co2', 'temp', 'rh'])
 
-export default function SensorChart({ data, dataKey, color, fillColor, unit, height = 200, refLines, syncId }: Props) {
+export default function SensorChart({ data, dataKey, color, fillColor, unit, height = 200, refLines, zones, syncId }: Props) {
   const c = useChartColors()
   // Een lege grafiek reserveerde de volle hoogte (200px). Op een telefoon leverde dat
   // schermen vol "Geen data" op — precies waar je juist wilt kunnen doorscrollen naar wat
@@ -64,6 +66,7 @@ export default function SensorChart({ data, dataKey, color, fillColor, unit, hei
   }))
   const { ticks, step } = buildTimeAxis(chartData)
   const plotData = insertGaps(chartData, ['v', 'band'])
+  const dn = dayNight(chartData[0].t, chartData[chartData.length - 1].t)
 
   return (
     <ResponsiveContainer width="100%" height={height}>
@@ -74,6 +77,10 @@ export default function SensorChart({ data, dataKey, color, fillColor, unit, hei
             <stop offset="95%" stopColor={color} stopOpacity={0.01} />
           </linearGradient>
         </defs>
+        {zones?.map((z) => (
+          <ReferenceArea key={`z${z.from}`} y1={z.from} y2={z.to} fill={alpha(z.color, 0.07)} fillOpacity={1} stroke="none" ifOverflow="hidden" />
+        ))}
+        {dayNightMarks(dn, c)}
         <CartesianGrid strokeDasharray="3 3" stroke={c.grid} vertical={false} />
         <XAxis
           dataKey="t"
@@ -88,7 +95,7 @@ export default function SensorChart({ data, dataKey, color, fillColor, unit, hei
           interval={0}
         />
         <YAxis tick={{ fontSize: 10, fill: 'var(--muted)' }} tickLine={false} axisLine={false} width={36} />
-        <Tooltip content={<CustomTooltip unit={unit} color={color} />} />
+        <Tooltip content={<CustomTooltip unit={unit} color={color} withPart={!!dn} />} />
         {refLines?.map(l => (
           <ReferenceLine key={l.value} y={l.value} stroke={l.color} strokeDasharray="4 3" strokeWidth={1.2}
             label={{ value: l.label, position: 'insideTopLeft', fontSize: 10, fill: l.color }} />

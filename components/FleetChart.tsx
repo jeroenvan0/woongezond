@@ -1,7 +1,7 @@
 'use client'
 import { useMemo } from 'react'
 import { ComposedChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceArea, ReferenceLine } from 'recharts'
-import { buildTimeAxis, makeTimeTick, tooltipLabel, insertGaps } from '@/components/chartAxis'
+import { buildTimeAxis, makeTimeTick, tooltipLabel, insertGaps, dayNight, dayNightMarks } from '@/components/chartAxis'
 import { useChartColors } from '@/lib/useChartColors'
 
 // Alle sensoren van een vloot in één grafiek (cockpit › Analyse). Elke sensor is een lijn;
@@ -29,13 +29,13 @@ interface Props {
   outdoorLabel?: string
 }
 
-function Tip({ active, payload, unit, decimals, names }: any) {
+function Tip({ active, payload, unit, decimals, names, withPart }: any) {
   if (!active || !payload?.length) return null
   const t: number = payload[0]?.payload?.t
   const rows = payload.filter((p: any) => p.value != null).sort((a: any, b: any) => b.value - a.value)
   return (
     <div className="custom-tooltip">
-      <div style={{ color: 'var(--muted)', fontSize: 11, marginBottom: 4 }}>{tooltipLabel(t)}</div>
+      <div style={{ color: 'var(--muted)', fontSize: 11, marginBottom: 4 }}>{tooltipLabel(t, withPart)}</div>
       {rows.map((p: any) => (
         <div key={p.dataKey} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, color: p.stroke, fontWeight: 600, fontSize: 12 }}>
           <span>{names[p.dataKey] ?? p.dataKey}</span>
@@ -79,14 +79,16 @@ export default function FleetChart({ series, unit, decimals = 0, height = 300, h
     return <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--muted)', fontSize: 13 }}>Geen data</div>
   }
   const { ticks, step } = buildTimeAxis(data)
+  const dn = dayNight(data[0].t, data[data.length - 1].t)
 
   return (
     <ResponsiveContainer width="100%" height={height}>
       <ComposedChart data={data} margin={{ top: 8, right: 12, left: 0, bottom: 12 }}>
+        {dayNightMarks(dn, c)}
         <CartesianGrid strokeDasharray="3 3" stroke={c.grid} vertical={false} />
         <XAxis dataKey="t" type="number" scale="time" domain={['dataMin', 'dataMax']} ticks={ticks} tick={makeTimeTick(step, ticks)} tickLine={false} axisLine={false} height={34} interval={0} />
         <YAxis tick={{ fontSize: 10, fill: 'var(--muted)' }} tickLine={false} axisLine={false} width={40} domain={['auto', 'auto']} />
-        <Tooltip content={<Tip unit={unit} decimals={decimals} names={names} />} />
+        <Tooltip content={<Tip unit={unit} decimals={decimals} names={names} withPart={!!dn} />} />
         {bands?.map((b, i) => (
           <ReferenceArea key={i} x1={b.start} x2={b.end} fill={b.color} fillOpacity={0.14} stroke={b.color} strokeOpacity={0.5} label={{ value: b.label, position: 'insideTop', fontSize: 9, fill: b.color }} />
         ))}

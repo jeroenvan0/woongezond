@@ -11,7 +11,7 @@ import {
   ResponsiveContainer,
   ReferenceLine,
 } from 'recharts'
-import { buildTimeAxis, makeTimeTick, tooltipLabel, insertGaps } from '@/components/chartAxis'
+import { buildTimeAxis, makeTimeTick, tooltipLabel, insertGaps, dayNight, dayNightMarks } from '@/components/chartAxis'
 import { useChartColors } from '@/lib/useChartColors'
 
 export interface Point {
@@ -36,11 +36,11 @@ interface Props {
   id?: string
 }
 
-function Tip({ active, payload, unit, color, decimals }: any) {
+function Tip({ active, payload, unit, color, decimals, withPart }: any) {
   if (!active || !payload?.length) return null
   const val = payload[0]?.value
   const t: number = payload[0]?.payload?.t
-  const label = tooltipLabel(t)
+  const label = tooltipLabel(t, withPart)
   return (
     <div className="custom-tooltip">
       <div style={{ color: 'var(--muted)', fontSize: 11, marginBottom: 2 }}>{label}</div>
@@ -80,6 +80,7 @@ export default function TimeSeriesChart({
 
   const { ticks, step } = buildTimeAxis(data)
   const plotData = insertGaps(data, ['v'])
+  const dn = dayNight(data[0].t, data[data.length - 1].t)
   const Chart: any = area ? AreaChart : LineChart
 
   return (
@@ -91,6 +92,7 @@ export default function TimeSeriesChart({
             <stop offset="95%" stopColor={color} stopOpacity={0.01} />
           </linearGradient>
         </defs>
+        {dayNightMarks(dn, c)}
         <CartesianGrid strokeDasharray="3 3" stroke={c.grid} vertical={false} />
         <XAxis
           dataKey="t"
@@ -105,7 +107,7 @@ export default function TimeSeriesChart({
           interval={0}
         />
         <YAxis tick={{ fontSize: 10, fill: 'var(--muted)' }} tickLine={false} axisLine={false} width={36} />
-        <Tooltip content={<Tip unit={unit} color={color} decimals={decimals} />} />
+        <Tooltip content={<Tip unit={unit} color={color} decimals={decimals} withPart={!!dn} />} />
         {refLines?.map((l) => (
           <ReferenceLine
             key={`${l.value}-${l.label}`}
