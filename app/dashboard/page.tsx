@@ -39,6 +39,7 @@ const PERIOD_OPTIONS = [
   { label: '1 uur', value: 60 },
   { label: '6 uur', value: 360 },
   { label: '24 uur', value: 1440 },
+  { label: '3 dagen', value: 4320 },
   { label: '7 dagen', value: 10080 },
   { label: '30 dagen', value: 43200 },
   { label: '1 jaar', value: 525600 },

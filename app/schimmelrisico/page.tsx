@@ -18,6 +18,7 @@ import {
 } from '@/lib/mouldRisk'
 import { fetchMouldInputs } from '@/lib/mouldLoad'
 import { useStickyState } from '@/lib/useStickyState'
+import { useIsMobile } from '@/lib/useIsMobile'
 import { useChartColors } from '@/lib/useChartColors'
 import { useSelectedDevice, useDeviceSelectionReady } from '@/lib/useSelectedDevice'
 import { ChevronDown, ChevronUp, FlaskConical, Snowflake, Sun, Droplets, Home } from 'lucide-react'
@@ -148,8 +149,39 @@ function Chip({ level, children }: { level: Level | null; children: React.ReactN
   )
 }
 
+const whatIfGrid: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 8.5rem 8.5rem 6.5rem', alignItems: 'center', gap: 10 }
+
+// Eén regel in "Wat helpt": kans en vochtigheid in aparte, benoemde kolommen — naast elkaar
+// zonder kop werden "kans 66%" en "hoek 100%" als twee kansen gelezen.
+function WhatIfRow({ mobile, label, pVisible, rhSurface, level, current, dim }: { mobile: boolean; label: string; pVisible: number; rhSurface: number; level: Level; current?: boolean; dim?: boolean }) {
+  const hoek = rhSurface >= 100 ? 'condens' : `${nl(rhSurface)}% RV`
+  const border = current ? { borderBottom: '1px solid var(--border)' } : {}
+  const valueColor = dim ? 'var(--muted)' : 'var(--text)'
+  if (mobile) {
+    return (
+      <div role="row" style={{ padding: '8px 0', fontSize: 'var(--fs-md)', ...border }}>
+        <div role="cell" style={{ color: current ? 'var(--muted)' : 'var(--text)', marginBottom: 4 }}>{label}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontVariantNumeric: 'tabular-nums' }}>
+          <span role="cell" style={{ color: valueColor }}><span style={{ color: 'var(--subtle)', fontSize: 'var(--fs-sm)' }}>Kans </span>{pct(pVisible)}</span>
+          <span role="cell" style={{ color: valueColor }}><span style={{ color: 'var(--subtle)', fontSize: 'var(--fs-sm)' }}>Hoek jan. </span>{hoek}</span>
+          <span role="cell" style={{ marginLeft: 'auto' }}><Pill level={level} /></span>
+        </div>
+      </div>
+    )
+  }
+  return (
+    <div role="row" style={{ ...whatIfGrid, padding: '5px 0', fontSize: 'var(--fs-md)', fontVariantNumeric: 'tabular-nums', ...border }}>
+      <span role="cell" style={{ color: current ? 'var(--muted)' : 'var(--text)', minWidth: 0 }}>{label}</span>
+      <span role="cell" style={{ color: valueColor, textAlign: 'right' }}>{pct(pVisible)}</span>
+      <span role="cell" style={{ color: valueColor, textAlign: 'right' }}>{hoek}</span>
+      <span role="cell" style={{ textAlign: 'right' }}><Pill level={level} /></span>
+    </div>
+  )
+}
+
 function HouseProfileSection({ r, isDemo, profile }: { r: MouldAssessment; isDemo: boolean; profile?: MouldInputs['profile'] }) {
   const w = r.winter
+  const mobile = useIsMobile()
   return (
     <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 'var(--r-lg)', padding: '18px 20px', boxShadow: 'var(--shadow-sm)', marginBottom: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}>
@@ -174,20 +206,20 @@ function HouseProfileSection({ r, isDemo, profile }: { r: MouldAssessment; isDem
       </p>
 
       <div style={{ fontSize: 'var(--fs-md)', fontWeight: 700, color: 'var(--text)', marginBottom: 6 }}>Wat helpt deze winter?</div>
-      <div style={{ display: 'grid', gap: 6 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', fontSize: 'var(--fs-md)', padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
-          <span style={{ color: 'var(--muted)' }}>Zoals het nu gaat</span>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><span style={{ color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>kans {pct(w.pVisible)} <span style={{ color: 'var(--subtle)', fontSize: 'var(--fs-sm)' }}>(hoek {nl(w.rhSurface)}% RV)</span></span><Pill level={w.level} /></span>
-        </div>
-        {r.whatIf.map((v) => (
-          <div key={v.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', fontSize: 'var(--fs-md)', padding: '4px 0' }}>
-            <span style={{ color: 'var(--text)', minWidth: 0 }}>{v.label}</span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}><span style={{ color: v.better ? 'var(--text)' : 'var(--muted)', fontVariantNumeric: 'tabular-nums' }}>kans {pct(v.pVisible)} <span style={{ color: 'var(--subtle)', fontSize: 'var(--fs-sm)' }}>(hoek {nl(v.rhSurface)}% RV)</span></span><Pill level={v.level} /></span>
+      <div role="table" aria-label="Wat helpt deze winter">
+        {!mobile && (
+          <div role="row" style={{ ...whatIfGrid, fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.05em', paddingBottom: 4 }}>
+            <span role="columnheader">Maatregel</span>
+            <span role="columnheader" style={{ textAlign: 'right' }}>Kans op schimmel</span>
+            <span role="columnheader" style={{ textAlign: 'right' }}>Hoek in januari</span>
+            <span role="columnheader" style={{ textAlign: 'right' }}>Risico</span>
           </div>
-        ))}
+        )}
+        <WhatIfRow mobile={mobile} label="Zoals het nu gaat" pVisible={w.pVisible} rhSurface={w.rhSurface} level={w.level} current />
+        {r.whatIf.map((v) => <WhatIfRow key={v.key} mobile={mobile} label={v.label} pVisible={v.pVisible} rhSurface={v.rhSurface} level={v.level} dim={!v.better} />)}
       </div>
       <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--subtle)', margin: '8px 0 0', lineHeight: 1.5 }}>
-        Kans: zichtbare schimmel in het komende seizoen. Hoek: op een gemiddelde januaridag. Ventileren telt als 1,5 g/m³ minder vocht; na-isolatie als temperatuurfactor 0,75.
+        Kans op schimmel: kans dat er in het komende seizoen zichtbare schimmel komt op de koudste plek. Hoek in januari: de verwachte luchtvochtigheid op die plek op een gemiddelde januaridag; bij 100% slaat er vocht neer (condens). Ventileren telt als 1,5 g/m³ minder vocht; na-isolatie als temperatuurfactor 0,75.
       </p>
     </div>
   )
@@ -264,7 +296,7 @@ export default function SchimmelrisicoPage() {
               <Pill level={r.now.level} />
               <Fact>
                 Luchtvochtigheid in de koudste hoek nu <strong style={{ color: 'var(--text)' }}>{r.now.rhSurface != null ? `${nl(r.now.rhSurface)}% RV` : '–'}</strong>. Schimmel groeit pas boven ~80% RV
-                {r.now.pctAbove80 != null && <>; dat was de afgelopen 14 dagen {r.now.pctAbove80 > 0 ? <><strong style={{ color: 'var(--text)' }}>{nl(r.now.pctAbove80)}%</strong> van de tijd</> : 'niet'} het geval</>}.
+                {r.now.pctAbove80 != null && <>; dat was {inputs.isDemo || inputs.spanDays >= 14 ? 'de afgelopen 14 dagen' : `sinds de sensor meet (${inputs.spanDays < 1 ? 'minder dan een dag' : `${nl(inputs.spanDays, 0)} dag${inputs.spanDays >= 1.5 ? 'en' : ''}`})`} {r.now.pctAbove80 > 0 ? <><strong style={{ color: 'var(--text)' }}>{nl(r.now.pctAbove80)}%</strong> van de tijd</> : 'niet'} het geval</>}.
               </Fact>
               <Fact>Schimmelindex {nl(r.now.mi, 2)} van 6: {mouldIndexText(r.now.mi)}.{r.now.condensHours > 0 && <> {nl(r.now.condensHours)} uur condens in de hoek.</>}</Fact>
               {!r.now.outdoorMeasured && <Fact>Geen weerdata: gerekend met de gemiddelde buitentemperatuur van deze maand.</Fact>}
