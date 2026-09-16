@@ -30,7 +30,7 @@ import { freshness } from '@/lib/freshness'
 import { useChartColors, alpha } from '@/lib/useChartColors'
 import { useSelectedDevice, useDeviceSelectionReady } from '@/lib/useSelectedDevice'
 import { useIsMobile } from '@/lib/useIsMobile'
-import { useSeries } from '@/lib/useSeries'
+import { useSeries, POLL_MS } from '@/lib/useSeries'
 import { Wind, Thermometer, Droplets, Bug, Droplet, Activity, MapPin, Home, ArrowRight } from 'lucide-react'
 import { assessMould, growthSentence, type Level, type MouldAssessment } from '@/lib/mouldRisk'
 import { fetchMouldInputs } from '@/lib/mouldLoad'
@@ -57,6 +57,7 @@ interface ChartDef {
   col: string
   height?: number
   refLines?: { value: number; label: string; color: string }[]
+  zones?: { from: number; to: number; color: string }[]
 }
 
 const TABS = [
@@ -215,10 +216,15 @@ export default function DashboardPage() {
       setLatestTs(rows[0]?.created_at ? new Date(rows[0].created_at) : null)
     }
     loadLatest()
-    const id = setInterval(loadLatest, 60000)
+    // Zelfde ritme als de grafiek (POLL_MS); een verborgen tabblad haalt niets op en haalt bij
+    // terugkomen meteen de laatste meting.
+    const id = setInterval(() => { if (document.visibilityState === 'visible') loadLatest() }, POLL_MS)
+    const onVis = () => { if (document.visibilityState === 'visible') loadLatest() }
+    document.addEventListener('visibilitychange', onVis)
     return () => {
       cancelled = true
       clearInterval(id)
+      document.removeEventListener('visibilitychange', onVis)
     }
   }, [supabase, selectedDevice, deviceReady])
 
@@ -509,10 +515,14 @@ export default function DashboardPage() {
         const CHARTS: Record<string, ChartDef[]> = {
           metingen: [
             { key: 'co2', chip: 'CO₂', label: 'CO₂ (ppm)', unit: 'ppm', color: chartC.co2, fill: 0.1, digits: 0, col: 'CO₂ (ppm)',
-              refLines: [{ value: 1000, label: '1000 ppm', color: chartC.warn }, { value: 1500, label: '1500 ppm', color: chartC.crit }] },
+              refLines: [{ value: 1000, label: '1000 ppm', color: chartC.warn }, { value: 1500, label: '1500 ppm', color: chartC.crit }],
+              // Zelfde grenzen als de tegel (co2Status): groen goed, oranje verhoogd/hoog, rood kritiek.
+              zones: [{ from: 0, to: 800, color: chartC.ok }, { from: 800, to: 1500, color: chartC.warn }, { from: 1500, to: 100000, color: chartC.crit }] },
             { key: 'temp', chip: 'Temp', label: 'Temperatuur (°C)', unit: '°C', color: chartC.temp, fill: 0.09, digits: 1, col: 'Temp (°C)' },
             { key: 'rh', chip: 'Vocht', label: 'Relatieve vochtigheid (%)', unit: '%', color: chartC.rh, fill: 0.1, digits: 1, col: 'RV (%)',
-              refLines: [{ value: 60, label: '60%', color: chartC.warn }, { value: 70, label: '70%', color: chartC.crit }] },
+              refLines: [{ value: 60, label: '60%', color: chartC.warn }, { value: 70, label: '70%', color: chartC.crit }],
+              // rhStatus: 40–60% ideaal, 60–70% verhoogd, boven 70% te hoog.
+              zones: [{ from: 40, to: 60, color: chartC.ok }, { from: 60, to: 70, color: chartC.warn }, { from: 70, to: 100, color: chartC.crit }] },
           ],
           // De oude "Schimmelrisico (0–100)" (vaste 3,5 °C-muur) is weg: het schimmelrisico staat
           // op /schimmelrisico met het model van lib/mouldRisk.ts.
@@ -563,6 +573,7 @@ export default function DashboardPage() {
                     unit={c.unit}
                     height={c.height}
                     refLines={c.refLines}
+                    zones={c.zones}
                   />
                   <ChartTable
                     caption={`${c.label} per meetpunt`}

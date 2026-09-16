@@ -394,8 +394,25 @@ function surfaceLevel(rh: number): Level {
   return 'laag'
 }
 
-const dayKey = (ts: number) => new Date(ts).toLocaleDateString('sv-SE', { timeZone: 'Europe/Amsterdam' })
-const localHour = (ts: number) => +new Date(ts).toLocaleString('en-GB', { timeZone: 'Europe/Amsterdam', hour: '2-digit', hour12: false }) % 24
+// Dag en uur in Amsterdamse tijd. Intl-opmaak kost ~30 µs per aanroep en liep hier voor elke
+// meting twee keer: ~70% van de rekentijd van assessMould. De klok verschuift alleen op hele
+// uren (zomertijd), dus één opmaak per UTC-uur is exact; dezelfde uren komen steeds terug.
+const AMS_HOUR = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Amsterdam', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hour12: false })
+const hourCache = new Map<number, { day: string; hour: number }>()
+function amsterdamHour(ts: number): { day: string; hour: number } {
+  const k = Math.floor(ts / 3_600_000)
+  let v = hourCache.get(k)
+  if (!v) {
+    const parts = AMS_HOUR.formatToParts(new Date(k * 3_600_000))
+    const get = (t: string) => parts.find((p) => p.type === t)?.value ?? ''
+    v = { day: `${get('year')}-${get('month')}-${get('day')}`, hour: +get('hour') % 24 }
+    if (hourCache.size > 50_000) hourCache.clear()
+    hourCache.set(k, v)
+  }
+  return v
+}
+const dayKey = (ts: number) => amsterdamHour(ts).day
+const localHour = (ts: number) => amsterdamHour(ts).hour
 
 export function assessMould(inp: MouldInputs): MouldAssessment {
   const cls = inp.material ?? 'S'

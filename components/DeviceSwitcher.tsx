@@ -45,6 +45,11 @@ export default function DeviceSwitcher() {
       // gedeactiveerd — geeft alleen lege grafieken. Val dan terug op "alle sensoren".
       const sel = getSelectedDevice()
       if (sel && !list.some((d) => d.id === sel)) setSelectedDevice(null)
+      // Eén sensor en nog geen keuze: kies die. "Alle sensoren" laat de server over álle
+      // metingen in het venster lopen (ook die van andere sensoren, weggefilterd door RLS) en
+      // was daardoor 2–5 s trager dan dezelfde vraag per sensor. De switcher is dan verborgen,
+      // dus de bewoner merkt er niets van; de keuze blijft staan voor het volgende bezoek.
+      else if (!sel && list.length === 1) setSelectedDevice(list[0].id)
     })()
     return () => { cancelled = true }
   }, [supabase])
