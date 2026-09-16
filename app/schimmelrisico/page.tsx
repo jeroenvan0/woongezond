@@ -201,7 +201,7 @@ function HouseProfileSection({ r, isDemo, profile }: { r: MouldAssessment; isDem
       <p style={{ fontSize: 'var(--fs-md)', color: 'var(--muted)', margin: '0 0 6px', lineHeight: 1.5 }}>{growthSentence(r.yearGrowth)}</p>
       <MouldYearChart data={r.year} />
       <p style={{ fontSize: 'var(--fs-xs)', color: 'var(--subtle)', margin: '4px 0 16px', lineHeight: 1.5 }}>
-        Balken: verwachte vochtigheid op de koudste plek bij een gemiddelde maand (ISO 13788-maandmethode); oranje = boven 80%, groei mogelijk; rood = zichtbare schimmel verwacht. Stippen: berekend uit de eigen metingen.
+        Balken: verwachte vochtigheid op de koudste plek bij een gemiddelde maand (ISO 13788-maandmethode); rode stippellijn = 80%, daarboven kan schimmel groeien; groen = onder 80%, oranje = 80–95%, groei mogelijk; rood = 95% of meer, zo nat dat schimmel snel groeit.{r.year.some((m) => m.visible) && ' Rode band erboven: maanden waarin we zichtbare schimmel verwachten; die gaat in een drogere maand niet vanzelf weg.'} Stippen: berekend uit de eigen metingen.
         Koude nachten en vochtige dagen liggen hoger dan het maandgemiddelde.
       </p>
 

@@ -243,10 +243,15 @@ The new model, all pure functions with tests in `tests/mouldRisk.test.ts`:
    *koude plekken*, *veel vocht*, *in balans* — also a first hint at who can fix it.
 7. **Year outlook** (ISO 13788 monthly method): 2 months back to 9 ahead, each month at its
    normal outdoor T/RH (De Bilt), Δv0 on the seasonal line, indoor at the winter temperature
-   when θ_e ≤ 15 °C and ~4 °C above outdoor otherwise; souterrain against the ground. The VTT
-   index is carried forward from today in 6-hour steps → "growth starts in <month>, visible in
-   <month>". Measured months are overlaid (monthly mean cold-spot RH from real data). Monthly
-   means understate cold nights, so this is the calm case.
+   when θ_e ≤ 12 °C, ~4 °C above outdoor when θ_e ≥ 17 °C and linearly in between
+   (`heatingShare`; a hard switch at 15 °C made May winter and June summer, a 14-point jump);
+   souterrain against the ground. The VTT index is carried forward from today in 12-hour steps →
+   "growth starts in <month>, visible in <month>". Measured months are overlaid (monthly mean
+   cold-spot RH from real data). Monthly means understate cold nights, so this is the calm case.
+   The bar colour is that month's cold-spot RH only (`monthLevel`: < 80 % green, 80–95 % orange,
+   ≥ 95 % red — at ~10 °C growth at 95 % is ~5× that at 85 %). Months where the index is ≥ 3 get a
+   separate "zichtbare schimmel" band: visible mould built up in winter stays visible in a dry
+   June, so mixing it into the colour gave a red 70 % bar.
 8. **What helps** (January): −1.5 g/m³ (ventilation), laundry out (−1/−0.5), +2 °C, both,
    f 0.75 (insulation), and all together. Sensor 2: only "all together" leaves *hoog*.
 

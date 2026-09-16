@@ -254,7 +254,8 @@ export interface MonthOutlook {
   key: string          // 'YYYY-MM'
   label: string        // 'sep'
   te: number; ti: number; rhIndoor: number; rhSurface: number
-  level: Level
+  level: Level             // vocht in de hoek die maand: < 80% laag, 80–95% verhoogd (groei mogelijk), ≥ 95% hoog (snelle groei)
+  visible: boolean         // het groeimodel verwacht aan het eind van de maand zichtbare schimmel (index ≥ 3)
   measured: number | null // gemiddelde berekende RV op de koudste plek uit echte metingen
   mi: number | null        // verwachte schimmelindex aan het eind van de maand (alleen vooruit)
   isNow: boolean; isPast: boolean
@@ -341,6 +342,21 @@ export function winterIndoorAssumption(p?: Partial<HouseProfile> | null): number
   if (p?.room === 'slaapkamer' || p?.room === 'kinderkamer') return 17
   if (p?.room === 'woonkamer' || p?.room === 'keuken' || p?.room === 'badkamer') return 20
   return 18
+}
+
+/** Maandkleur in de jaarverwachting, alleen uit het vocht in de hoek die maand. De groei is
+ *  (bij 10 °C) bij 95% RV ~5× zo snel als bij 85%; daarboven is een maand echt nat. */
+export function monthLevel(rhSurface: number): Level {
+  if (rhSurface >= 95) return 'hoog'
+  if (rhSurface >= 80) return 'verhoogd'
+  return 'laag'
+}
+
+/** Deel van de maand dat de kamer op wintertemperatuur gestookt wordt: helemaal bij ≤ 12 °C
+ *  buiten, niet meer bij ≥ 17 °C, daartussen lineair. Een harde grens op 15 °C gaf een sprong
+ *  in de jaarverwachting (mei nog winter, juni ineens zomer). */
+export function heatingShare(te: number): number {
+  return Math.min(1, Math.max(0, (17 - te) / 5))
 }
 
 /**
@@ -500,11 +516,13 @@ export function assessMould(inp: MouldInputs): MouldAssessment {
 
   // Groei over het komende seizoen (maandmethode): elke maand bij zijn maandnormaal, de
   // vochtbelasting volgens de seizoenslijn, binnen in het stookseizoen de wintertemperatuur en
-  // daarbuiten ~4 °C boven buiten. De VTT-index loopt vanaf de huidige stand door.
+  // daarbuiten ~4 °C boven buiten, met een geleidelijke overgang (heatingShare). De VTT-index
+  // loopt vanaf de huidige stand door.
   const monthConditions = (mo: number, midMonth: number, dv0: number, tiX: number, fX: number) => {
     const teM = MONTH_NORMAL_C[mo]
     const teSurf = souterrain ? Math.min(teM, groundTemp(midMonth)) : teM
-    const tiM = teM <= 15 ? tiX : Math.max(tiX, teM + 4)
+    const h = heatingShare(teM)
+    const tiM = h * tiX + (1 - h) * Math.max(tiX, teM + 4)
     return { teM, tiM, ...projectAt(teM, MONTH_NORMAL_RH[mo], teSurf, tiM, dv0, fX) }
   }
   const season = (dv0: number, tiX: number, fX: number) => {
@@ -581,9 +599,10 @@ export function assessMould(inp: MouldInputs): MouldAssessment {
     const ms = measured.get(key)
     year.push({
       key, label: MONTH_SHORT[mo], te: c.teM, ti: +c.tiM.toFixed(1), rhIndoor: +c.rhIndoor.toFixed(0), rhSurface: +c.rhSurface.toFixed(0),
-      // Balkkleur: rood pas als het groeimodel zichtbare schimmel verwacht, oranje als de hoek
-      // boven 80% komt (groei mogelijk), anders groen.
-      level: k >= 0 && sMid.monthEnd[k] >= 3 ? 'hoog' : c.rhSurface >= 80 ? 'verhoogd' : 'laag',
+      // Kleur alleen uit het vocht van die maand; "zichtbaar" apart. Samen in één kleur gaf een
+      // rode junibalk van 70%: de schimmel van december is dan nog zichtbaar, maar juni is droog.
+      level: monthLevel(c.rhSurface),
+      visible: k >= 0 && sMid.monthEnd[k] >= 3,
       measured: ms?.length ? +mean(ms).toFixed(0) : null, mi: k >= 0 ? sMid.monthEnd[k] : null, isNow: k === 0, isPast: k < 0,
     })
   }

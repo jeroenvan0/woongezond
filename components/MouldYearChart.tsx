@@ -1,11 +1,13 @@
 'use client'
-import { ComposedChart, Bar, Line, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, LabelList } from 'recharts'
+import { ComposedChart, Bar, Line, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, ReferenceArea, LabelList } from 'recharts'
 import type { MonthOutlook } from '@/lib/mouldRisk'
 import { useChartColors, alpha, ChartColors } from '@/lib/useChartColors'
 
 // Jaarverwachting van het schimmelrisico (lib/mouldRisk.ts → year): per maand de verwachte
-// vochtigheid op de koudste plek, gekleurd naar risico, met de 80%-grens en — waar de sensor
-// al meet — de berekende waarde uit echte metingen als stippen.
+// vochtigheid op de koudste plek, gekleurd naar het vocht van die maand, met de 80%-grens en —
+// waar de sensor al meet — de berekende waarde uit echte metingen als stippen. Een band boven de
+// balken toont de maanden waarin het groeimodel zichtbare schimmel verwacht: dat is opgebouwd en
+// gaat in een droge maand niet weg, dus het hoort niet in de balkkleur.
 
 const barColor = (m: MonthOutlook, c: ChartColors) =>
   alpha(m.level === 'hoog' ? c.crit : m.level === 'verhoogd' ? c.warn : c.ok, m.isPast ? 0.35 : m.isNow ? 0.95 : 0.7)
@@ -21,6 +23,7 @@ function Tip({ active, payload }: any) {
         Buiten gem. {m.te.toLocaleString('nl-NL')} °C · binnen {m.ti.toLocaleString('nl-NL')} °C / {m.rhIndoor}%
         {m.measured != null && <><br />Uit metingen: {m.measured}%</>}
         {m.mi != null && <><br />Schimmelindex eind van de maand: {m.mi.toLocaleString('nl-NL')}</>}
+        {m.visible && <><br /><span style={{ color: 'var(--crit)' }}>Zichtbare schimmel verwacht; die gaat niet vanzelf weg.</span></>}
       </div>
     </div>
   )
@@ -38,18 +41,29 @@ export default function MouldYearChart({ data, height = 240 }: { data: MonthOutl
       </g>
     )
   }
+  // Aaneengesloten reeksen zichtbare maanden → één band per reeks.
+  const runs: [string, string][] = []
+  data.forEach((m, i) => {
+    if (!m.visible) return
+    if (i > 0 && data[i - 1].visible) runs[runs.length - 1][1] = m.label
+    else runs.push([m.label, m.label])
+  })
   return (
     <ResponsiveContainer width="100%" height={height}>
       <ComposedChart data={data} margin={{ top: 22, right: 8, left: 0, bottom: 8 }}>
         <CartesianGrid strokeDasharray="3 3" stroke={c.grid} vertical={false} />
         <XAxis dataKey="label" tick={tick} tickLine={false} axisLine={false} interval={0} height={28} />
-        <YAxis domain={[40, 100]} ticks={[40, 60, 80, 100]} tick={{ fontSize: 10, fill: 'var(--muted)' }} tickLine={false} axisLine={false} width={40} unit="%" />
+        <YAxis domain={[40, runs.length ? 116 : 100]} ticks={[40, 60, 80, 100]} tick={{ fontSize: 10, fill: 'var(--muted)' }} tickLine={false} axisLine={false} width={40} unit="%" />
         <Tooltip content={<Tip />} cursor={{ fill: alpha(c.muted, 0.08) }} />
         <Bar dataKey="rhSurface" name="Verwacht" radius={[3, 3, 0, 0]} maxBarSize={40} isAnimationActive={false}>
           {data.map((m, i) => <Cell key={i} fill={barColor(m, c)} />)}
           <LabelList dataKey="rhSurface" position="top" style={{ fontSize: 9.5, fill: c.muted }} />
         </Bar>
-        <ReferenceLine y={80} stroke={c.crit} strokeDasharray="4 3" label={{ value: '80% — schimmel kan groeien', position: 'insideTopRight', fontSize: 10, fill: c.crit }} />
+        {runs.map(([x1, x2]) => (
+          <ReferenceArea key={x1} x1={x1} x2={x2} y1={107} y2={116} fill={alpha(c.crit, 0.14)} fillOpacity={1} stroke="none" ifOverflow="extendDomain"
+            label={{ value: 'zichtbare schimmel', position: 'center', fontSize: 10, fontWeight: 600, fill: c.crit }} />
+        ))}
+        <ReferenceLine y={80} stroke={c.crit} strokeDasharray="4 3" />
         <Line dataKey="measured" name="Uit metingen" stroke="none" dot={{ r: 4, fill: c.text, stroke: c.surface, strokeWidth: 1.5 }} isAnimationActive={false} connectNulls={false} />
       </ComposedChart>
     </ResponsiveContainer>
