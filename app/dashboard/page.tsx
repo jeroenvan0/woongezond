@@ -11,6 +11,7 @@ import ChartCard from '@/components/ChartCard'
 import ChatWidget from '@/components/ChatWidget'
 import MLPredictionCard from '@/components/MLPredictionCard'
 import NightOutlookCard from '@/components/NightOutlookCard'
+import Co2Explainer from '@/components/Co2Explainer'
 import ContinuityChip from '@/components/ContinuityChip'
 import DataBanner from '@/components/DataBanner'
 import FirstRunNotice from '@/components/FirstRunNotice'
@@ -568,6 +569,7 @@ export default function DashboardPage() {
                     columns={[{ key: 't', label: 'Tijd' }, { key: 'v', label: c.col }]}
                     rows={displayed.map((r) => ({ t: fmtTs(r.ts), v: r[c.key].toFixed(c.digits) }))}
                   />
+                  {c.key === 'co2' && <Co2Explainer rows={rows} />}
                 </ChartCard>
                 </div>
               ))}
