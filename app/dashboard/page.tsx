@@ -30,7 +30,7 @@ import { freshness } from '@/lib/freshness'
 import { useChartColors, alpha } from '@/lib/useChartColors'
 import { useSelectedDevice, useDeviceSelectionReady } from '@/lib/useSelectedDevice'
 import { useIsMobile } from '@/lib/useIsMobile'
-import { useSeries } from '@/lib/useSeries'
+import { useSeries, POLL_MS } from '@/lib/useSeries'
 import { Wind, Thermometer, Droplets, Bug, Droplet, Activity, MapPin, Home, ArrowRight } from 'lucide-react'
 import { assessMould, growthSentence, type Level, type MouldAssessment } from '@/lib/mouldRisk'
 import { fetchMouldInputs } from '@/lib/mouldLoad'
@@ -215,10 +215,15 @@ export default function DashboardPage() {
       setLatestTs(rows[0]?.created_at ? new Date(rows[0].created_at) : null)
     }
     loadLatest()
-    const id = setInterval(loadLatest, 60000)
+    // Zelfde ritme als de grafiek (POLL_MS); een verborgen tabblad haalt niets op en haalt bij
+    // terugkomen meteen de laatste meting.
+    const id = setInterval(() => { if (document.visibilityState === 'visible') loadLatest() }, POLL_MS)
+    const onVis = () => { if (document.visibilityState === 'visible') loadLatest() }
+    document.addEventListener('visibilitychange', onVis)
     return () => {
       cancelled = true
       clearInterval(id)
+      document.removeEventListener('visibilitychange', onVis)
     }
   }, [supabase, selectedDevice, deviceReady])
 

@@ -19,7 +19,10 @@ export interface SeriesData {
   bucketMinutes: number
 }
 
-const TTL_MS = 55_000 // just under the 60s poll, so a poll always gets fresh data
+const TTL_MS = 55_000 // hergebruik tussen pagina's en componenten; een poll forceert altijd vers
+// Binnenlucht verandert langzaam en niemand kijkt ernaar als naar een live monitor: elke
+// 5 minuten verversen is genoeg (was elke minuut). Terugkomen op het tabblad ververst meteen.
+export const POLL_MS = 5 * 60_000
 // Keyed by window AND device (B3): "1440:" is all-devices, "1440:<uuid>" is one room.
 const cache = new Map<string, { data: SeriesData; ts: number }>()
 const inflight = new Map<string, Promise<SeriesData>>()
@@ -66,7 +69,7 @@ export function getSeries(minutes: number, force = false, device: string | null 
 }
 
 interface Options {
-  /** Poll every 60s while the tab is visible. */
+  /** Elke POLL_MS verversen zolang het tabblad zichtbaar is. */
   poll?: boolean
   /** Skip fetching entirely (e.g. before auth resolves). */
   enabled?: boolean
@@ -127,7 +130,7 @@ export function useSeries(minutes: number, opts: Options = {}) {
       stop()
       id = setInterval(() => {
         if (document.visibilityState === 'visible') run(true)
-      }, 60000)
+      }, POLL_MS)
     }
     const stop = () => {
       if (id) clearInterval(id)
@@ -135,7 +138,7 @@ export function useSeries(minutes: number, opts: Options = {}) {
     }
     const onVis = () => {
       if (document.visibilityState === 'visible') {
-        run(true) // refetch on focus
+        run() // bij terugkomen: vers als de cache ouder is dan TTL_MS, anders uit het geheugen
         start()
       } else stop()
     }
