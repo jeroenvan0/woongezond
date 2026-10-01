@@ -183,19 +183,19 @@ raamcontacten in 2–3 pilotwoningen in de winter. **Vóór de volgende uitrol b
 aan of uit; aan maskeert precies de nooit-geluchte slaapkamers.
 
 
-## 6. Gecorrigeerde temperatuur ook in ML, post en opgeslagen berekeningen
+## 6. Gecorrigeerde temperatuur ook in post en opgeslagen berekeningen
 
 **Requested 2026-10-01 (Jeroen), bewust uitgesteld.** Sinds de temperatuurcorrectie
-(−1,5 °C, `lib/readingSource.ts`, migratie `20261001120000`) rekent dev met
-`temperature_corrected`/`humidity_corrected`, maar een paar paden lezen nog de gemeten waarden:
+(−1,5 °C, `lib/readingSource.ts`, migraties `20261001120000` en `20261001150000`) rekent alles
+in de app in dev met `temperature_corrected`/`humidity_corrected`: dashboard, trends, schimmel,
+rapportpagina, cockpit, /vloot, chat en ML (eigen tabel `ml_models_corrected`). Nog op de
+gemeten waarden:
 
-1. **ML-model.** De hertraining gebruikt de gemeten waarden, omdat `ml_models` één rij per
-   gebruiker heeft die prod en dev delen. In dev krijgt het model bij het voorspellen wel
-   gecorrigeerde invoer (kleine afwijking, vooral bij RV +1U). Oplossing: het model per
-   temperatuurbron opslaan (kolom `source` of aparte rij) en dev daarop laten trainen.
-2. **Weekmail, rapport (`report_sends.verdict`) en meldingen** blijven op de gemeten waarden
-   tot de correctie gevalideerd is (bijvoorbeeld met een losse thermometer in een paar woningen).
-3. **Opgeslagen berekeningen.** Komt de dagelijkse job uit §5 (luchtmomenten, dagkenmerken),
+1. **Post naar bewoners:** weekmail, rapportmail (`report_sends.verdict`), meldingen (ook de
+   bel, want die rijen maakt dezelfde job) en de supportassistent. Omzetten zodra de correctie
+   gevalideerd is (bijvoorbeeld met een losse thermometer in een paar woningen).
+2. **Opgeslagen berekeningen.** Komt de dagelijkse job uit §5 (luchtmomenten, dagkenmerken),
    leg dan per rij vast met welke temperatuurbron hij berekend is. Anders zijn oude en nieuwe
    rijen niet meer te onderscheiden als de offset verandert.
-4. **`fleet_overview`** (corporatieoverzicht) leest nog de gemeten vochtigheid voor de ernst.
+3. **Prod over op gecorrigeerd?** Voeg dan `ml_models` en `ml_models_corrected` samen met een
+   kolom `temperature_source`.

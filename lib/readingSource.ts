@@ -8,10 +8,10 @@
 // berekening ze vanzelf gebruikt, en de ruwe waarden als `temperature_raw`/`humidity_raw`
 // voor de grijze lijn in de grafiek. Zonder de variabele (prod) verandert er niets.
 //
-// Uitgaande post (weekmail, rapport, meldingen) en de ML-hertraining blijven bewust op de
-// ruwe meting tot de correctie gevalideerd is; die paden gebruiken deze helper niet.
-// ml_models deelt prod en dev één rij per gebruiker — een model op gecorrigeerde data zou
-// ongemerkt in prod belanden.
+// Alles wat in de app staat volgt de schakelaar, ook het ML-model (eigen tabel
+// ml_models_corrected, zodat prod nooit een gecorrigeerd model leest), de rapportpagina en
+// het corporatieoverzicht. Post naar bewoners (weekmail, rapportmail, meldingen + bel) en de
+// supportassistent blijven op de ruwe meting tot de correctie gevalideerd is (WISHLIST §6).
 
 export const TEMPERATURE_OFFSET_C = 1.5 // gelijk houden aan de migratie
 
@@ -36,4 +36,17 @@ export function pickBucketedSource<T extends Record<string, any>>(r: T): T {
     humidity_min: r.humidity_corrected_min, humidity_max: r.humidity_corrected_max,
     temperature_raw: r.temperature, humidity_raw: r.humidity,
   }
+}
+
+/** Tabel met het ML-model dat bij deze bron hoort (migratie 20261001150000). */
+export const ML_MODELS_TABLE = USE_CORRECTED ? 'ml_models_corrected' : 'ml_models'
+
+const SEVERITY_RANK: Record<string, number> = { crit: 0, warn: 1, ok: 2 }
+
+/** Rijen uit fleet_overview → gekozen bron onder de gewone namen, op ernst gesorteerd. */
+export function pickFleetSource<T extends Record<string, any>>(rows: T[]): T[] {
+  if (!USE_CORRECTED || !rows.length || rows[0].severity_corrected === undefined) return rows
+  return rows
+    .map((r) => ({ ...r, temp_latest: r.temp_latest_corrected, rh_latest: r.rh_latest_corrected, severity: r.severity_corrected }))
+    .sort((a, b) => (SEVERITY_RANK[a.severity] ?? 1) - (SEVERITY_RANK[b.severity] ?? 1))
 }

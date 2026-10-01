@@ -1,11 +1,12 @@
 'use client'
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { Brain, RotateCw } from 'lucide-react'
 import { withBase } from '@/lib/basePath'
 import { getSeries } from '@/lib/useSeries'
 import { useSelectedDevice } from '@/lib/useSelectedDevice'
 import { buildFeatureVector, predict, ModelWeights, SensorReading, Prediction } from '@/lib/ml'
 import { co2Status, rhStatus, mouldStatus } from '@/lib/calculations'
+import { USE_CORRECTED } from '@/lib/readingSource'
 
 interface ModelMeta {
   sampleCount: number
@@ -53,10 +54,16 @@ export default function MLPredictionCard() {
     setMeta(d.meta)
     if (d.model) await buildPrediction(d.model)
     setLoading(false)
+    return !!d.model
   }, [buildPrediction])
 
+  // Gecorrigeerde temperatuur (dev) heeft een eigen modeltabel die bij de start leeg is;
+  // train dan één keer vanzelf, anders blijft de kaart leeg tot iemand op trainen drukt.
+  const autoTrained = useRef(false)
   useEffect(() => {
-    loadModel()
+    loadModel().then((has) => {
+      if (!has && USE_CORRECTED && !autoTrained.current) { autoTrained.current = true; retrain() }
+    })
   }, [loadModel])
 
   async function retrain() {
