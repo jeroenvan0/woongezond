@@ -34,6 +34,7 @@ import { useSeries, POLL_MS } from '@/lib/useSeries'
 import { Wind, Thermometer, Droplets, Bug, Droplet, Activity, MapPin, Home, ArrowRight } from 'lucide-react'
 import { assessMould, growthSentence, type Level, type MouldAssessment } from '@/lib/mouldRisk'
 import { fetchMouldInputs } from '@/lib/mouldLoad'
+import { READING_SELECT } from '@/lib/readingSource'
 
 const PERIOD_OPTIONS = [
   { label: '30 min', value: 30 },
@@ -78,6 +79,7 @@ function processRows(raw: SensorRow[]): ProcessedRow[] {
       if (r.co2_min != null && r.co2_max != null && r.temperature_min != null && r.temperature_max != null && r.humidity_min != null && r.humidity_max != null && (r.n ?? 1) > 1) {
         row.band = { co2: [+r.co2_min, +r.co2_max], temp: [+r.temperature_min, +r.temperature_max], rh: [+r.humidity_min, +r.humidity_max] }
       }
+      if (r.temperature_raw != null && r.humidity_raw != null) { row.tempRaw = +r.temperature_raw; row.rhRaw = +r.humidity_raw }
       return row
     })
 }
@@ -99,6 +101,9 @@ function applyMA(rows: ProcessedRow[], points: number): ProcessedRow[] {
   const temp = movingAverage(rows.map((x) => x.temp), n)
   const rh = movingAverage(rows.map((x) => x.rh), n)
   const mr = movingAverage(rows.map((x) => x.mr), n)
+  const hasRaw = rows.some((x) => x.tempRaw != null)
+  const tempRaw = hasRaw ? movingAverage(rows.map((x) => x.tempRaw ?? x.temp), n) : null
+  const rhRaw = hasRaw ? movingAverage(rows.map((x) => x.rhRaw ?? x.rh), n) : null
   // De band schuift mee met de lijn: dezelfde afvlakking op de onder- en bovengrens, anders
   // blijft een rafelige band om een gladde lijn staan en lijkt de spreiding groter dan hij is.
   const hasBand = rows.some((x) => x.band)
@@ -106,6 +111,7 @@ function applyMA(rows: ProcessedRow[], points: number): ProcessedRow[] {
   const b = hasBand ? { co2: [edge('co2', 0), edge('co2', 1)], temp: [edge('temp', 0), edge('temp', 1)], rh: [edge('rh', 0), edge('rh', 1)] } : null
   return rows.map((r, i) => ({
     ...r, co2: co2[i], temp: temp[i], rh: rh[i], mr: mr[i],
+    ...(tempRaw && rhRaw && r.tempRaw != null && { tempRaw: tempRaw[i], rhRaw: rhRaw[i] }),
     band: b && r.band ? { co2: [b.co2[0][i], b.co2[1][i]], temp: [b.temp[0][i], b.temp[1][i]], rh: [b.rh[0][i], b.rh[1][i]] } : r.band,
   }))
 }
@@ -194,7 +200,7 @@ export default function DashboardPage() {
       // useSeries({ device }) → /api/data?device= (B3).
       let q = supabase
         .from('air_quality')
-        .select('created_at,co2,temperature,humidity')
+        .select(READING_SELECT)
         .order('created_at', { ascending: false })
         .limit(1)
       if (selectedDevice) q = q.eq('device_id', selectedDevice)
@@ -281,8 +287,8 @@ export default function DashboardPage() {
     // Na de render: de grafiek staat er pas als het tabblad gewisseld is.
     requestAnimationFrame(() => setTimeout(() => document.getElementById(`grafiek-${key}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 60))
   }
-  const card = (title: string, value: string, unit: string, status: any, accent: string, icon: React.ReactNode, progress?: number, go?: { tab: string; key: string; label: string }) => (
-    <MetricCard title={title} value={loading ? '—' : value} unit={unit} label={withStatus(status)?.label} labelColor={withStatus(status)?.color} accent={accent} icon={icon} progress={progress} stale={stale && !loading}
+  const card = (title: string, value: string, unit: string, status: any, accent: string, icon: React.ReactNode, progress?: number, go?: { tab: string; key: string; label: string }, sub?: string) => (
+    <MetricCard title={title} value={loading ? '—' : value} unit={unit} label={withStatus(status)?.label} labelColor={withStatus(status)?.color} sub={loading ? undefined : sub} accent={accent} icon={icon} progress={progress} stale={stale && !loading}
       onClick={go ? () => goToChart(go.tab, go.key) : undefined} goLabel={go?.label} />
   )
 
@@ -322,8 +328,8 @@ export default function DashboardPage() {
         ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 10, marginBottom: 8 }}>
           {card('CO₂', last?.co2.toFixed(0) ?? '—', 'ppm', co2s, 'var(--c-co2)', <Wind size={14} />, last ? Math.min(100, last.co2 / 20) : 0, { tab: 'metingen', key: 'co2', label: 'naar de CO₂-grafiek' })}
-          {card('Temperatuur', last?.temp.toFixed(1) ?? '—', '°C', temps, 'var(--c-temp)', <Thermometer size={14} />, undefined, { tab: 'metingen', key: 'temp', label: 'naar de temperatuurgrafiek' })}
-          {card('Vochtigheid', last?.rh.toFixed(1) ?? '—', '% RV', rhs, 'var(--c-rh)', <Droplets size={14} />, last?.rh, { tab: 'metingen', key: 'rh', label: 'naar de vochtigheidsgrafiek' })}
+          {card('Temperatuur', last?.temp.toFixed(1) ?? '—', '°C', temps, 'var(--c-temp)', <Thermometer size={14} />, undefined, { tab: 'metingen', key: 'temp', label: 'naar de temperatuurgrafiek' }, last?.tempRaw != null ? `gecorrigeerd · gemeten ${last.tempRaw.toFixed(1)} °C` : undefined)}
+          {card('Vochtigheid', last?.rh.toFixed(1) ?? '—', '% RV', rhs, 'var(--c-rh)', <Droplets size={14} />, last?.rh, { tab: 'metingen', key: 'rh', label: 'naar de vochtigheidsgrafiek' }, last?.rhRaw != null ? `gecorrigeerd · gemeten ${last.rhRaw.toFixed(1)} %` : undefined)}
           <MetricCard
             title="Schimmel"
             // Eén soort procent in de tegel: de kans. De vochtigheid in de hoek staat op de schimmelpagina.

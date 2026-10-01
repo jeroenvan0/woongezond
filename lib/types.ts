@@ -12,6 +12,10 @@ export interface SensorRow {
   humidity_min?: number | null
   humidity_max?: number | null
   n?: number
+  // Alleen in dev (lib/readingSource.ts): temperature/humidity zijn dan gecorrigeerd, dit
+  // is de gemeten waarde van de sensor zelf.
+  temperature_raw?: number | null
+  humidity_raw?: number | null
 }
 
 /** Laagste en hoogste meting binnen één grafiekblok, voor de band achter de lijn. */
@@ -29,6 +33,8 @@ export interface ProcessedRow {
   mr: number        // mould risk
   dp: number        // dewpoint
   band?: RowBand    // alleen bij samengevoegde blokken met echte spreiding
+  tempRaw?: number  // gemeten (ongecorrigeerd), alleen in dev — zie lib/readingSource.ts
+  rhRaw?: number
 }
 
 export interface DashboardData {

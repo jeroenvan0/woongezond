@@ -23,13 +23,17 @@ function CustomTooltip({ active, payload, unit, color, withPart }: any) {
   if (!active || !payload?.length) return null
   const row = payload[0]?.payload
   const val = row?.v
+  const raw: number | null | undefined = row?.raw
   const band: [number, number] | undefined = row?.band
   const t: number = row?.t
   const label = tooltipLabel(t, withPart)
   return (
     <div className="custom-tooltip">
       <div style={{ color: 'var(--muted)', fontSize: 11, marginBottom: 2 }}>{label}</div>
-      <div style={{ fontWeight: 700, color }}>{typeof val === 'number' ? val.toFixed(1) : val} {unit}</div>
+      <div style={{ fontWeight: 700, color }}>{typeof val === 'number' ? val.toFixed(1) : val} {unit}{typeof raw === 'number' && <span style={{ fontWeight: 400, color: 'var(--muted)' }}> gecorrigeerd</span>}</div>
+      {typeof raw === 'number' && (
+        <div style={{ color: 'var(--muted)', fontSize: 11, marginTop: 2 }}>gemeten {raw.toFixed(1)} {unit}</div>
+      )}
       {band && band[1] > band[0] && (
         <div style={{ color: 'var(--muted)', fontSize: 11, marginTop: 2 }}>
           laagste {band[0].toFixed(1)} · hoogste {band[1].toFixed(1)} {unit}
@@ -59,13 +63,18 @@ export default function SensorChart({ data, dataKey, color, fillColor, unit, hei
   // per 12 uur vlakt een CO₂-piek van een avond weg; de band laat zien hoe hoog het echt kwam.
   const bandKey = BANDED.has(dataKey) ? (dataKey as 'co2' | 'temp' | 'rh') : null
   const hasBand = !!bandKey && data.some(r => r.band && r.band[bandKey][1] > r.band[bandKey][0])
+  // Dev: temperatuur en vocht zijn gecorrigeerd (lib/readingSource.ts); de gemeten waarde
+  // loopt als grijze stippellijn mee, zodat je het verschil ziet.
+  const rawKey = dataKey === 'temp' ? 'tempRaw' : dataKey === 'rh' ? 'rhRaw' : null
+  const hasRaw = !!rawKey && data.some(r => r[rawKey] != null)
   const chartData = data.map(r => ({
     t: r.ts.getTime(),          // numeric epoch ms → Recharts time scale
     v: +r[dataKey].toFixed(1),
     band: hasBand && bandKey && r.band ? [+r.band[bandKey][0].toFixed(1), +r.band[bandKey][1].toFixed(1)] : null,
+    raw: hasRaw && rawKey && r[rawKey] != null ? +r[rawKey]!.toFixed(1) : null,
   }))
   const { ticks, step } = buildTimeAxis(chartData)
-  const plotData = insertGaps(chartData, ['v', 'band'])
+  const plotData = insertGaps(chartData, ['v', 'band', 'raw'])
   const dn = dayNight(chartData[0].t, chartData[chartData.length - 1].t)
 
   return (
@@ -102,6 +111,9 @@ export default function SensorChart({ data, dataKey, color, fillColor, unit, hei
         ))}
         {hasBand && (
           <Area type="monotone" dataKey="band" stroke="none" fill={color} fillOpacity={0.14} dot={false} activeDot={false} connectNulls={false} isAnimationActive={false} legendType="none" />
+        )}
+        {hasRaw && (
+          <Area type="monotone" dataKey="raw" stroke="var(--muted)" strokeWidth={1.2} strokeDasharray="4 3" fill="none" dot={false} activeDot={false} connectNulls={false} isAnimationActive={false} legendType="none" />
         )}
         <Area type="monotone" dataKey="v" stroke={color} strokeWidth={2} fill={hasBand ? 'none' : `url(#fill-${dataKey})`} dot={false} activeDot={{ r: 4, fill: color }} connectNulls={false} />
       </AreaChart>

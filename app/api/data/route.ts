@@ -2,11 +2,14 @@ import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
 import { aggregateRows, pickBucketSeconds, spanSeconds, type BucketedRow } from '@/lib/bucketing'
+import { READING_SELECT, pickBucketedSource } from '@/lib/readingSource'
 
 // Eén rij naar buiten: gemiddelde per blok, plus laagste/hoogste (band in de grafiek) en
 // het aantal metingen. Oudere RPC-versies zonder min/max-kolommen geven undefined → null.
-function toRow(r: any): BucketedRow {
+// In dev (gecorrigeerde temperatuur) komen de ruwe gemiddelden mee voor de grijze lijn.
+function toRow(src: any): BucketedRow {
   const num = (v: unknown) => (v == null ? null : +v)
+  const r = pickBucketedSource(src)
   return {
     created_at: r.created_at,
     co2: num(r.co2), temperature: num(r.temperature), humidity: num(r.humidity),
@@ -14,6 +17,7 @@ function toRow(r: any): BucketedRow {
     temperature_min: num(r.temperature_min), temperature_max: num(r.temperature_max),
     humidity_min: num(r.humidity_min), humidity_max: num(r.humidity_max),
     n: r.n == null ? 1 : +r.n,
+    ...(r.temperature_raw !== undefined && { temperature_raw: num(r.temperature_raw), humidity_raw: num(r.humidity_raw) }),
   }
 }
 
@@ -79,7 +83,7 @@ export async function GET(req: NextRequest) {
   for (let offset = 0; offset < MAX_ROWS; offset += PAGE) {
     let q = supabase
       .from('air_quality')
-      .select('created_at,co2,temperature,humidity')
+      .select(READING_SELECT)
       .gte('created_at', since)
     if (deviceId) q = q.eq('device_id', deviceId)   // nooit sensoren mengen, ook niet in de fallback
     const { data, error } = await q

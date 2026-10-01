@@ -5,6 +5,7 @@ import { QUESTIONS } from '@/lib/houseProfile'
 import { analyseVentilation, occupantsFromProfile, type Reading, type OutdoorReading } from '@/lib/ventilationEvents'
 import { vAbs } from '@/lib/mouldRisk'
 import { log, errText } from '@/lib/logger'
+import { READING_SELECT } from '@/lib/readingSource'
 
 // Analyse-tab van de cockpit, alleen org-ADMINS (docs/huisprofiel-luchtgedrag-plan.md, fase 0).
 //
@@ -25,7 +26,7 @@ const label = (key: string, v: unknown) => (typeof v === 'string' && v ? QUESTIO
 async function rawReadings(s: ReturnType<typeof createServiceClient>, deviceId: string, sinceIso: string): Promise<Reading[]> {
   const out: Reading[] = []
   for (let page = 0; page < MAX_PAGES; page++) {
-    const { data, error } = await s.from('air_quality').select('created_at, co2, temperature, humidity')
+    const { data, error } = await s.from('air_quality').select(READING_SELECT)
       .eq('device_id', deviceId).gte('created_at', sinceIso).order('created_at', { ascending: true })
       .range(page * PAGE, page * PAGE + PAGE - 1)
     if (error) throw new Error(error.message)
