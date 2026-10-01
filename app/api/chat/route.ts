@@ -6,6 +6,7 @@ import { toSeries, buildDiagnosis, Diagnosis } from '@/lib/reportAnalytics'
 import { analyzeNights, NightsAnalysis } from '@/lib/nightForecast'
 import { beforeAfter } from '@/lib/trends'
 import { enforce, LIMITS } from '@/lib/rateLimit'
+import { READING_SELECT, pickBucketedSource } from '@/lib/readingSource'
 
 const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY!
 const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL ?? 'google/gemini-2.5-flash'
@@ -117,13 +118,13 @@ export async function POST(req: NextRequest) {
   // RLS-scoped, server-side aggregated fetch (one row per bucket).
   async function fetchBucketed(minutes: number) {
     const { data } = await supabase.rpc('air_quality_bucketed', { minutes })
-    return (data ?? []).map((r: any) => ({ created_at: r.created_at, co2: r.co2, temperature: r.temperature, humidity: r.humidity }))
+    return (data ?? []).map(pickBucketedSource).map((r: any) => ({ created_at: r.created_at, co2: r.co2, temperature: r.temperature, humidity: r.humidity }))
   }
 
   // System prompt with recent data + weather context
   const { data: recentRows } = await supabase
     .from('air_quality')
-    .select('created_at,co2,temperature,humidity')
+    .select(READING_SELECT)
     .order('created_at', { ascending: false })
     .limit(720)
   const rows = (recentRows ?? []).slice().reverse()
@@ -165,7 +166,7 @@ export async function POST(req: NextRequest) {
         if (!start || !end) return 'Ongeldige periode.'
         const { data } = await supabase
           .from('air_quality')
-          .select('created_at,co2,temperature,humidity')
+          .select(READING_SELECT)
           .gte('created_at', start)
           .lte('created_at', end)
           .order('created_at', { ascending: true })

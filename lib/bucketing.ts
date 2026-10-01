@@ -55,6 +55,8 @@ export interface BucketedRow {
   humidity_min: number | null
   humidity_max: number | null
   n: number
+  temperature_raw?: number | null
+  humidity_raw?: number | null
 }
 
 interface RawRow { created_at: string; co2: number | string | null; temperature: number | string | null; humidity: number | string | null }
