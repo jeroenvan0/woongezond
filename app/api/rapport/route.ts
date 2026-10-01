@@ -3,6 +3,7 @@ import { createServiceClient } from '@/lib/supabase/service'
 import { consume, LIMITS, clientIp } from '@/lib/rateLimit'
 import { verifyReportToken } from '@/lib/report/token'
 import { fetchDeviceRows } from '@/lib/report/sweep'
+import { READING_SELECT } from '@/lib/readingSource'
 import { QUESTIONS } from '@/lib/houseProfile'
 
 // GET /api/rapport?t=wgr_…&days=30 — data voor de rapportpagina zonder account.
@@ -29,7 +30,7 @@ export async function GET(req: NextRequest) {
 
   const end = new Date()
   const start = new Date(end.getTime() - days * 86400000)
-  const raw = await fetchDeviceRows(s, d.id, start, end)
+  const raw = await fetchDeviceRows(s, d.id, start, end, READING_SELECT)
   const buckets = new Map<number, { n: number; co2: number; t: number; rh: number }>()
   for (const r of raw) {
     if (r.co2 == null || r.temperature == null || r.humidity == null) continue

@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextRequest, NextResponse } from 'next/server'
+import { pickFleetSource } from '@/lib/readingSource'
 
 // C1 — the corporation's only window onto resident data.
 //
@@ -55,5 +56,5 @@ export async function GET(req: NextRequest) {
   const { data: households, error: rpcErr } = await supabase.rpc('fleet_overview', { p_org_id: org })
   if (rpcErr) return NextResponse.json({ orgs, org, households: [], error: rpcErr.message }, { status: 200 })
 
-  return NextResponse.json({ orgs, org, households: households ?? [] }, { headers: { 'Cache-Control': 'no-store' } })
+  return NextResponse.json({ orgs, org, households: pickFleetSource(households ?? []) }, { headers: { 'Cache-Control': 'no-store' } })
 }

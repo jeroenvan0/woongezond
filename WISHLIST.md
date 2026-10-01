@@ -182,3 +182,20 @@ sensoren van de vloot in één grafiek plus de gelabelde momenten. Validatie vra
 raamcontacten in 2–3 pilotwoningen in de winter. **Vóór de volgende uitrol beslissen:** SCD41-zelfkalibratie (ASC)
 aan of uit; aan maskeert precies de nooit-geluchte slaapkamers.
 
+
+## 6. Gecorrigeerde temperatuur ook in post en opgeslagen berekeningen
+
+**Requested 2026-10-01 (Jeroen), bewust uitgesteld.** Sinds de temperatuurcorrectie
+(−1,5 °C, `lib/readingSource.ts`, migraties `20261001120000` en `20261001150000`) rekent alles
+in de app in dev met `temperature_corrected`/`humidity_corrected`: dashboard, trends, schimmel,
+rapportpagina, cockpit, /vloot, chat en ML (eigen tabel `ml_models_corrected`). Nog op de
+gemeten waarden:
+
+1. **Post naar bewoners:** weekmail, rapportmail (`report_sends.verdict`), meldingen (ook de
+   bel, want die rijen maakt dezelfde job) en de supportassistent. Omzetten zodra de correctie
+   gevalideerd is (bijvoorbeeld met een losse thermometer in een paar woningen).
+2. **Opgeslagen berekeningen.** Komt de dagelijkse job uit §5 (luchtmomenten, dagkenmerken),
+   leg dan per rij vast met welke temperatuurbron hij berekend is. Anders zijn oude en nieuwe
+   rijen niet meer te onderscheiden als de offset verandert.
+3. **Prod over op gecorrigeerd?** Voeg dan `ml_models` en `ml_models_corrected` samen met een
+   kolom `temperature_source`.

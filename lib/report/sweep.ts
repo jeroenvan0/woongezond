@@ -37,10 +37,12 @@ export function publicBaseUrl(): string {
   return (process.env.PUBLIC_BASE_URL || 'https://woongezond.com/admin').replace(/\/$/, '')
 }
 
-export async function fetchDeviceRows(s: SupabaseClient, deviceId: string, start: Date, end: Date) {
+// `select` standaard de gemeten waarden: de rapportmail blijft daarop tot de correctie
+// gevalideerd is. De rapportpagina geeft READING_SELECT mee (lib/readingSource.ts).
+export async function fetchDeviceRows(s: SupabaseClient, deviceId: string, start: Date, end: Date, select: 'created_at, co2, temperature, humidity' = 'created_at, co2, temperature, humidity') {
   const rows: { created_at: string; co2: number | null; temperature: number | null; humidity: number | null }[] = []
   for (let from = 0; ; from += 1000) {
-    const { data, error } = await s.from('air_quality').select('created_at, co2, temperature, humidity').eq('device_id', deviceId)
+    const { data, error } = await s.from('air_quality').select(select).eq('device_id', deviceId)
       .gte('created_at', start.toISOString()).lt('created_at', end.toISOString()).order('created_at').range(from, from + 999)
     if (error) throw new Error(error.message)
     rows.push(...(data ?? []))

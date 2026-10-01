@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+import { ML_MODELS_TABLE } from '@/lib/readingSource'
 
 export async function GET() {
   const cookieStore = await cookies()
@@ -20,7 +21,7 @@ export async function GET() {
   if (!user) return NextResponse.json({ model: null })
 
   const { data } = await supabase
-    .from('ml_models')
+    .from(ML_MODELS_TABLE)
     .select('weights,sample_count,trained_at,metrics')
     .eq('user_id', user.id)
     .limit(1)

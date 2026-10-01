@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server'
 import { buildTrainingSet, train } from '@/lib/ml'
 import { enforce, LIMITS } from '@/lib/rateLimit'
 import { SensorReading } from '@/lib/ml'
+import { ML_MODELS_TABLE, READING_SELECT } from '@/lib/readingSource'
 
 async function client() {
   const cookieStore = await cookies()
@@ -29,7 +30,7 @@ async function fetchReadings(supabase: any, days: number, userId: string): Promi
   for (let offset = 0; offset < 200000; offset += PAGE) {
     const { data, error } = await supabase
       .from('air_quality')
-      .select('created_at,co2,temperature,humidity')
+      .select(READING_SELECT)
       .eq('user_id', userId)
       .gte('created_at', since)
       .order('created_at', { ascending: true })
@@ -74,7 +75,7 @@ export async function POST(req: Request) {
   }
 
   const weights = train(X, yCo2, yRh)
-  const { error } = await supabase.from('ml_models').upsert({
+  const { error } = await supabase.from(ML_MODELS_TABLE).upsert({
     user_id: user.id,
     weights,
     trained_at: weights.trainedAt,
